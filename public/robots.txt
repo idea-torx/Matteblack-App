@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /verify-email
+Disallow: /invite
+Disallow: /payment/
+
+Sitemap: https://falforge.app/sitemap.xml

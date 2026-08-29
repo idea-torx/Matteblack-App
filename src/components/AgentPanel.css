@@ -1,0 +1,2936 @@
+@keyframes agent-panel-enter {
+  /* translate3d (with explicit Z=0) keeps the panel promoted to its
+   * own compositor layer for the lifetime of the animation. A plain
+   * `translateX(...)` keyframe would override the static
+   * `transform: translateZ(0)` on `.agent-panel` while the animation
+   * is filling forwards, dropping the layer hint and re-introducing
+   * the canvas-pan flash. */
+  from { opacity: 0; transform: translate3d(14px, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.agent-panel {
+  /* Scope a light-theme palette to the agent panel. The rest of the app
+   * inherits the user's chosen theme; the agent canvas reads as a calm,
+   * paper-like surface that contrasts cleanly with the dark right-edge
+   * canvas card and the IconRail. All descendant styles using
+   * var(--text-primary), var(--text-muted), and rgba(var(--tint-rgb), …)
+   * pick these up automatically. */
+  --text-primary: #18181b;
+  --text-muted: #6b7280;
+  --tint-rgb: 17, 24, 39;
+
+  position: fixed;
+  /* Floating card inside the right reserved area (--canvas-right-inset
+   * in App.tsx, currently 360px). Equal 12px breathing room on top,
+   * bottom, and right balances the panel inside the section without
+   * shifting the canvas card. The matching 12px gap on the left is
+   * achieved by sizing the panel to (reserved area − 24px) so it sits
+   * symmetrically between the canvas card's right edge and the
+   * viewport. The ::before backdrop continues to paint the same paper
+   * tone across the full reserved area so the panel-card and the
+   * surrounding wings read as a single continuous chat surface, with
+   * a subtle border letting the rounded card edge be just barely
+   * visible against the backdrop. */
+  /* On desktop the card starts below the frameless window's title strip so the
+   * native window controls sit cleanly above it. The ::before backdrop below
+   * still runs to top:0, so the controls land on the panel's own paper surface
+   * instead of on bare window chrome. --titlebar-h is 0 on the web build. */
+  top: calc(var(--titlebar-h, 0px) + var(--panel-inset-top, 12px));
+  bottom: 12px;
+  right: 12px;
+  width: 336px;
+  background: #F0F0F3;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 17, 21, 0.05);
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  color: var(--text-primary);
+  z-index: 5;
+  overflow: hidden;
+  /* Elegant slide-in on mount — mirrors how other panels (LibraryPanel,
+   * ProjectsSidePanel) animate in. For surface-to-surface swaps with
+   * the right-side rpanel, the canvas-card cover (panelSwapping in
+   * App.tsx) hides the swap moment instead. */
+  animation: agent-panel-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Promote to its own compositor layer so the panel doesn't share
+   * rasterization tiles with the panning canvas to its left. Without
+   * this, panning the canvas causes the panel (and the textbox
+   * inside it) to flash as the browser invalidates the shared region
+   * on every pan frame. */
+  transform: translateZ(0);
+  will-change: transform;
+  isolation: isolate;
+}
+
+/* Backdrop fill that extends the panel's #F0F0F3 surface across the
+ * full right reserved area (380px), so the 30px gap on the panel's
+ * left side (between it and the canvas card) and the 30px gap on its
+ * right side (between it and the viewport edge) are also #F0F0F3 —
+ * not the body bg. The panel itself stays 320px wide and centered
+ * inside this backdrop, but visually the entire right region reads
+ * as one continuous chat surface.
+ *
+ * z-index: -1 keeps the backdrop behind the panel's own children
+ * (textarea, messages, etc.) while still painting on top of the
+ * parent's own bg paint. The .agent-panel stacking context (z:5,
+ * position:fixed) contains it. The canvas card (z:10) still paints
+ * above, so its right-edge shadow / busy glow continue to bleed
+ * onto this backdrop, which is exactly the intended layering. */
+.agent-panel::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  /* Match the full --canvas-right-inset reserved area (360px) so the
+   * paper backdrop extends edge-to-edge behind the panel-card. The
+   * 12px wings on top, bottom, left, and right of the panel-card all
+   * land on this paper tone, which keeps the chat reading as one
+   * continuous surface even though the card itself has rounded
+   * corners and a faint border. */
+  width: 360px;
+  background: #F0F0F3;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Mobile shell already fills the full surface, so the backdrop wing
+ * isn't needed and would just paint outside the device frame. */
+.agent-panel--mobile::before {
+  display: none;
+}
+
+/* During a panel-swap (canvas card covers the right surface area),
+ * fade the agent panel to match the rpanel fade. */
+.app-body--swap .agent-panel {
+  opacity: 0;
+}
+
+.agent-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px;
+  height: 53px;
+  flex-shrink: 0;
+}
+
+/* Normal (available) header has the alive indicator on the left and
+ * History/New chat/Close on the right, so it switches to space-between.
+ * The unavailable-state header (single Close button) stays flex-end via
+ * the base rule above so the close stays anchored top-right. */
+.agent-panel__header--with-alive {
+  justify-content: space-between;
+}
+
+.agent-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* History and New chat are always visible — no hover-to-reveal. */
+}
+
+/* Top-left "alive" indicator — a small QuantumThinking emblem that
+ * signals Matte is online. Idle state renders the emblem in a quiet
+ * grey; while a reply is streaming we restore the brand blue so the
+ * busy state reads at a glance. */
+.agent-panel__alive {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  /* Nudge slightly left of the header padding so the emblem reads as
+   * anchored to the panel edge rather than aligned with body text. */
+  margin-left: -4px;
+}
+
+.agent-panel__alive .quantum-thinking {
+  --qt-color: rgba(120, 120, 130, 0.75);
+}
+
+.agent-panel__alive--busy .quantum-thinking {
+  --qt-color: #3b82f6;
+}
+
+/* Header action buttons — white "pill" pattern with a soft drop shadow
+ * so they read as floating chips on the agent panel paper. The
+ * "History" button is a true pill (full-radius rounded rectangle); the
+ * "+" and close icon variants are perfect circles. Same look in dark
+ * and light themes since the panel is always paper-coloured. */
+.agent-panel__new {
+  background: #ffffff;
+  border: 1px solid rgba(15, 17, 21, 0.06);
+  color: #4a4f57;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow:
+    0 1px 1px rgba(15, 17, 21, 0.04),
+    0 2px 6px rgba(15, 17, 21, 0.08);
+  transition: color 0.12s, background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+
+.agent-panel__new:hover {
+  color: #1a1d22;
+  background: #ffffff;
+  border-color: rgba(15, 17, 21, 0.10);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.06),
+    0 4px 10px rgba(15, 17, 21, 0.12);
+}
+
+.agent-panel__new:active {
+  transform: translateY(0.5px);
+  box-shadow:
+    0 1px 1px rgba(15, 17, 21, 0.04),
+    0 2px 4px rgba(15, 17, 21, 0.08);
+}
+
+.agent-panel__new:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: 0 1px 1px rgba(15, 17, 21, 0.04);
+}
+
+/* Circular icon variant — used for the "+" (New chat) button. */
+.agent-panel__new--icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-panel__close {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #4a4f57;
+  background: #ffffff;
+  border: 1px solid rgba(15, 17, 21, 0.06);
+  cursor: pointer;
+  padding: 0;
+  box-shadow:
+    0 1px 1px rgba(15, 17, 21, 0.04),
+    0 2px 6px rgba(15, 17, 21, 0.08);
+  transition: color 0.12s, background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+
+.agent-panel__close:hover {
+  color: #1a1d22;
+  background: #ffffff;
+  border-color: rgba(15, 17, 21, 0.10);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.06),
+    0 4px 10px rgba(15, 17, 21, 0.12);
+}
+
+.agent-panel__close:active {
+  transform: translateY(0.5px);
+  box-shadow:
+    0 1px 1px rgba(15, 17, 21, 0.04),
+    0 2px 4px rgba(15, 17, 21, 0.08);
+}
+
+.agent-panel__close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(138, 180, 255, 0.4);
+}
+
+.agent-panel__history {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(14, 14, 18, 0.98);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-panel__history-header {
+  padding: 12px 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.06);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e6e9ee);
+}
+
+.agent-panel__history-close {
+  background: transparent;
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  color: var(--text-muted, #a4a8b0);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-panel__history-close:hover {
+  color: #fff;
+  background: rgba(var(--tint-rgb), 0.05);
+}
+
+.agent-panel__history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-panel__history-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #8b8f97);
+  font-size: 12px;
+}
+
+.agent-panel__history-item {
+  background: rgba(var(--tint-rgb), 0.03);
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.agent-panel__history-item:hover {
+  border-color: rgba(var(--tint-rgb), 0.14);
+  background: rgba(var(--tint-rgb), 0.05);
+}
+
+.agent-panel__history-item--active {
+  border-color: rgba(138, 180, 255, 0.45);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.agent-panel__history-title {
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e6e9ee);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  font: inherit;
+}
+
+.agent-panel__history-title-text {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-panel__history-meta {
+  font-size: 10.5px;
+  color: var(--text-muted, #8b8f97);
+}
+
+.agent-panel__history-rename {
+  background: #1a1a1f;
+  border: 1px solid rgba(138, 180, 255, 0.45);
+  color: var(--text-primary, #e6e9ee);
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  outline: none;
+  font-family: inherit;
+}
+
+.agent-panel__history-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.agent-panel__history-action {
+  background: transparent;
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text-muted, #a4a8b0);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.agent-panel__history-action:hover {
+  color: var(--text-primary, #fff);
+  background: rgba(var(--tint-rgb), 0.05);
+  border-color: rgba(var(--tint-rgb), 0.18);
+}
+
+.agent-panel__history-action--danger:hover {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.agent-panel__messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Always reserve space for the scrollbar so growing the composer
+     (e.g. typing a long prompt) doesn't shift the right edge of the
+     message bubbles and generation cards above. */
+  scrollbar-gutter: stable;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  color: var(--text-muted, #8b8f97);
+  padding: 24px 28px 40px;
+}
+
+/* Hero empty state — inspired by "Make almost anything" layout */
+.agent-panel__hero {
+  display: flex;
+  flex-direction: column;
+  padding: 28px 14px 16px;
+  animation: agent-welcome-msg-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 80ms;
+}
+
+.agent-panel__hero--short {
+  animation: none;
+}
+
+.agent-panel__hero-title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.agent-panel__hero-sub {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(var(--tint-rgb), 0.45);
+}
+
+.agent-panel__hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.agent-panel__hero-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 14px;
+  background: rgba(var(--tint-rgb), 0.025);
+  border: 1px solid rgba(var(--tint-rgb), 0.07);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.agent-panel__hero-card:hover {
+  background: rgba(var(--tint-rgb), 0.06);
+  border-color: rgba(var(--tint-rgb), 0.14);
+}
+
+.agent-panel__hero-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  margin-bottom: 6px;
+}
+
+.agent-panel__hero-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.agent-panel__hero-card-desc {
+  font-size: 11px;
+  color: rgba(var(--tint-rgb), 0.4);
+  line-height: 1.3;
+}
+
+.agent-panel__hero-signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 13px 0;
+  border-radius: 999px;
+  border: none;
+  background: var(--text-primary);
+  color: #F0F0F3;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.agent-panel__hero-signin:hover {
+  opacity: 0.88;
+}
+
+/* Centered welcome state. */
+.agent-panel__welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.agent-panel__welcome-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  color: var(--text-primary, #f1f3f8);
+}
+
+.agent-panel__welcome-body {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(var(--tint-rgb), 0.55);
+}
+
+.agent-panel__welcome-cta {
+  font-size: 13px;
+  color: rgba(var(--tint-rgb), 0.55);
+  margin-top: 4px;
+}
+
+/* Signed-out footnote shown below the suggestion chips. */
+.agent-panel__welcome-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: rgba(var(--tint-rgb), 0.42);
+  letter-spacing: 0.1px;
+}
+.agent-panel__welcome-note button {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: rgba(var(--tint-rgb), 0.78);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(var(--tint-rgb), 0.28);
+  transition: color 140ms ease, text-decoration-color 140ms ease;
+}
+.agent-panel__welcome-note button:hover {
+  color: rgba(var(--tint-rgb), 0.95);
+  text-decoration-color: rgba(var(--tint-rgb), 0.55);
+}
+
+.agent-panel__welcome .agent-panel__suggestions {
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+/* Legacy centered empty-state container — kept for any callers still using
+   the old class name (none after the redesign, but harmless). */
+.agent-panel__empty-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 8px;
+}
+
+.agent-panel__suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+/* Specificity bump: the generic `.agent-panel__empty button` rule below
+   styles links/buttons in the empty state as blue underlined text. We need
+   to win over it for the suggestion chips. */
+.agent-panel__empty .agent-panel__suggestion {
+  display: inline-block;
+  max-width: 100%;
+  background: rgba(var(--tint-rgb), 0.045);
+  border: 1px solid rgba(var(--tint-rgb), 0.07);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12px;
+  color: rgba(var(--tint-rgb), 0.55);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.agent-panel__empty .agent-panel__suggestion:hover,
+.agent-panel__empty .agent-panel__suggestion:focus-visible {
+  background: rgba(var(--tint-rgb), 0.085);
+  border-color: rgba(var(--tint-rgb), 0.14);
+  color: rgba(var(--tint-rgb), 0.85);
+  text-decoration: none;
+  outline: none;
+}
+
+.agent-panel__empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e6e9ee);
+}
+
+.agent-panel__empty-body {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-panel__empty a,
+.agent-panel__empty button {
+  color: #8ab4ff;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.agent-panel__msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-panel__bubble {
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+  max-width: 96%;
+}
+
+/* Assistant messages: bare text, no bubble. */
+.agent-panel__msg--assistant .agent-panel__bubble {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  max-width: 100%;
+  color: var(--text-primary, #e6e9ee);
+}
+
+/* User messages: subtle right-aligned card. */
+.agent-panel__msg--user .agent-panel__bubble {
+  align-self: flex-end;
+  background: #ffffff;
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text-primary, #18181b);
+  padding: 9px 12px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.06), 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+/* Welcome / placeholder assistant message that stands in for a real
+ * reply when the conversation is empty. Visually identical to a regular
+ * assistant bubble (bare text, left-aligned), but slides in on mount so
+ * the first impression reads as the agent already greeting the user. */
+@keyframes agent-welcome-msg-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.agent-panel__msg--welcome {
+  animation: agent-welcome-msg-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Gives the slide-in a beat after the panel itself settles in. */
+  animation-delay: 120ms;
+}
+
+/* The recurring "What would you like to create?" placeholder doesn't
+ * animate — it's just present, like a quiet prompt waiting for input. */
+.agent-panel__msg--welcome.agent-panel__msg--welcome-short {
+  animation: none;
+}
+
+.agent-panel__bubble--error {
+  align-self: flex-start;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  color: #fecaca;
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+/* ----- Markdown styling within assistant bubbles ----- */
+
+.agent-panel__markdown {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.agent-panel__markdown > :first-child { margin-top: 0; }
+.agent-panel__markdown > :last-child { margin-bottom: 0; }
+
+.agent-panel__markdown p {
+  margin: 0 0 8px;
+}
+
+.agent-panel__markdown strong { font-weight: 600; }
+.agent-panel__markdown em { font-style: italic; }
+
+.agent-panel__markdown code {
+  font-family: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+}
+
+.agent-panel__markdown pre {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.agent-panel__markdown pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  white-space: pre;
+}
+
+.agent-panel__markdown a {
+  color: #8ab4ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.agent-panel__markdown a:hover { color: #b3ccff; }
+
+.agent-panel__markdown ul,
+.agent-panel__markdown ol {
+  margin: 6px 0 8px;
+  padding-left: 20px;
+}
+
+.agent-panel__markdown li { margin: 2px 0; }
+
+.agent-panel__markdown blockquote {
+  border-left: 3px solid rgba(var(--tint-rgb), 0.18);
+  margin: 8px 0;
+  padding: 2px 10px;
+  color: var(--text-muted, #a4a8b0);
+}
+
+.agent-panel__markdown h1,
+.agent-panel__markdown h2,
+.agent-panel__markdown h3,
+.agent-panel__markdown h4 {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.agent-panel__markdown h1 { font-size: 14px; }
+.agent-panel__markdown h2 { font-size: 13.5px; }
+.agent-panel__markdown h3 { font-size: 13px; }
+.agent-panel__markdown h4 { font-size: 12.5px; }
+
+/* ----- Thinking indicator (replaces blinking caret) ----- */
+
+.agent-panel__thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+.agent-panel__thinking--inline {
+  margin-left: 4px;
+}
+
+.agent-panel__msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-self: flex-end;
+  max-width: 96%;
+}
+
+.agent-panel__msg-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  /* background-clip: padding-box keeps the background image strictly
+   * inside the border. Without it the image extends under the
+   * semi-transparent border and the top edge reads as a faint clip
+   * line, especially for portrait photos where the subject's head
+   * meets the top edge. */
+  background-clip: padding-box;
+  /* Soft drop shadow lifts the image off the panel paper so it reads
+   * as a tangible thumbnail instead of a flat tile. */
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.10),
+    0 4px 12px rgba(15, 17, 21, 0.12);
+}
+
+.agent-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 2px;
+  position: relative;
+}
+
+.agent-panel__action {
+  background: transparent;
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text-muted, #a4a8b0);
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.agent-panel__action:hover {
+  color: var(--text-primary, #fff);
+  background: rgba(var(--tint-rgb), 0.05);
+  border-color: rgba(var(--tint-rgb), 0.18);
+}
+
+.agent-panel__action--split {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.agent-panel__action--split .agent-panel__split-main,
+.agent-panel__action--split .agent-panel__split-toggle {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.agent-panel__action--split .agent-panel__split-toggle {
+  border-left: 1px solid rgba(var(--tint-rgb), 0.1);
+  padding: 3px 6px;
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+}
+
+.agent-panel__split-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  background: #1a1a1f;
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10;
+  min-width: 130px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.agent-panel__split-menu button {
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e6e9ee);
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.agent-panel__split-menu button:hover {
+  background: rgba(var(--tint-rgb), 0.06);
+}
+
+.agent-panel__refs {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(var(--tint-rgb), 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.agent-panel__refs-label {
+  font-size: 10.5px;
+  color: var(--text-muted, #8b8f97);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.agent-panel__ref {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  /* Show the whole reference image (letterboxed if needed) instead of
+   * cropping it. Portraits and wide images both read at a glance and
+   * the image edges line up cleanly with the chip's rounded border. */
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+}
+
+.agent-panel__ref-tag {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.agent-panel__ref-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1a1a1f;
+  color: #fff;
+  border: 1px solid rgba(var(--tint-rgb), 0.2);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.agent-panel__composer {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.agent-panel__error {
+  font-size: 11.5px;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  padding: 6px 8px;
+  border-radius: 5px;
+}
+
+/* The user-facing "In chat" / "On canvas" toggle has been removed.
+   Output mode is now derived from the surface (mobile → in_chat,
+   desktop → on_canvas) and is not user-configurable. */
+
+/* "Placed on canvas" chip on inline gen cards in on_canvas mode */
+.agent-gen__placed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.16);
+  color: rgba(199, 210, 254, 0.95);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  align-self: flex-start;
+}
+
+.agent-gen__placed-chip:hover {
+  background: rgba(99, 102, 241, 0.28);
+  border-color: rgba(129, 140, 248, 0.6);
+}
+
+.agent-gen__placed-chip--failed {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.16);
+  color: rgba(254, 202, 202, 0.95);
+}
+
+.agent-gen__placed-chip--failed:hover {
+  background: rgba(239, 68, 68, 0.28);
+}
+
+.agent-panel__context-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  line-height: 1.35;
+}
+.agent-panel__context-warning--warn {
+  color: #fde68a;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.28);
+}
+.agent-panel__context-warning--critical {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+}
+.agent-panel__context-warning-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(var(--tint-rgb), 0.10);
+  border: 1px solid rgba(var(--tint-rgb), 0.16);
+  color: inherit;
+  cursor: pointer;
+}
+.agent-panel__context-warning-btn:hover:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.16);
+}
+.agent-panel__context-warning-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-panel__textarea-wrap {
+  position: relative;
+  width: 100%;
+  isolation: isolate;
+  display: grid;
+}
+
+.agent-panel__glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 20px;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, border-radius 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 2px;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.agent-panel__glow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 800px;
+  height: 800px;
+  margin-top: -400px;
+  margin-left: -400px;
+  background: conic-gradient(
+    #3B82F6 0%,
+    #60a5fa 12%,
+    transparent 25%,
+    transparent 35%,
+    #3B82F6 45%,
+    #93c5fd 55%,
+    transparent 68%,
+    transparent 78%,
+    #3B82F6 90%,
+    #3B82F6 100%
+  );
+  animation: agent-glow-spin 4s linear infinite;
+}
+
+.agent-panel__glow-blur {
+  position: absolute;
+  inset: -8px;
+  border-radius: 28px;
+  z-index: 2;
+  pointer-events: none;
+  filter: blur(12px);
+  transition: opacity 0.3s ease;
+}
+
+.agent-panel__glow--soft {
+  inset: 0;
+  border-radius: inherit;
+  padding: 4px;
+}
+.agent-panel__glow--soft::before {
+  background: conic-gradient(
+    rgba(59, 130, 246, 0.8) 0%,
+    rgba(96, 165, 250, 0.7) 12%,
+    transparent 25%,
+    transparent 35%,
+    rgba(59, 130, 246, 0.8) 45%,
+    rgba(147, 197, 253, 0.6) 55%,
+    transparent 68%,
+    transparent 78%,
+    rgba(59, 130, 246, 0.8) 90%,
+    rgba(59, 130, 246, 0.8) 100%
+  );
+}
+
+.agent-panel__glow--sharp {
+  opacity: 0.7;
+}
+.agent-panel__glow-blur {
+  opacity: 0.5;
+}
+
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow--sharp,
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow--sharp {
+  opacity: 1;
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow-blur,
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow-blur {
+  opacity: 0.7;
+}
+
+.agent-panel__textarea-wrap--generating .agent-panel__glow--sharp,
+.agent-panel__textarea-wrap--generating .agent-panel__glow-blur {
+  opacity: 0;
+}
+
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow--sharp {
+  border-radius: 999px;
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow-blur {
+  border-radius: 999px;
+}
+
+@keyframes agent-glow-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.agent-panel__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #ecedf0;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  position: relative;
+  z-index: 1;
+  display: block;
+  /* Expanded (focused / has content) state — a soft-cornered square
+   * box, distinct from the rounded pill at rest. The 18px radius
+   * matches the curvature of the 36x36 send button (circle r=18) so
+   * the button reads as nestled into the corner instead of being
+   * tighter than the box rounding. */
+  border-radius: 18px;
+  color: var(--text-primary, #e6e9ee);
+  /* Top/right/bottom/left:
+   *   top 12 — small breathing above the cursor row
+   *   right 14 — text wraps clear of the right edge
+   *   bottom 52 — leaves room for the 36x36 (+) and send buttons that
+   *     sit absolutely positioned at the bottom-left / bottom-right
+   *     (button height 36 + bottom 7-8 + 8px breathing above)
+   *   left 14 — keeps the cursor flush near the left edge of the box;
+   *     the (+) sits at the bottom-left and never blocks the cursor
+   *     row at the top. */
+  padding: 12px 14px 52px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 96px;
+  max-height: 260px;
+  line-height: 1.5;
+  /* Soft ambient drop shadow lifts the composer off the panel paper */
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.06),
+    0 6px 18px rgba(15, 17, 21, 0.10);
+  transition:
+    border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    border-radius 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    min-height 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Idle / resting state — when the composer is empty AND not focused
+ * it collapses to a tight single-line "pill" with rounded ends. As
+ * soon as the user focuses it (or starts typing), it expands back
+ * into the full multi-line composer. The (+) and send buttons shrink
+ * to fit the pill (see the :has() rules below) so the whole bar reads
+ * as a compact grey strip with a flat "+" on the left and a solid
+ * blue send circle on the right. */
+.agent-panel__textarea:not(:focus):placeholder-shown {
+  min-height: 48px;
+  height: 48px;
+  padding: 12px 50px;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.08),
+    0 6px 18px rgba(15, 17, 21, 0.10);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) {
+  height: 48px;
+}
+
+.agent-panel__textarea:not(:focus):placeholder-shown::placeholder {
+  color: transparent;
+}
+
+.agent-panel__placeholder-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: none;
+  align-items: center;
+  padding: 0 50px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--tint-rgb), 0.25) 0%,
+    rgba(var(--tint-rgb), 0.25) 25%,
+    #3B82F6 50%,
+    rgba(var(--tint-rgb), 0.25) 75%,
+    rgba(var(--tint-rgb), 0.25) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: placeholder-sweep 4s ease-in-out infinite;
+  cursor: text;
+}
+
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__placeholder-sweep {
+  display: flex;
+  pointer-events: auto;
+}
+
+@keyframes placeholder-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  50% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 100% 0;
+  }
+}
+
+/* When the composer is in pill (idle) state: shrink the absolutely
+ * positioned buttons, flatten the (+), and convert the Sign-in /
+ * send slot into a solid blue circle. */
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__upload {
+  top: 50%;
+  bottom: auto;
+  left: 6px;
+  transform: translateY(-50%);
+  background: rgba(var(--tint-rgb), 0.06);
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__send {
+  top: 50%;
+  bottom: auto;
+  right: 6px;
+  transform: translateY(-50%);
+  box-shadow: 0 1px 2px rgba(15, 17, 21, 0.10);
+}
+/* In pill mode, the "Sign in" send variant collapses to a circle and
+ * its label hides — only the arrow icon shows. */
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__send--text {
+  width: 36px;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__send--text .agent-panel__send-label {
+  display: none;
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
+  .agent-panel__send--text .agent-panel__send-icon {
+  display: block;
+}
+
+/* Outside of pill mode, the icon stays hidden and the "Sign in" label
+ * shows as before. */
+.agent-panel__send-icon { display: none; }
+.agent-panel__send-label { display: inline; }
+
+.agent-panel__textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.agent-panel__textarea:disabled {
+  opacity: 0.6;
+}
+
+.agent-panel__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.agent-panel__upload {
+  position: absolute;
+  z-index: 2;
+  bottom: 7px;
+  left: 7px;
+  /* 36x36 in both pill and expanded modes — keeping a single button
+   * size means the (+) doesn't visibly resize when the composer
+   * expands from pill to square. */
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #9ca0a8);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.08s, background 0.1s cubic-bezier(0.4, 0, 0.2, 1), top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), left 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.agent-panel__upload:hover:not(:disabled) {
+  color: var(--text-primary, #e6e9ee);
+  background: rgba(var(--tint-rgb), 0.10);
+}
+
+.agent-panel__upload:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(138, 180, 255, 0.4);
+}
+
+.agent-panel__upload:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Attach (+) button is always visible — no hover gating. The composer
+   reads as more discoverable when the affordance is on at rest. */
+
+.agent-panel__send {
+  position: absolute;
+  z-index: 2;
+  /* 1px higher than the upload (which sits at bottom:7) to compensate
+   * for the send button's drop shadow that adds visual weight below
+   * the circle. Without this nudge the send reads as sitting slightly
+   * lower than the (+) opposite it. Applies in both pill and
+   * expanded modes via the bottom:8 baseline. */
+  bottom: 8px;
+  /* 5px from the right edge so the send circle nestles into the
+   * box's rounded corner (18px radius matches the circle r=18). */
+  right: 5px;
+  /* 36x36 in both modes so the send circle doesn't visibly resize
+   * when the composer expands from pill to square. */
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  transition: filter 0.08s, background 0.08s, box-shadow 0.08s, top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), right 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.10),
+    0 2px 6px rgba(37, 99, 235, 0.30);
+}
+
+.agent-panel__send:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.agent-panel__send:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(138, 180, 255, 0.55);
+}
+
+.agent-panel__send:disabled {
+  /* Inactive base reads as the original neutral grey chip, then a
+   * blue CTA gradient blooms in over it on a slow loop and recedes —
+   * "grey → blue → grey" — so the empty state still announces itself
+   * as the call to action without permanently advertising as armed. */
+  background: #c7c8cc;
+  color: #fff;
+  cursor: not-allowed;
+  isolation: isolate;
+  /* Halo pulses in sync with the gradient bloom. Sized small at rest
+   * (matching a quiet grey chip) and expanding into a brand-blue glow
+   * at the peak of the cycle. */
+  animation: agent-send-cta-shadow 5.5s ease-in-out infinite;
+}
+
+/* The blue gradient lives on a pseudo-element so we can fade its
+ * opacity independently from the base grey. Layered behind the icon
+ * via stacking order set on .agent-panel__send:disabled > *. */
+.agent-panel__send:disabled::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    #60a5fa 0%,
+    #3b82f6 35%,
+    #2563eb 65%,
+    #4f46e5 100%
+  );
+  background-size: 220% 220%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  animation:
+    agent-send-cta-fade  5.5s ease-in-out infinite,
+    agent-send-cta-shift 5.5s ease-in-out infinite;
+}
+
+/* Keep the arrow icon above the blue overlay. */
+.agent-panel__send:disabled > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes agent-send-cta-fade {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+@keyframes agent-send-cta-shift {
+  0%   { background-position:   0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+@keyframes agent-send-cta-shadow {
+  0%, 100% { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.10); }
+  50%      { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.14), 0 6px 18px rgba(59, 130, 246, 0.40); }
+}
+
+/* Honor reduced-motion: hold the quiet grey resting state and skip
+ * the blue bloom so the button doesn't pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel__send:disabled,
+  .agent-panel__send:disabled::after {
+    animation: none;
+  }
+  .agent-panel__send:disabled::after {
+    opacity: 0;
+  }
+}
+
+.agent-panel__send--stop {
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+}
+
+.agent-panel__send--stop:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 1);
+  filter: none;
+}
+
+/* Text variant — used when the send slot is showing a label like
+   "Sign in" instead of the arrow icon. The slot is too narrow for
+   readable text at the icon size, so this widens it and adds proper
+   horizontal padding while keeping the absolute positioning. Falls
+   back to a wider pill since "circle" is meaningless with a label. */
+.agent-panel__send--text {
+  width: auto;
+  min-width: 64px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: 999px;
+}
+
+/* ===== Inline agent generations (V1) ===== */
+
+.agent-panel__msg-img--agent {
+  outline: 1.5px solid rgba(99, 102, 241, 0.6);
+  outline-offset: -1.5px;
+}
+
+.agent-panel__ref--agent {
+  border-color: rgba(99, 102, 241, 0.7);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.agent-panel__gens {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agent-gen {
+  background: rgba(var(--tint-rgb), 0.03);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-width: 280px;
+}
+
+/* Slim variant for on-canvas generations: no card backdrop, just a chip
+   inline with the agent's text reply. The asset itself lives on the canvas. */
+.agent-gen--on-canvas {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  max-width: none;
+  padding: 0;
+}
+
+.agent-gen--on-canvas .agent-gen__placed-chip:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* In on-canvas mode the chip is the only visual on the chat side, so keep it
+   quiet (low-contrast grey) and size it to match assistant message bubbles
+   (8px 10px padding, 12.5px / line-height 1.5) so the chat row reads as one
+   coherent height instead of a tiny pill floating on its own. */
+.agent-gen--on-canvas .agent-gen__placed-chip {
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 10px;
+  margin-top: 0;
+  gap: 6px;
+  border-color: rgba(var(--tint-rgb), 0.08);
+  background: rgba(var(--tint-rgb), 0.04);
+  color: rgba(var(--tint-rgb), 0.55);
+}
+
+.agent-gen--on-canvas .agent-gen__placed-chip:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  border-color: rgba(var(--tint-rgb), 0.18);
+  color: rgba(var(--tint-rgb), 0.75);
+}
+
+/* While the generation is in flight, tint the whole chip blue to match the
+   pulsing placeholder on the canvas — spinner inherits via currentColor, and
+   the "Generating on canvas…" text picks up the same hue. Once status flips
+   to ready/failed the chip falls back to the muted grey rules above. */
+.agent-gen--on-canvas.agent-gen--pending .agent-gen__placed-chip,
+.agent-gen--on-canvas.agent-gen--generating .agent-gen__placed-chip {
+  color: rgba(96, 165, 250, 0.95);
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.agent-gen--on-canvas.agent-gen--pending .agent-gen__placed-chip:hover,
+.agent-gen--on-canvas.agent-gen--generating .agent-gen__placed-chip:hover {
+  background: rgba(96, 165, 250, 0.14);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: rgba(147, 197, 253, 1);
+}
+
+.agent-gen--on-canvas .agent-gen__placed-chip--failed {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.08);
+  color: rgba(254, 202, 202, 0.7);
+}
+
+.agent-gen--on-canvas .agent-gen__placed-chip--failed:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: rgba(254, 202, 202, 0.9);
+}
+
+.agent-gen--ready {
+  cursor: grab;
+}
+
+.agent-gen--ready:active {
+  cursor: grabbing;
+}
+
+.agent-gen__media {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.agent-gen__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.agent-gen__media--music {
+  aspect-ratio: auto;
+  background: rgba(var(--tint-rgb), 0.06);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.agent-gen__audio-wrap {
+  width: 100%;
+}
+
+.agent-gen__audio {
+  width: 100%;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.agent-gen__music-generating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: rgba(var(--tint-rgb), 0.55);
+  background: rgba(var(--tint-rgb), 0.04);
+  border-radius: 8px;
+  animation: agent-gen-music-pulse 2s ease-in-out infinite;
+}
+
+.agent-gen__music-generating svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+@keyframes agent-gen-music-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.agent-gen__shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--tint-rgb), 0.04) 0%,
+    rgba(var(--tint-rgb), 0.10) 50%,
+    rgba(var(--tint-rgb), 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: agent-gen-shimmer 1.4s linear infinite;
+}
+
+@keyframes agent-gen-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.agent-gen__failed {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  color: #fecaca;
+  text-align: center;
+}
+
+.agent-gen__failed-msg {
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.85;
+}
+
+.agent-gen__cta {
+  margin-top: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(239, 68, 68, 0.85);
+  border: 1px solid rgba(var(--tint-rgb), 0.18);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.agent-gen__cta:hover {
+  background: rgba(239, 68, 68, 1);
+}
+
+.agent-gen__cta-hint {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.75;
+}
+
+.agent-gen__meta {
+  padding: 6px 10px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Premium image-first layout: on a finished generation, the card collapses
+   to the image's size and the caption + actions overlay on top of it,
+   appearing only on hover/focus. We deliberately scope this to --ready so
+   failure messages and progress shimmers keep their normal flow layout. */
+.agent-gen--ready {
+  position: relative;
+}
+
+.agent-gen--ready .agent-gen__meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 8px 10px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.agent-gen--ready .agent-gen__actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px 8px;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 4px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.agent-gen--ready:hover .agent-gen__meta,
+.agent-gen--ready:focus-within .agent-gen__meta,
+.agent-gen--ready:hover .agent-gen__actions,
+.agent-gen--ready:focus-within .agent-gen__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Plain white caption + subtext over the image — no gradient backdrop, no
+   text shadow, no blur. */
+.agent-gen--ready .agent-gen__caption,
+.agent-gen--ready .agent-gen__sub {
+  color: #fff;
+  text-shadow: none;
+}
+
+/* Touch / coarse-pointer devices (e.g. touch laptops, tablets in desktop
+   mode): keep the overlays visible so users never have to tap twice to
+   reach the buttons. The mobile shell opts out of this below — there we
+   want a clean image-first view with tap-to-reveal. */
+@media (hover: none), (pointer: coarse) {
+  .agent-gen--ready .agent-gen__meta,
+  .agent-gen--ready .agent-gen__actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Mobile shell: hide the overlay until the user taps the card. Tapping
+   sets .agent-gen--active on the card (handled in JS) which both reveals
+   the menu and lays a slight darkening cover over the image so the icons
+   stay legible against any backdrop. Tapping outside or tapping a button
+   inside dismisses the overlay. */
+.agent-panel--mobile .agent-gen--ready .agent-gen__meta,
+.agent-panel--mobile .agent-gen--ready .agent-gen__actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-panel--mobile .agent-gen--ready.agent-gen--active .agent-gen__meta,
+.agent-panel--mobile .agent-gen--ready.agent-gen--active .agent-gen__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The darkening cover. Sits between the image (z-index auto) and the
+   overlays (z-index 2). Pointer-events disabled so taps still register
+   on the card itself, which forwards to either the active button or the
+   tap-to-toggle handler. */
+.agent-panel--mobile .agent-gen--ready.agent-gen--active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 160ms ease;
+}
+
+.agent-gen__caption {
+  font-size: 12px;
+  color: var(--text, #e6e9ee);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-gen__sub {
+  font-size: 10.5px;
+  color: var(--text-muted, #8b8f97);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-gen__notice {
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--accent-warn, #d9b066);
+  white-space: normal;
+}
+
+.agent-gen__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px 6px 8px;
+}
+
+.agent-gen__action {
+  background: rgba(var(--tint-rgb), 0.05);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text, #e6e9ee);
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.agent-gen__action:hover {
+  background: rgba(var(--tint-rgb), 0.10);
+}
+
+.agent-gen__action--ghost {
+  background: transparent;
+  border-color: rgba(var(--tint-rgb), 0.10);
+  color: rgba(230, 233, 238, 0.65);
+}
+
+.agent-gen__action--ghost:hover {
+  background: rgba(var(--tint-rgb), 0.06);
+  color: var(--text, #e6e9ee);
+}
+
+.agent-gen__icon-btn--danger {
+  color: rgba(230, 233, 238, 0.55);
+}
+
+.agent-gen__icon-btn--danger:hover {
+  color: #ff8a8a;
+  background: rgba(255, 138, 138, 0.10);
+}
+
+.agent-gen__icon-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #fff;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+
+.agent-gen__icon-btn:hover {
+  background: rgba(var(--tint-rgb), 0.10);
+  color: #fff;
+}
+
+.agent-gen__icon-btn:focus-visible {
+  outline: none;
+  background: rgba(var(--tint-rgb), 0.10);
+  box-shadow: 0 0 0 2px rgba(138, 180, 255, 0.45);
+}
+
+.agent-gen__icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.agent-gen__split {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.agent-gen__split-caret {
+  width: 14px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(var(--tint-rgb), 0.6);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: -2px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.agent-gen__split-caret:hover {
+  background: rgba(var(--tint-rgb), 0.10);
+  color: #fff;
+}
+
+.agent-gen__split-caret:focus-visible {
+  outline: none;
+  background: rgba(var(--tint-rgb), 0.10);
+  box-shadow: 0 0 0 2px rgba(138, 180, 255, 0.45);
+}
+
+.agent-gen__split .agent-panel__split-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  z-index: 10;
+}
+
+.agent-panel__viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.agent-panel__viewer-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.agent-panel__viewer-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.1);
+  color: #fff;
+  border: 1px solid rgba(var(--tint-rgb), 0.2);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.agent-panel__viewer-close:hover {
+  background: rgba(var(--tint-rgb), 0.2);
+}
+
+/* =====================================================================
+   Mobile mode — used when the AgentPanel is rendered inside the
+   MobileChatShell. The desktop fixed sidebar layout is replaced with a
+   panel that fills its parent container, and tap targets / spacing grow
+   to feel right on touch devices.
+
+   Two activations:
+   - .agent-panel--mobile  (parent passes mobileMode=true)
+   - @media (max-width: 767px)  (defensive — applies the same overrides
+     if the panel ever ends up below the breakpoint without the prop)
+   ===================================================================== */
+
+.agent-panel--mobile {
+  position: absolute;
+  inset: 0;
+  left: 0;
+  width: auto;
+  border-right: none;
+  background: rgba(12, 12, 14, 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  /* The shell's top bar already has the safe-area inset, so only worry
+     about left / right / bottom here. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  font-size: 14px;
+}
+
+.agent-panel--mobile .agent-panel__messages {
+  padding: 14px 14px 16px;
+  gap: 14px;
+  /* Allow momentum-scrolling on iOS while preventing the chrome from
+     also bouncing the page. */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.agent-panel--mobile .agent-panel__bubble {
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 88%;
+}
+
+/* Mobile: keep the assistant message bare (no bubble) and bump the user
+   card padding/radius for touch-friendly tap targets. */
+.agent-panel--mobile .agent-panel__msg--user .agent-panel__bubble {
+  padding: 10px 13px;
+  border-radius: 14px;
+}
+.agent-panel--mobile .agent-panel__msg--assistant .agent-panel__bubble {
+  padding: 0;
+  border-radius: 0;
+}
+
+.agent-panel--mobile .agent-panel__msg-img {
+  width: 64px;
+  height: 64px;
+}
+
+.agent-panel--mobile .agent-panel__action,
+.agent-panel--mobile .agent-panel__action--split .agent-panel__split-main,
+.agent-panel--mobile .agent-panel__action--split .agent-panel__split-toggle {
+  font-size: 12.5px;
+  padding: 6px 10px;
+  min-height: 32px;
+}
+
+/* Composer is pinned to the bottom by the parent's column flex layout.
+   The mobile shell handles the iOS virtual keyboard by shrinking its own
+   root height (via --mcs-kb-offset), so we only need safe-area padding
+   here to clear the home-indicator on devices without a keyboard up. */
+.agent-panel--mobile .agent-panel__composer {
+  background: rgba(14, 14, 18, 0.98);
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  gap: 8px;
+}
+
+.agent-panel--mobile .agent-panel__textarea {
+  min-height: 56px;
+  max-height: 160px;
+  font-size: 16px; /* prevent iOS auto-zoom on focus */
+  padding: 10px 12px;
+}
+
+/* Mobile send/stop: keep the compact square layout from the base rule but
+   bump the touch target to ~36px. Padding is intentionally NOT overridden
+   here — the base rule sets it to 0 and uses flex centering, so adding
+   padding pushes the SVG outside the fixed width and makes the arrow
+   appear to vanish on small screens. */
+.agent-panel--mobile .agent-panel__send,
+.agent-panel--mobile .agent-panel__send--stop {
+  width: 36px;
+  height: 36px;
+  bottom: 10px;
+  right: 10px;
+  border-radius: 8px;
+}
+
+/* Text variant on mobile keeps its auto width so "Sign in" stays legible. */
+.agent-panel--mobile .agent-panel__send--text {
+  width: auto;
+  min-width: 72px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.agent-panel--mobile .agent-panel__refs {
+  padding: 8px 12px;
+}
+
+.agent-panel--mobile .agent-panel__ref {
+  width: 56px;
+  height: 56px;
+}
+
+/* History drawer — slide in over the chat instead of pushing layout.
+   The base CSS already absolutely positions the drawer over the panel;
+   we just give it a slide-in animation and a richer background here. */
+.agent-panel--mobile .agent-panel__history {
+  background: rgba(14, 14, 18, 0.99);
+  animation: agent-panel-history-slide 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.agent-panel--mobile .agent-panel__history-header {
+  padding: 10px 12px;
+  min-height: 48px;
+  font-size: 14px;
+}
+
+.agent-panel--mobile .agent-panel__history-close {
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}
+
+.agent-panel--mobile .agent-panel__history-item {
+  padding: 12px 12px;
+}
+
+.agent-panel--mobile .agent-panel__history-title-text {
+  font-size: 14px;
+}
+
+.agent-panel--mobile .agent-panel__history-action {
+  font-size: 12px;
+  padding: 6px 10px;
+  min-height: 30px;
+}
+
+@keyframes agent-panel-history-slide {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* Hide canvas-only inline-image affordances on mobile. The class names
+   below are reserved for the inline-generations work; adding the rule
+   here means those buttons drop out automatically once the inline-gen
+   feature lands in the AgentPanel. */
+.agent-panel--mobile .agent-panel__inline-action--add-to-canvas,
+.agent-panel--mobile [data-inline-action="add-to-canvas"],
+.agent-panel--mobile .agent-panel__inline-drag,
+.agent-panel--mobile [data-inline-action="drag"] {
+  display: none !important;
+}
+
+
+/* ============================================================
+   Light mode overrides
+   Dark mode is unchanged. All rules below only apply when
+   [data-theme="light"] is set on <html>.
+   ============================================================ */
+
+[data-theme="light"] .agent-panel {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+/* Header / composer borders are removed in the base rules so the panel
+   reads as a single quiet surface. The history-header and refs strip
+   keep their separators since they're internal sub-sections. */
+[data-theme="light"] .agent-panel__history-header,
+[data-theme="light"] .agent-panel__refs {
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] .agent-panel__history {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+}
+
+/* Mobile composer & history drawer surfaces — the mobile rules above
+ * paint these with a hardcoded near-black panel fill, which leaves a
+ * dark bar at the bottom of the screen in light mode. Flip them to
+ * the light panel surface here so the composer area blends with the
+ * rest of the mobile shell. */
+[data-theme="light"] .agent-panel--mobile .agent-panel__composer {
+  background: var(--panel-bg);
+}
+[data-theme="light"] .agent-panel--mobile .agent-panel__history {
+  background: var(--bg-surface);
+}
+
+/* Pill/chip buttons inside the history dialog & context warnings —
+ * the main header buttons (.agent-panel__new, .agent-panel__close) are
+ * intentionally NOT listed here: their base rule already paints them
+ * as white pills with a drop shadow that works in both themes. */
+[data-theme="light"] .agent-panel__history-close,
+[data-theme="light"] .agent-panel__history-action,
+[data-theme="light"] .agent-panel__context-warning-btn {
+  background: var(--overlay-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .agent-panel__history-close:hover,
+[data-theme="light"] .agent-panel__history-action:hover,
+[data-theme="light"] .agent-panel__context-warning-btn:hover:not(:disabled) {
+  background: var(--overlay-active);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* History list items */
+[data-theme="light"] .agent-panel__history-item {
+  background: var(--overlay-hover);
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] .agent-panel__history-item:hover {
+  background: var(--overlay-active);
+  border-color: var(--border-strong);
+}
+[data-theme="light"] .agent-panel__history-item--active {
+  background: var(--bg-active);
+}
+
+/* Empty-state suggestion chips */
+[data-theme="light"] .agent-panel__empty .agent-panel__suggestion {
+  background: var(--overlay-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .agent-panel__empty .agent-panel__suggestion:hover,
+[data-theme="light"] .agent-panel__empty .agent-panel__suggestion:focus-visible {
+  background: var(--overlay-active);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* Assistant bubble in light mode is bare text — only the color rule needs
+   to flip; background/border were already removed in the base rule. */
+[data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+}
+
+/* User card in light mode: lighter translucent fill, lighter border, and
+   a softer shadow since the panel sits over a pale background. */
+[data-theme="light"] .agent-panel__msg--user .agent-panel__bubble {
+  background: rgba(15, 17, 21, 0.04);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(15, 17, 21, 0.10), 0 1px 2px rgba(15, 17, 21, 0.06);
+}
+
+/* Light theme welcome typography uses the project's standard text colors
+   so the heading reads dark on the light panel background. */
+[data-theme="light"] .agent-panel__welcome-title {
+  color: var(--text-primary);
+}
+[data-theme="light"] .agent-panel__welcome-body,
+[data-theme="light"] .agent-panel__welcome-cta {
+  color: var(--text-secondary);
+}
+
+/* Markdown code blocks */
+[data-theme="light"] .agent-panel__markdown code {
+  background: var(--bg-code);
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] .agent-panel__markdown pre {
+  background: var(--bg-code);
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] .agent-panel__markdown a { color: #2563eb; }
+[data-theme="light"] .agent-panel__markdown a:hover { color: #1d4ed8; }
+[data-theme="light"] .agent-panel__markdown blockquote,
+[data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
+  border-left-color: var(--border-strong);
+}
+
+/* Refs (image/video reference thumbnails attached to composer) */
+[data-theme="light"] .agent-panel__ref {
+  background-color: var(--overlay-hover);
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] .agent-panel__ref-x {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* Composer textarea — both expanded (focused / has content) and the
+ * idle pill state below use a pure white fill so the text entry area
+ * reads as a bright, distinct chip on the panel paper. */
+[data-theme="light"] .agent-panel__textarea {
+  background: #ffffff;
+  background-clip: padding-box;
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.08),
+    0 8px 22px rgba(15, 17, 21, 0.12);
+}
+
+/* Pill (idle) state — pure white fill so the text entry chip stands
+ * out brightly against the panel paper bg, with a hairline border +
+ * soft drop shadow that lifts it as a distinct floating chip. */
+[data-theme="light"] .agent-panel__textarea:not(:focus):placeholder-shown {
+  background: #ffffff;
+  background-clip: padding-box;
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.08),
+    0 6px 18px rgba(15, 17, 21, 0.10);
+}
+[data-theme="light"] .agent-panel__textarea::placeholder {
+  color: var(--text-muted);
+}
+[data-theme="light"] .agent-panel__textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Send button disabled in light mode — inherits the morphing blue CTA
+ * gradient from the base rule. No light-mode-specific override; this
+ * comment is the historical anchor so any future light-theme send
+ * tweak knows the disabled state is intentionally branded. */
+
+/* Split menu popover */
+[data-theme="light"] .agent-panel__split-menu {
+  background: var(--bg-base);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+[data-theme="light"] .agent-panel__split-menu button:hover {
+  background: var(--overlay-hover);
+}
+
+/* Inline agent generation cards */
+[data-theme="light"] .agent-gen {
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+}
+/* On-canvas variant has no card backdrop — it's just a slim chip inline
+ * with the assistant text. The base rule above would otherwise paint a
+ * grey block next to the chip in light theme. */
+[data-theme="light"] .agent-gen--on-canvas {
+  background: transparent;
+  border: none;
+}
+[data-theme="light"] .agent-gen--on-canvas .agent-gen__placed-chip {
+  background: var(--overlay-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .agent-gen--on-canvas .agent-gen__placed-chip:hover {
+  background: var(--overlay-active);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+[data-theme="light"] .agent-gen__action {
+  background: var(--overlay-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+[data-theme="light"] .agent-gen__action:hover {
+  background: var(--overlay-active);
+}
+[data-theme="light"] .agent-gen__action--ghost {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .agent-gen__action--ghost:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .agent-gen__icon-btn {
+  color: var(--text-secondary);
+}
+[data-theme="light"] .agent-gen__icon-btn:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .agent-gen__icon-btn:focus-visible {
+  background: var(--overlay-hover);
+}
+[data-theme="light"] .agent-gen__icon-btn--danger {
+  color: var(--text-muted);
+}
+[data-theme="light"] .agent-gen__split-caret {
+  color: var(--text-muted);
+}
+[data-theme="light"] .agent-gen__split-caret:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Dark mode overrides
+   The base rules above are tuned for the light "paper" look
+   (hardcoded #F0F0F3 panel, white header pills, white textarea,
+   white user bubble, scoped dark text tokens). When the global
+   theme is dark, flip those surfaces to dark equivalents while
+   leaving the layout / shadows / typography untouched.
+   ============================================================ */
+
+[data-theme="dark"] .agent-panel {
+  /* Panel paper → dark surface, slightly lifted off the canvas
+   * (var(--bg-canvas) is #141416 in dark) so the chat reads as a
+   * distinct floating card. Restore the white tint + light text
+   * tokens that the base rule overrides to dark values for the
+   * paper look — every descendant rule using rgba(var(--tint-rgb))
+   * or var(--text-primary)/--text-muted picks these up. */
+  --text-primary: #e8e8ed;
+  --text-muted: #9a9aa6;
+  --tint-rgb: 255, 255, 255;
+  background: #131316;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+[data-theme="dark"] .agent-panel::before {
+  background: #131316;
+}
+
+/* Header chips (History pill, New chat (+), Close ×) — flip the
+ * white pill to a dark raised chip. Hover lightens slightly. */
+[data-theme="dark"] .agent-panel__new,
+[data-theme="dark"] .agent-panel__close {
+  background: #1f1f24;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #c8cbd1;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+}
+[data-theme="dark"] .agent-panel__new:hover,
+[data-theme="dark"] .agent-panel__close:hover {
+  background: #26262c;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.40),
+    0 4px 10px rgba(0, 0, 0, 0.55);
+}
+[data-theme="dark"] .agent-panel__new:active,
+[data-theme="dark"] .agent-panel__close:active {
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.45);
+}
+[data-theme="dark"] .agent-panel__new:disabled {
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+/* User message bubble — white card → dark raised card. The base
+ * shadow uses near-black at low alpha which already reads on dark,
+ * but soften it a touch so the bubble lifts without a hard edge. */
+[data-theme="dark"] .agent-panel__msg--user .agent-panel__bubble {
+  background: #1f1f24;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e8e8ed;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.30);
+}
+
+/* Composer textarea — both expanded (focused / has content) and the
+ * idle pill state. White pill → dark raised pill in dark mode. */
+[data-theme="dark"] .agent-panel__textarea {
+  background: #1b1b1f;
+  background-clip: padding-box;
+  border-color: transparent;
+  color: #e8e8ed;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.45);
+}
+[data-theme="dark"] .agent-panel__textarea:not(:focus):placeholder-shown {
+  background: #1b1b1f;
+  background-clip: padding-box;
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 6px 18px rgba(0, 0, 0, 0.40);
+}
+[data-theme="dark"] .agent-panel__textarea::placeholder {
+  color: #8a8a96;
+}
+[data-theme="dark"] .agent-panel__textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Disabled send button in dark mode — swap the resting grey for an
+ * inert dark grey that reads on the deep panel surface. The blue
+ * bloom and shadow pulse continue to animate from the base rule;
+ * we just bump the halo so the glow has presence in dark theme. */
+[data-theme="dark"] .agent-panel__send:disabled {
+  background: #3a3a40;
+  animation: agent-send-cta-shadow-dark 5.5s ease-in-out infinite;
+}
+
+@keyframes agent-send-cta-shadow-dark {
+  0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.40); }
+  50%      { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px rgba(59, 130, 246, 0.50); }
+}
+
+/* Alive (online) spinner — base rule uses a low-alpha grey ring that
+ * reads on the light paper but disappears against the dark panel.
+ * Bump the ring contrast so the "online" cue stays legible. */
+[data-theme="dark"] .agent-panel__alive-dot {
+  border-color: rgba(170, 170, 180, 0.28);
+  border-top-color: rgba(200, 200, 210, 0.85);
+  box-shadow: 0 0 0 2px rgba(170, 170, 180, 0.08);
+}
+
+/* Ref-thumbnail delete (X) chip — base rule hardcodes #1a1a1f which
+ * is *lighter* than the dark panel (#131316) and reads as an inverted
+ * floating dot. Use a slightly raised dark surface that lifts cleanly
+ * off the ref tile and the panel beneath. */
+[data-theme="dark"] .agent-panel__ref-x {
+  background: #2a2a30;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* History drawer — base rule already paints a near-black bg which
+ * works in dark mode; just make sure the bottom-of-stack agent
+ * ::before backdrop doesn't bleed lighter through it. No-op safety. */
+
+
+/* ---------------------------------------------------------------------------
+ * #brand mention picker
+ *
+ * Floats above the composer textarea when the cursor sits inside a #token.
+ * Built to match the Settings/Brand IQ surface: rounded card, hairline
+ * border, soft shadow, accent-blue selection — never purple. */
+.agent-panel__mention {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: 8px 0 6px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: agent-mention-enter 120ms ease-out;
+}
+
+@keyframes agent-mention-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.agent-panel__mention-header {
+  padding: 2px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.agent-panel__mention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.agent-panel__mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+  transition: background 80ms ease;
+}
+
+.agent-panel__mention-item--active {
+  background: rgba(59, 130, 246, 0.10);
+}
+
+.agent-panel__mention-dot {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+}
+
+/* Square thumbnail variant for @product suggestions. Slightly larger
+ * than the brand color dot so a product image is recognizable inside
+ * the row. Falls back to a letter-tile when the product has no image. */
+.agent-panel__mention-thumb {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  object-fit: cover;
+  background: #f3f4f6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.agent-panel__mention-thumb--placeholder {
+  background: linear-gradient(135deg, #e5e7eb, #f3f4f6);
+}
+
+.agent-panel__mention-source {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-panel__mention-source--platform {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.10);
+}
+
+.agent-panel__mention-source--workspace {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.10);
+}
+
+.agent-panel__mention-name {
+  flex: 1 1 auto;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-panel__mention-slug {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.agent-panel__mention-hint {
+  padding: 6px 14px 2px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.agent-panel__mention-hint kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 4px;
+  margin: 0 2px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Dark theme — match the dark composer surface. */
+[data-theme="dark"] .agent-panel__mention {
+  background: #1c1c20;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.30);
+  color: #e8e8ec;
+}
+
+[data-theme="dark"] .agent-panel__mention-header,
+[data-theme="dark"] .agent-panel__mention-slug,
+[data-theme="dark"] .agent-panel__mention-hint {
+  color: #a8a8b0;
+}
+
+[data-theme="dark"] .agent-panel__mention-name {
+  color: #f1f1f4;
+}
+
+[data-theme="dark"] .agent-panel__mention-item--active {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="dark"] .agent-panel__mention-dot {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme="dark"] .agent-panel__mention-thumb {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #c7c8cc;
+}
+
+[data-theme="dark"] .agent-panel__mention-thumb--placeholder {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04));
+}
+
+[data-theme="dark"] .agent-panel__mention-source {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c7c8cc;
+}
+
+[data-theme="dark"] .agent-panel__mention-source--platform {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="dark"] .agent-panel__mention-source--workspace {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.18);
+}
+
+/* Active @product pins shown above the textarea. The chip rail is the
+ * canonical "what's attached to the next send" surface for products,
+ * mirroring the canvas-attached refs row directly above it. */
+.agent-panel__product-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 0;
+}
+
+.agent-panel__product-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  color: var(--text-primary);
+  max-width: 220px;
+}
+
+.agent-panel__product-chip--platform { border-color: rgba(37, 99, 235, 0.30); }
+.agent-panel__product-chip--workspace { border-color: rgba(124, 58, 237, 0.30); }
+
+.agent-panel__product-chip-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.agent-panel__product-chip-thumb--placeholder {
+  background: linear-gradient(135deg, #e5e7eb, #f3f4f6);
+}
+
+.agent-panel__product-chip-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-panel__product-chip-x {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 999px;
+}
+
+.agent-panel__product-chip-x:hover { color: var(--text-primary); background: rgba(0, 0, 0, 0.06); }
+
+[data-theme="dark"] .agent-panel__product-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+[data-theme="dark"] .agent-panel__product-chip-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c7c8cc;
+}
+
+[data-theme="dark"] .agent-panel__product-chip-x:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+}
+
+[data-theme="dark"] .agent-panel__mention-hint {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .agent-panel__mention-hint kbd {
+  color: #c7c8cc;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* "type # for a brand" hint inside the composer placeholder.
+ *
+ * Hidden by default (collapsed / idle composer view) and only revealed
+ * once the textarea wrap takes focus, so the slim pill state stays
+ * uncluttered. Inherits color/typography from the parent sweep. */
+.agent-panel__placeholder-hint {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.agent-panel__textarea-wrap:focus-within .agent-panel__placeholder-hint {
+  opacity: 1;
+}

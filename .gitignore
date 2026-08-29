@@ -1,0 +1,45 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+
+# Local desktop build: per-user data (embedded DB, uploaded/generated files)
+.matteblack/
+/uploads/
+/data/
+
+# Repo bloat removed from the open-source release
+/attached_assets/
+/extracted/
+/Teseract 3.0/
+zipFile.zip
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+dist-server/
+
+# Electron packaging output
+/release/
+/build/
+
+# Generated MCP bundle (built by npm run build:mcp)
+dist-mcp/

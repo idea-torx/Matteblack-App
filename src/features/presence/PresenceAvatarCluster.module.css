@@ -1,0 +1,128 @@
+.cluster {
+  position: absolute;
+  /* Sit on the same horizontal band as the floating zoom toolbar and
+     anchor immediately to its right. The toolbar publishes its rendered
+     width to --zoom-toolbar-width via ResizeObserver, so this offset
+     stays correct as the toolbar expands and collapses. The fallback
+     (156px) matches the collapsed pill's resting width.
+     The cluster has no surface of its own — avatars float directly on
+     the canvas. */
+  top: var(--panel-float-top, 12px);
+  left: calc(
+    var(--canvas-left-inset, 0px) + 16px + var(--zoom-toolbar-width, 156px) + 10px
+  );
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  z-index: 30;
+  pointer-events: auto;
+  transition: left 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+}
+
+/* Dev-only empty placeholder: gives the cluster a visible bounding box
+ * (one avatar's worth of width/height) so the dev placement-ghost
+ * overlay can outline where the cluster would render even when there
+ * are no remote sessions. Matches the live avatar size below so the
+ * outline previews the real footprint. */
+.cluster[data-empty="true"] {
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+}
+
+/* Avatar size is intentionally matched to the zoom toolbar's outer
+ * height so the two pieces of floating chrome sit on the same visual
+ * baseline. The toolbar = 28px button + 4px×2 padding + 1px×2 border
+ * ≈ 36px, so the avatars are 36×36 with box-sizing: border-box. */
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  /* Single coloured ring identifies the user; no dark halo. */
+  border: 2px solid var(--ring, #888);
+  background: #2a2d36;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 180ms ease;
+  overflow: hidden;
+  padding: 0;
+  outline: none;
+}
+
+.avatar:hover,
+.avatar:focus-visible {
+  transform: translateY(-1px);
+  z-index: 1;
+}
+
+.avatar[data-idle="true"] {
+  opacity: 0.5;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.overflow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(60, 64, 75, 0.95);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Light theme: the dark fallback bg and white text would clash with a
+   paper-toned canvas. Keep the coloured ring, soften the fallback
+   surface, and let initials use the ring colour for contrast. */
+[data-theme="light"] .avatar {
+  background: #f3f4f7;
+  color: #1f2330;
+}
+
+[data-theme="light"] .overflow {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1f2330;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: rgba(20, 22, 28, 0.95);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}

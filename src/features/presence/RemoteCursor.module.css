@@ -1,0 +1,35 @@
+.cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: opacity 180ms ease;
+  z-index: 1;
+}
+
+.cursor[data-idle="true"] {
+  opacity: 0.45;
+}
+
+.pointer {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 14px;
+  margin-top: 2px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+}

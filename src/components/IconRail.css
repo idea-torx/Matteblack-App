@@ -1,0 +1,212 @@
+.icon-rail {
+  position: absolute;
+  left: var(--panel-float-gap);
+  top: var(--panel-float-top);
+  bottom: var(--panel-float-bottom);
+  width: var(--icon-rail-width);
+  min-width: var(--icon-rail-width);
+  flex-shrink: 0;
+  background: var(--rail-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 12px;
+  border: var(--panel-float-border);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-float-shadow);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.icon-rail-top,
+.icon-rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.icon-rail-logo {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  margin-bottom: 8px;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.icon-rail-logo:hover {
+  background: var(--bg-hover);
+}
+
+.icon-rail-logo-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+  border-radius: 4px;
+}
+
+.icon-rail-logo-img--light { display: none; }
+[data-theme="light"] .icon-rail-logo-img--dark { display: none; }
+[data-theme="light"] .icon-rail-logo-img--light { display: block; }
+
+.icon-rail-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.icon-rail-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.icon-rail-btn--active,
+.icon-rail-btn--active:hover {
+  /* Active rail icon (Agent / Library / Design / etc.) picks up the
+   * brand blue so the current section is unmistakable. The :hover
+   * companion keeps the blue stable on hover (otherwise the base
+   * .icon-rail-btn:hover rule reverts the colour to text-primary). */
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.10);
+}
+
+.icon-rail-btn--active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: #3b82f6;
+}
+
+.icon-rail-btn::after {
+  content: attr(aria-label);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1a1a1a;
+  color: #e0e0e0;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 1000;
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+}
+
+.icon-rail-btn:hover::after {
+  opacity: 1;
+}
+
+.icon-rail-avatar {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s;
+}
+
+.icon-rail-avatar:hover {
+  background: var(--bg-hover);
+}
+
+.icon-rail-avatar--active {
+  background: rgba(var(--tint-rgb), 0.06);
+}
+
+.icon-rail-avatar-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+}
+
+.icon-rail-avatar-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.icon-rail-avatar-circle--guest {
+  background: rgba(var(--tint-rgb), 0.1);
+  color: var(--text-muted);
+}
+
+.icon-rail-avatar-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #000;
+  pointer-events: none;
+}
+
+/* Light-theme overrides. The rail's full border + shadow already come
+ * from theme tokens (--panel-float-border / --panel-float-shadow), so
+ * no per-theme override is needed for the shell itself. */
+[data-theme="light"] .icon-rail-btn--active,
+[data-theme="light"] .icon-rail-btn--active:hover {
+  /* Same brand blue in light mode, with a slightly softer tint. */
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+}
+[data-theme="light"] .icon-rail-btn--active::before {
+  background: #3b82f6;
+}
+[data-theme="light"] .icon-rail-btn::after {
+  background: var(--bg-tooltip);
+  color: var(--text-tooltip);
+  border-color: var(--border-tooltip);
+}
+[data-theme="light"] .icon-rail-avatar--active {
+  background: var(--overlay-active);
+}
+[data-theme="light"] .icon-rail-avatar-circle--guest {
+  background: var(--overlay-active);
+}
+[data-theme="light"] .icon-rail-avatar-dot {
+  border-color: var(--rail-bg);
+}

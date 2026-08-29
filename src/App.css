@@ -1,0 +1,462 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* The draggable title strip of the frameless desktop window.
+ *
+ * It is confined to the RIGHT side, spanning the right panel's reserved area,
+ * so the canvas and the left icon rail run edge-to-edge to the very top of the
+ * window. Only the right-hand panels drop by --titlebar-h to make room for the
+ * native window controls, which the OS draws at this strip's right end.
+ *
+ * Keeping it narrow also matters for input: a drag region swallows mouse events
+ * (the OS moves the window with them), so a full-width strip would steal clicks
+ * from the top of the canvas. Transparent by design — it lets the panel surface
+ * underneath show through, so the controls read as part of the panel. */
+.app-titlebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: var(--titlebar-w, 360px);
+  height: var(--titlebar-h, 0px);
+  z-index: 40;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+html:not(.is-desktop) .app-titlebar {
+  display: none;
+}
+
+/* Anything interactive placed inside the strip must opt out of dragging. */
+.app-titlebar__no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.rpanel-top-tabs__share {
+  margin-left: auto;
+  margin-right: 6px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-hover);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.rpanel-top-tabs__share:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.rpanel-top-tabs__share:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
+}
+
+.rpanel-top-tabs {
+  position: absolute;
+  /* Drop below the frameless window's control strip (0 on the web build) so the
+   * tabs never sit under the native min/max/close buttons. */
+  top: var(--titlebar-h, 0px);
+  left: calc(100% - 300px);
+  right: 0;
+  height: 50px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 11px 14px 11px 18px;
+  background: rgba(14, 14, 18, 0.55);
+  backdrop-filter: blur(40px) saturate(140%);
+  -webkit-backdrop-filter: blur(40px) saturate(140%);
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-left: 1px solid transparent;
+}
+
+.app-body--swap .rpanel-top-tabs,
+.app-body--swap .rpanel-top-tabs__divider {
+  opacity: 0;
+}
+
+.rpanel-top-tabs__btn {
+  height: 28px;
+  padding: 0 12px;
+  background: transparent;
+  color: #9aa0a6;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.rpanel-top-tabs__btn:hover {
+  color: #e5e5e5;
+}
+
+.rpanel-top-tabs__btn--active {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: #ffffff;
+}
+
+.rpanel-top-tabs__divider {
+  position: absolute;
+  top: calc(50px + var(--titlebar-h, 0px));
+  left: calc(100% - 300px);
+  right: 0;
+  height: 1px;
+  background: rgba(var(--tint-rgb), 0.08);
+  z-index: 6;
+  pointer-events: none;
+  transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+.app-body--with-panel {
+  background: var(--panel-bg);
+}
+
+.canvas-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  position: relative;
+  /* Lift the entire canvas-area above the fixed-position right panels
+   * (rpanel z:1, rpanel-top-tabs z:2, agent-panel z:5,
+   * rpanel-top-tabs__divider z:6) so the canvas card's right-edge
+   * box-shadow + agent busy glow paint *over* the panel surface
+   * instead of being clipped at the panel's left edge. The
+   * canvas-area's flex layout already leaves margin-right reserved
+   * for the panel, so the card's box itself never extends into the
+   * panel region — only its (pointer-events: none) shadow does. The
+   * left floating panels (sidebar/library/quick-settings/projects)
+   * sit at z:15 to remain visible above the canvas, and IconRail at
+   * z:20 stays on top of everything. The z-index also creates a
+   * stacking context that traps the canvas's high-z-index descendants
+   * (overlays, portals at 9999+), replacing the previous
+   * `isolation: isolate`. */
+  z-index: 10;
+}
+
+.canvas-area--card {
+  margin-right: var(--canvas-right-inset, 0px);
+  border-top-right-radius: 36px;
+  border-bottom-right-radius: 36px;
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
+  transition: margin-right 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 360ms ease;
+}
+
+/* During an agent ↔ rpanel swap the inset only swings 60px (360 → 300
+ * or back). Animating that swing each frame combined with the right
+ * panel's backdrop-filter blur caused a white flash and made the
+ * canvas appear to "zoom out". The .app-body--swap class is already
+ * applied for the swap window, so we kill the margin transition only
+ * while it's set — opens-from-nothing and pure rpanel-tool switches
+ * (where the inset doesn't change) keep the smooth animation. */
+.app-body--swap .canvas-area--card {
+  transition: box-shadow 360ms ease;
+}
+
+/* Surface-swap (agent ↔ rpanel) used to slide the canvas card across
+ * the right reserved area to hide the panel crossfade. The
+ * margin-right animation forced the canvas to re-layout twice in
+ * 240ms, and combined with the right-panel's backdrop-filter blur it
+ * made every node briefly flash white as the GPU compositor dropped
+ * cached layers. The panels (.rpanel, .agent-panel) still opacity
+ * crossfade via .app-body--swap, which is enough to mask the swap
+ * without touching the canvas width. */
+
+.canvas-area--card .freeform-canvas {
+  border-top-right-radius: 36px;
+  border-bottom-right-radius: 36px;
+}
+
+
+/* Busy-state edge glow: glow divs inside the canvas card use the same
+ * rotating conic-gradient technique as the agent panel composer. */
+.canvas-glow {
+  position: absolute;
+  inset: -3px;
+  border-top-right-radius: 39px;
+  border-bottom-right-radius: 39px;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 420ms ease;
+  will-change: opacity;
+  padding: 3px;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.canvas-glow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4000px;
+  height: 4000px;
+  margin-top: -2000px;
+  margin-left: -2000px;
+  background: conic-gradient(
+    #3B82F6 0%,
+    #60a5fa 12%,
+    transparent 25%,
+    transparent 35%,
+    #3B82F6 45%,
+    #93c5fd 55%,
+    transparent 68%,
+    transparent 78%,
+    #3B82F6 90%,
+    #3B82F6 100%
+  );
+  animation: canvas-glow-spin 4s linear infinite;
+}
+
+.canvas-glow-blur {
+  position: absolute;
+  inset: -16px;
+  border-top-right-radius: 52px;
+  border-bottom-right-radius: 52px;
+  z-index: 19;
+  pointer-events: none;
+  filter: blur(20px);
+  transition: opacity 420ms ease;
+}
+
+.canvas-glow--soft {
+  inset: 0;
+  border-radius: inherit;
+  padding: 5px;
+}
+.canvas-glow--soft::before {
+  background: conic-gradient(
+    rgba(59, 130, 246, 0.8) 0%,
+    rgba(96, 165, 250, 0.7) 12%,
+    transparent 25%,
+    transparent 35%,
+    rgba(59, 130, 246, 0.8) 45%,
+    rgba(147, 197, 253, 0.6) 55%,
+    transparent 68%,
+    transparent 78%,
+    rgba(59, 130, 246, 0.8) 90%,
+    rgba(59, 130, 246, 0.8) 100%
+  );
+}
+
+.canvas-area--card.canvas-area--agent-busy {
+  box-shadow: none;
+}
+.canvas-area--agent-busy .canvas-glow--sharp {
+  opacity: 1;
+}
+.canvas-area--agent-busy .canvas-glow-blur {
+  opacity: 0.7;
+}
+
+@keyframes canvas-glow-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-area--agent-busy .canvas-glow::before {
+    animation: none;
+  }
+  .canvas-area--agent-busy .canvas-glow--sharp {
+    opacity: 0.7;
+  }
+  .canvas-area--agent-busy .canvas-glow-blur {
+    opacity: 0.4;
+  }
+}
+
+.canvas-area--present {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  margin-right: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Floating arrow that restores the right panel when the canvas is in
+ * fullscreen mode (rightPanelHidden). Sits in the 20px gap reserved on
+ * the right side of the canvas card, vertically centered. */
+.canvas-area__restore-arrow {
+  position: fixed;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  z-index: 30;
+  width: 28px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: background 0.12s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  animation: canvas-restore-arrow-in 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.canvas-area__restore-arrow:hover {
+  background: #f4f4f5;
+  transform: translateY(-50%) translateX(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.canvas-area__restore-arrow:active {
+  transform: translateY(-50%) translateX(0);
+}
+
+@keyframes canvas-restore-arrow-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(8px); }
+  to   { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+.canvas-area--present::after {
+  display: none;
+}
+
+/* Note: previously a small rail-bg corner mask painted a rounded inner
+ * corner where the flush IconRail met the canvas. With the IconRail now
+ * floating (own rounded corners + gap from the canvas edge), no corner
+ * mask is needed. */
+
+/* When a left-side floating panel is open (LeftToolbar, QuickSettings,
+ * Projects, Layers, Settings), square the IconRail's right edge so the
+ * rail and the adjacent panel read as one cohesive nested floating
+ * menu. */
+.app-body:has(> .sidebar, > .qs-panel, > .proj-side-panel, > .settings-panel, > .brandiq-panel) .icon-rail {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* When the floating Settings panel is open, hide the canvas zoom pill
+ * (.freeform-canvas__toolbar) so the focused panel/canvas duo isn't
+ * cluttered with secondary chrome. The canvas itself remains
+ * interactive — only the toolbar's pointer surface is removed. */
+.app-body--settings-open .freeform-canvas__toolbar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.app-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-canvas);
+  pointer-events: all;
+  animation: app-loading-fade-in 180ms ease-out;
+}
+
+@keyframes app-loading-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cinema-export-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  height: 100%;
+}
+
+.cinema-export-placeholder__icon {
+  color: #3f3f46;
+}
+
+.cinema-export-placeholder__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #d4d4d8;
+  letter-spacing: 0.02em;
+}
+
+.cinema-export-placeholder__desc {
+  font-size: 13px;
+  color: #71717a;
+  max-width: 220px;
+  line-height: 1.5;
+}
+
+.cinema-export-placeholder__btn {
+  margin-top: 8px;
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid #27272a;
+  background: #18181b;
+  color: #52525b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+/* Light-theme overrides: dark literals above are kept pixel-perfect; the
+ * affected properties are flipped here. */
+[data-theme="light"] .rpanel-top-tabs__share:hover:not(:disabled) { background: var(--accent); }
+[data-theme="light"] .rpanel-top-tabs__share:disabled { background: rgba(0, 0, 0, 0.06); color: rgba(0, 0, 0, 0.3); }
+
+[data-theme="light"] .rpanel-top-tabs {
+  background: var(--panel-bg-translucent);
+}
+[data-theme="light"] .rpanel-top-tabs__btn { color: var(--text-secondary); }
+[data-theme="light"] .rpanel-top-tabs__btn:hover { color: var(--text-primary); }
+[data-theme="light"] .rpanel-top-tabs__btn--active {
+  background: var(--overlay-active);
+  color: var(--text-primary);
+}
+[data-theme="light"] .rpanel-top-tabs__divider { background: var(--border-subtle); }
+
+[data-theme="light"] .canvas-area--card {
+  /* Compact ~30px graceful shadow off the canvas card's right edge —
+   * a soft single layer that fades cleanly into the #D6D6DB site bg
+   * without bleeding deep into the panel area. */
+  box-shadow:
+    4px 0 12px rgba(15, 17, 21, 0.12),
+    8px 0 30px rgba(15, 17, 21, 0.18);
+}
+
+[data-theme="light"] .canvas-area--card.canvas-area--agent-busy {
+  box-shadow: none;
+}

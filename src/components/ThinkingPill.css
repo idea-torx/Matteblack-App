@@ -1,0 +1,49 @@
+.thinking-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.thinking-pill__emblem {
+  flex-shrink: 0;
+}
+
+/* Shimmer-clipped-to-text: a moving blue gradient band sweeps across a
+ * neutral text colour. background-clip: text confines the gradient to
+ * the text glyphs, so the surrounding bubble background stays clean. */
+.thinking-pill__text {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  background: linear-gradient(
+    90deg,
+    rgba(107, 114, 128, 0.85) 0%,
+    rgba(107, 114, 128, 0.85) 35%,
+    #3b82f6 50%,
+    rgba(107, 114, 128, 0.85) 65%,
+    rgba(107, 114, 128, 0.85) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: thinking-pill-shimmer 1.8s linear infinite;
+}
+
+@keyframes thinking-pill-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-pill__text {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: rgba(107, 114, 128, 0.95);
+    color: rgba(107, 114, 128, 0.95);
+  }
+}

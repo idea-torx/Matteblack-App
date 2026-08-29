@@ -1,0 +1,40 @@
+# Builds the Windows desktop app and publishes an installer + auto-update feed
+# to GitHub Releases whenever a semver tag (e.g. v0.1.0) is pushed.
+#
+# electron-builder uploads the NSIS installer, the portable exe, latest.yml, and
+# blockmaps to the GitHub Release for the tag, which is exactly what
+# electron-updater consumes. GITHUB_TOKEN is provided automatically to the job;
+# electron-builder reads it as GH_TOKEN.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required to create/upload the GitHub Release
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + server bundle
+        run: npm run electron:prep
+
+      - name: Package and publish
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,99 @@
+.quantum-thinking {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.quantum-thinking svg {
+  display: block;
+  overflow: visible;
+}
+
+.quantum-thinking__dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.25;
+  animation: quantum-thinking-dot 1.6s ease-in-out infinite;
+}
+
+.quantum-thinking__edge {
+  animation: quantum-thinking-edge 1.6s ease-in-out infinite;
+}
+
+/* 4-vertex (square) timing — 1.6s loop with 0.2s stagger. */
+.quantum-thinking--4 .quantum-thinking__dot--0,
+.quantum-thinking--4 .quantum-thinking__edge--0 { animation-delay: 0s; }
+.quantum-thinking--4 .quantum-thinking__dot--1,
+.quantum-thinking--4 .quantum-thinking__edge--1 { animation-delay: 0.2s; }
+.quantum-thinking--4 .quantum-thinking__dot--2,
+.quantum-thinking--4 .quantum-thinking__edge--2 { animation-delay: 0.4s; }
+.quantum-thinking--4 .quantum-thinking__dot--3,
+.quantum-thinking--4 .quantum-thinking__edge--3 { animation-delay: 0.6s; }
+
+/* 6-vertex (hexagon) timing — slightly longer 2.4s loop with 0.4s
+ * stagger so each dot/edge gets a comparable share of the cycle. */
+.quantum-thinking--6 .quantum-thinking__dot,
+.quantum-thinking--6 .quantum-thinking__edge {
+  animation-duration: 2.4s;
+}
+.quantum-thinking--6 .quantum-thinking__dot--0,
+.quantum-thinking--6 .quantum-thinking__edge--0 { animation-delay: 0s; }
+.quantum-thinking--6 .quantum-thinking__dot--1,
+.quantum-thinking--6 .quantum-thinking__edge--1 { animation-delay: 0.4s; }
+.quantum-thinking--6 .quantum-thinking__dot--2,
+.quantum-thinking--6 .quantum-thinking__edge--2 { animation-delay: 0.8s; }
+.quantum-thinking--6 .quantum-thinking__dot--3,
+.quantum-thinking--6 .quantum-thinking__edge--3 { animation-delay: 1.2s; }
+.quantum-thinking--6 .quantum-thinking__dot--4,
+.quantum-thinking--6 .quantum-thinking__edge--4 { animation-delay: 1.6s; }
+.quantum-thinking--6 .quantum-thinking__dot--5,
+.quantum-thinking--6 .quantum-thinking__edge--5 { animation-delay: 2.0s; }
+
+@keyframes quantum-thinking-dot {
+  0%, 60%, 100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  40% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+}
+
+@keyframes quantum-thinking-edge {
+  0% {
+    stroke-dashoffset: var(--qt-edge-len, 36);
+    opacity: 0.25;
+  }
+  20% {
+    stroke-dashoffset: var(--qt-edge-len, 36);
+    opacity: 0.4;
+  }
+  55% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  80% {
+    stroke-dashoffset: 0;
+    opacity: 0.55;
+  }
+  100% {
+    stroke-dashoffset: calc(var(--qt-edge-len, 36) * -1);
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quantum-thinking__dot,
+  .quantum-thinking__edge {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}

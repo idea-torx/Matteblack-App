@@ -1,0 +1,260 @@
+/* Mobile chat shell — full-viewport surface that hosts the AgentPanel
+   on screens narrower than 768px. The desktop layout is untouched. */
+
+.mcs-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* The shell occupies the visible viewport. On iOS we shrink it when the
+     virtual keyboard appears by setting `bottom` to the keyboard height
+     (--mcs-kb-offset, populated by the VisualViewport listener), which
+     keeps the composer pinned just above the keyboard. */
+  bottom: var(--mcs-kb-offset, 0px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base, rgb(12, 12, 14));
+  color: var(--text-primary, #e8e8ed);
+  font-family: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  z-index: 99998;
+  overflow: hidden;
+  /* Smooth out the keyboard-driven shrink so the composer glides to the
+     keyboard top instead of snapping (which on iOS surfaces the white
+     gap between the layout viewport and the visible viewport during the
+     keyboard's own animation). */
+  transition: bottom 180ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mcs-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.06);
+  background: var(--panel-bg, rgba(14, 14, 18, 0.96));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  min-height: 48px;
+}
+
+.mcs-topbar-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.mcs-app-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.mcs-logo {
+  height: 24px;
+  width: auto;
+  display: block;
+}
+
+/* Two logo variants render together; CSS picks the right one for the
+   active theme. Mirrors the IconRail dual-img pattern. */
+.mcs-logo--light { display: none; }
+[data-theme="light"] .mcs-logo--dark { display: none; }
+[data-theme="light"] .mcs-logo--light { display: block; }
+
+.mcs-credits {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e8ed);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.mcs-credits--loading {
+  color: var(--text-muted, #8b8f97);
+}
+
+.mcs-credits-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted, #9a9aa6);
+}
+
+.mcs-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e8e8ed);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mcs-icon-btn:hover:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.06);
+}
+
+.mcs-icon-btn:active:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.1);
+}
+
+.mcs-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mcs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  /* The mobile AgentPanel uses absolute positioning (inset:0) to fill this
+     container, so we just reserve the area between top bar and viewport. */
+}
+
+/* ---------- Drawer ---------- */
+
+.mcs-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-modal-backdrop, rgba(0, 0, 0, 0.5));
+  z-index: 99999;
+  animation: mcs-fade-in 160ms ease-out;
+}
+
+.mcs-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(86vw, 340px);
+  background: var(--bg-surface, #131316);
+  border-right: 1px solid rgba(var(--tint-rgb), 0.08);
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+  animation: mcs-slide-in 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes mcs-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mcs-slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.mcs-drawer-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.06);
+  min-height: 48px;
+}
+
+.mcs-drawer-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e8ed);
+}
+
+.mcs-drawer-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcs-drawer-section--bottom {
+  margin-top: auto;
+  border-bottom: none;
+  border-top: 1px solid rgba(var(--tint-rgb), 0.06);
+}
+
+.mcs-drawer-meta-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted, #8b8f97);
+}
+
+.mcs-drawer-meta-value {
+  font-size: 13px;
+  color: var(--text-primary, #e8e8ed);
+  word-break: break-word;
+}
+
+.mcs-drawer-row {
+  background: transparent;
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text-primary, #e8e8ed);
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mcs-drawer-row:hover:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.04);
+  border-color: rgba(var(--tint-rgb), 0.16);
+}
+
+.mcs-drawer-row:active:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.07);
+}
+
+.mcs-drawer-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcs-drawer-row--primary {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+}
+
+.mcs-drawer-row--primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.mcs-drawer-row--danger {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.mcs-drawer-row--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.4);
+}

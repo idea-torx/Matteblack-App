@@ -1,0 +1,283 @@
+/* ─── Share Project Modal ─── */
+.share-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.share-modal {
+  position: relative;
+  width: 480px;
+  max-width: 92vw;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 24px;
+  color: var(--text-primary);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme="light"] .share-modal {
+  border-color: rgba(15, 17, 21, 0.08);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.06),
+    0 16px 48px rgba(15, 17, 21, 0.16);
+}
+
+.share-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.share-modal-close:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: var(--text-primary);
+}
+
+.share-modal-header {
+  margin-bottom: 16px;
+  padding-right: 32px;
+}
+
+.share-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.share-modal-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.share-modal-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.share-modal-error {
+  padding: 12px;
+  background: rgba(248, 113, 113, 0.1);
+  color: #ef4444;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+[data-theme="light"] .share-modal-error {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* Toggle row — Anyone with the link */
+.share-modal-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.share-modal-toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.share-modal-toggle-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.share-modal-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  background: rgba(var(--tint-rgb), 0.16);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.share-modal-switch--on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.share-modal-switch:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.share-modal-switch-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: left 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.share-modal-switch--on .share-modal-switch-thumb {
+  left: 17px;
+}
+
+[data-theme="light"] .share-modal-switch-thumb {
+  box-shadow: 0 1px 2px rgba(15, 17, 21, 0.18);
+}
+
+/* Share URL row */
+.share-modal-url-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.share-modal-url-input {
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  background: rgba(var(--tint-rgb), 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.share-modal-url-input:focus {
+  border-color: var(--accent);
+}
+
+.share-modal-copy-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--text-primary);
+  color: var(--bg-base);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.share-modal-copy-btn:hover {
+  opacity: 0.88;
+}
+
+/* Participants list */
+.share-modal-participants-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.share-modal-participants-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.share-modal-participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.share-modal-participant {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(var(--tint-rgb), 0.03);
+  border-radius: 6px;
+}
+
+.share-modal-participant-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.share-modal-participant-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.share-modal-participant-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-modal-participant-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-modal-participant-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-modal-participant-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

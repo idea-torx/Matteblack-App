@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "JhOcmkhi4_VMOKQ_d2t4t"
+uri = "file://attached_assets/teseract-technical-breakdown.pdf"
+type = "pdf"
+title = "Teseract 3.0 Technical Breakdown"

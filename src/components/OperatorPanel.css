@@ -1,0 +1,383 @@
+/* Operator-only additions on top of AgentPanel.css (which supplies the panel
+ * shell, header, hero, bubbles, and composer). */
+
+/* Site blue — the sprite, the slider fill, and focus rings all key off this. */
+.agent-panel { --matteblack-blue: #007aff; }
+
+/* Brand in the header. The model selector used to live here; it now sits under
+ * the composer, so the name tucks closer to the sprite. */
+.operator-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 2px;
+}
+.operator-brand__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #18181b);
+  letter-spacing: 0.2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Composer footer: model + thinking budget, laid out like Claude Code's own.
+ * ------------------------------------------------------------------------- */
+.operator-controls {
+  position: relative; /* anchors the effort popover */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 2px;
+  min-width: 0;
+}
+
+.operator-controls__model {
+  appearance: none;
+  -webkit-appearance: none;
+  /* Force a light rendering of the native popup so options stay readable
+   * regardless of the OS/app dark mode. */
+  color-scheme: light;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text-muted, #6b7280);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 20px 3px 7px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  /* down-chevron */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+.operator-controls__model:hover {
+  background-color: rgba(17, 24, 39, 0.05);
+  color: var(--text-primary, #18181b);
+}
+.operator-controls__model:focus-visible {
+  outline: none;
+  border-color: var(--matteblack-blue);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.3);
+}
+.operator-controls__model option { color: #18181b; background: #ffffff; }
+.operator-controls__model:disabled { opacity: 0.5; cursor: default; }
+
+/* Effort chip — the popover trigger, a soft grey pill next to the model. */
+.operator-effort-chip {
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.07);
+  color: var(--text-primary, #18181b);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.operator-effort-chip:hover { background: rgba(17, 24, 39, 0.12); }
+.operator-effort-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.4);
+}
+.operator-effort-chip:disabled { opacity: 0.5; cursor: default; }
+
+/* Popover, anchored above the chip. A compact card, not the panel's full width. */
+.operator-effort-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 272px;
+  max-width: 100%;
+  z-index: 30;
+  background: var(--surface-raised, #ffffff);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 17, 21, 0.18), 0 2px 8px rgba(15, 17, 21, 0.08);
+  padding: 13px 15px 15px;
+}
+.operator-effort-pop__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+.operator-effort-pop__title {
+  font-size: 14px;
+  color: var(--text-muted, #6b7280);
+}
+/* Dark like the rest of the label — the accent is reserved for the top tier, so
+ * that colour means something when it appears. */
+.operator-effort-pop__level {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #18181b);
+}
+.operator-effort-pop__level.is-max { color: var(--matteblack-blue); }
+.operator-effort-pop__help {
+  margin-left: auto;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1.4px solid rgba(17, 24, 39, 0.28);
+  color: var(--text-muted, #6b7280);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  cursor: help;
+  flex: 0 0 auto;
+}
+.operator-effort-pop__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-muted, #6b7280);
+  margin-bottom: 7px;
+}
+
+/* ---------------------------------------------------------------------------
+ * The slider is layered: a styled track underneath, a transparent native range
+ * on top supplying the thumb, keyboard support, and a11y. Layers are what let
+ * the dither cross-fade — a background-image swap can't be transitioned.
+ * ------------------------------------------------------------------------- */
+.operator-effort-pop__slider {
+  position: relative;
+  height: 28px;
+}
+.operator-effort-pop__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(17, 24, 39, 0.07);
+}
+/* Filled portion is a deeper grey, not accent — the colour is the top tier's. */
+.operator-effort-pop__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--fill, 50%);
+  background: rgba(17, 24, 39, 0.15);
+  transition: width 0.14s ease, background 0.28s ease;
+}
+/* At Ultra Gen the fill spans the whole track and carries the gap colour. A
+ * horizontal gradient rather than a flat tint, so the bar deepens left → right
+ * underneath the pixels instead of reading as one solid block. */
+.operator-effort-pop__slider.is-max .operator-effort-pop__fill {
+  background: linear-gradient(
+    to right,
+    rgba(0, 122, 255, 0.05),
+    rgba(0, 122, 255, 0.72)
+  );
+}
+/* Ultra Gen ramp. Stretched to the full track (preserveAspectRatio="none"), so
+ * the pixels always span edge to edge whatever the popover width. */
+.operator-effort-pop__dither {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  visibility: hidden;
+  pointer-events: none;
+}
+.operator-effort-pop__dither.is-on { visibility: visible; }
+.operator-effort-pop__dither .px { fill: var(--matteblack-blue); }
+/* The bed keeps its gradient fill — only the cells take the flat accent. */
+.operator-effort-pop__dither .px--bed { fill: url(#matteblack-effort-ramp); }
+/* Cells carry their own opacity inline; the keyframe omits `to` so each animates
+ * up to its own value. Delays are staggered so colour arrives right → left. */
+.operator-effort-pop__dither.is-on .px {
+  animation: effortPxIn 0.34s ease both;
+}
+.operator-effort-pop__dither.is-on .px--tw {
+  animation: effortPxIn 0.34s ease both, effortPxTwinkle 2.8s ease-in-out infinite;
+}
+@keyframes effortPxIn {
+  from { opacity: 0; }
+}
+@keyframes effortPxTwinkle {
+  0%, 86%, 100% { fill: var(--matteblack-blue); }
+  92% { fill: #e2f1ff; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operator-effort-pop__dither.is-on .px,
+  .operator-effort-pop__dither.is-on .px--tw { animation: none; }
+}
+/* At Max the ramp replaces the plain fill rather than sitting on top of it. */
+.operator-effort-pop__dither.is-on ~ .operator-effort-pop__ticks .operator-effort-pop__tick {
+  opacity: 0;
+}
+
+.operator-effort-pop__ticks {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  pointer-events: none;
+}
+.operator-effort-pop__tick {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.28);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease;
+}
+.operator-effort-pop__tick.is-max { background: var(--matteblack-blue); }
+
+.operator-effort-pop__range {
+  position: absolute;
+  inset: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.operator-effort-pop__range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+.operator-effort-pop__range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+.operator-effort-pop__range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 28px;
+  height: 24px;
+  margin-top: 2px; /* centre the 24px thumb on the 28px track */
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  box-shadow: 0 1px 4px rgba(15, 17, 21, 0.26);
+}
+.operator-effort-pop__range::-moz-range-thumb {
+  width: 28px;
+  height: 24px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  box-shadow: 0 1px 4px rgba(15, 17, 21, 0.26);
+}
+.operator-effort-pop__range:focus-visible { outline: none; }
+.operator-effort-pop__range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.4);
+}
+.operator-effort-pop__range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.4);
+}
+
+/* Dark mode. */
+[data-theme="dark"] .operator-controls__model {
+  color-scheme: dark;
+  color: #9a9aa2;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239a9aa2' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+[data-theme="dark"] .operator-controls__model:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+  color: #e8e8ed;
+}
+[data-theme="dark"] .operator-controls__model option { color: #e8e8ed; background: #26262b; }
+[data-theme="dark"] .operator-effort-chip {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8e8ed;
+}
+[data-theme="dark"] .operator-effort-chip:hover { background: rgba(255, 255, 255, 0.16); }
+[data-theme="dark"] .operator-effort-pop {
+  background: #1f1f24;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] .operator-effort-pop__help { border-color: rgba(255, 255, 255, 0.3); }
+[data-theme="dark"] .operator-effort-pop__track { background: rgba(255, 255, 255, 0.09); }
+[data-theme="dark"] .operator-effort-pop__fill { background: rgba(255, 255, 255, 0.2); }
+/* Must follow the rule above — equal specificity, so source order decides. */
+[data-theme="dark"] .operator-effort-pop__slider.is-max .operator-effort-pop__fill {
+  background: linear-gradient(
+    to right,
+    rgba(0, 122, 255, 0.1),
+    rgba(0, 122, 255, 0.88)
+  );
+}
+[data-theme="dark"] .operator-effort-pop__slider.is-max .operator-effort-pop__track {
+  background: rgba(0, 122, 255, 0.16);
+}
+[data-theme="dark"] .operator-effort-pop__tick { background: rgba(255, 255, 255, 0.35); }
+/* Must follow the rule above — equal specificity, so source order decides. */
+[data-theme="dark"] .operator-effort-pop__tick.is-max { background: var(--matteblack-blue); }
+[data-theme="dark"] .operator-effort-pop__range::-webkit-slider-thumb {
+  background: #f4f4f6;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .operator-effort-pop__range::-moz-range-thumb {
+  background: #f4f4f6;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Setup ("Connect your Claude") steps inside the hero. */
+.operator-setup__steps {
+  text-align: left;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.7;
+  font-size: 13px;
+  padding-left: 20px;
+  margin: 8px 0 14px;
+  max-width: 300px;
+}
+.operator-setup__steps code {
+  background: rgba(17, 24, 39, 0.06);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+.operator-setup__warn {
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 10px;
+  max-width: 280px;
+}
+.operator-setup__warn code {
+  background: rgba(180, 83, 9, 0.08);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* Uploading reference chip — dim the preview and center a spinner until the
+ * hosted URL comes back from /api/upload-to-fal. */
+.operator-ref--uploading { opacity: 0.7; }
+.operator-ref__spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Result thumbnail under a completed generation chip. */
+.operator-gen-thumb {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 220px;
+  border-radius: 10px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  object-fit: cover;
+}

@@ -1,0 +1,475 @@
+.canvas {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-base);
+  scroll-snap-type: y mandatory;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  transition: border-color 0.15s;
+}
+
+.canvas--drag-over {
+  border-color: var(--accent);
+}
+
+/* Zoom control */
+.canvas-zoom {
+  position: absolute;
+  top: 12px;
+  right: 312px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: rgba(var(--tint-rgb), 0.2);
+}
+
+.canvas-zoom svg {
+  flex-shrink: 0;
+  opacity: 0.4;
+}
+
+.canvas-zoom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(var(--tint-rgb), 0.06);
+  outline: none;
+  cursor: pointer;
+}
+
+.canvas-zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.2);
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.canvas-zoom-slider::-webkit-slider-thumb:hover {
+  background: rgba(var(--tint-rgb), 0.35);
+}
+
+.canvas-zoom-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.2);
+  border: none;
+  cursor: pointer;
+}
+
+.canvas-zoom-slider::-moz-range-track {
+  background: transparent;
+}
+
+.canvas-zoom-value {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--tint-rgb), 0.18);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Each lineage is a full-viewport section */
+.canvas-lineage {
+  height: 100%;
+  min-height: 1600px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  scroll-snap-align: start;
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+}
+
+/* Horizontal scroll strip within a lineage */
+.canvas-lineage-scroll {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  height: calc(max(1500px, 92%) * var(--canvas-zoom, 1));
+  scroll-snap-type: x mandatory;
+  scroll-padding-right: 300px;
+  scrollbar-width: none;
+  transition: height 0.15s ease;
+}
+
+/* Spacers on each end so first/last images can reach center */
+.canvas-edge-spacer {
+  flex-shrink: 0;
+  height: 1px;
+}
+
+.canvas-edge-spacer:first-child {
+  width: calc(50% - max(750px, 46vh) - 150px);
+  min-width: 40px;
+}
+
+.canvas-edge-spacer:last-child {
+  width: calc(50% - max(750px, 46vh) + 150px);
+  min-width: 300px;
+}
+
+.canvas-lineage-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Subtle lineage pager below the current image */
+.canvas-lineage-pager {
+  position: absolute;
+  left: max(56px, calc(50% - max(750px, 46vh) - 126px));
+  bottom: 104px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-lineage-segment {
+  width: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(var(--tint-rgb), 0.14);
+  transition: background 0.15s, transform 0.15s;
+}
+
+.canvas-lineage-segment:hover {
+  background: rgba(var(--tint-rgb), 0.28);
+}
+
+.canvas-lineage-segment--active {
+  background: rgba(var(--tint-rgb), 0.72);
+  transform: scaleX(1.1);
+}
+
+.canvas-gen {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 12px 0;
+  box-sizing: border-box;
+  scroll-snap-align: center;
+}
+
+.canvas-gen-img {
+  height: min(100%, var(--native-size, 1080px));
+  max-height: 2160px;
+  aspect-ratio: var(--frame-ar, 1 / 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Visible content with the actual aspect ratio */
+.canvas-gen-img-inner {
+  border-radius: 8px;
+  transition: box-shadow 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover action bar — top-left corner.
+ * Sits on top of an image, so the dark scrim & white icons are
+ * intentional regardless of theme. */
+.canvas-gen-hover {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.canvas-gen-img-inner:hover .canvas-gen-hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-gen-hover-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.12s, background 0.12s;
+}
+
+.canvas-gen-hover-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.canvas-gen-hover-btn--delete:hover {
+  color: #f87171;
+}
+
+.canvas-gen-hover-btn--saved {
+  color: #4ade80 !important;
+  background: rgba(74, 222, 128, 0.15) !important;
+}
+
+/* Expand button — top-right, sits over image, white intentional. */
+.canvas-gen-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s;
+  pointer-events: none;
+}
+
+.canvas-gen-img-inner:hover .canvas-gen-expand {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-gen-expand:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Fullscreen modal */
+.canvas-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+
+.canvas-fullscreen-img {
+  width: min(90vw, 90vh * var(--fs-ratio, 1));
+  height: min(90vh, 90vw / var(--fs-ratio, 1));
+  border-radius: 10px;
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Fullscreen modal close — over an always-dark backdrop. */
+.canvas-fullscreen-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.12s;
+}
+
+.canvas-fullscreen-close:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.canvas-gen--selected .canvas-gen-img-inner {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 20px rgba(59, 130, 246, 0.35),
+    0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Meta line under each image */
+.canvas-gen-meta {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-gen-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.canvas-gen-badge--make {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.canvas-gen-badge--edit {
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.canvas-gen-badge--upscale {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.canvas-gen-badge--resize {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.canvas-gen-badge--remove {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.canvas-gen-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Selection order badge (1st, 2nd) */
+.canvas-gen-order {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Video cards cannot be selected as references */
+.canvas-gen--video .canvas-gen-img {
+  cursor: default;
+}
+
+/* Video overlay on cards */
+.canvas-gen-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Play button & duration badge sit on a dark scrim over video — keep white. */
+.canvas-gen-video-play {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  transition: background 0.15s, transform 0.15s;
+}
+
+.canvas-gen-img-inner:hover .canvas-gen-video-play {
+  background: rgba(0, 0, 0, 0.65);
+  transform: scale(1.05);
+}
+
+.canvas-gen-video-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.canvas-gen-badge--video {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+}
+
+/* Fullscreen video overlay */
+.canvas-fullscreen-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-fullscreen-video-play {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.canvas-fullscreen-video-play:hover {
+  background: rgba(0, 0, 0, 0.7);
+  transform: scale(1.05);
+}
+
+.canvas-fullscreen-video-duration {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  border-radius: 6px;
+}

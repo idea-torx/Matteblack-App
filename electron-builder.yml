@@ -1,0 +1,88 @@
+# electron-builder configuration for the Fal Forge local desktop app
+# (internal project name: Matteblack).
+#
+# Design notes:
+#  - asar is DISABLED for the first working build. The Express server serves the
+#    SPA from ./dist and PGlite loads a .wasm/.data pair from node_modules — all
+#    of which are plain filesystem reads. Shipping unpacked (resources/app/**)
+#    makes those paths "just work" and matches main.cjs's APP_ROOT =
+#    process.resourcesPath/app. Re-enabling asar later is an optimization that
+#    requires asarUnpack globs for @electric-sql/pglite (and any native asset).
+#  - Only production dependencies are bundled (electron-builder drops devDeps).
+#    NOTE: puppeteer is a devDependency; any server feature that shells out to it
+#    (PDF/report export) needs puppeteer-core + Electron's Chromium wired up
+#    before it works in a packaged build. See CONVERSION.md Phase G.
+appId: app.falforge.desktop
+productName: Fal Forge
+copyright: Copyright © 2026
+asar: false
+
+directories:
+  output: release
+  buildResources: build
+
+# Auto-update feed + release target. electron-updater reads the generated
+# app-update.yml (derived from this) to know where to look for latest.yml.
+# NOTE: owner/repo MUST match the GitHub repo that hosts the Releases; update
+# these if the OSS project is renamed/moved before the first tagged release.
+publish:
+  provider: github
+  owner: idea-torx
+  repo: FalForge
+  releaseType: release
+
+# What lands in resources/app/. node_modules (prod only) is included by default;
+# the negative globs drop the cloud SDKs that the local build never loads (their
+# server imports are lazy `require`s gated behind !LOCAL_MODE — see server/
+# storage.ts, stripe.ts, sessions.ts, email.ts, services/redisClient.ts). They
+# stay in package.json `dependencies` so the cloud/web build still works.
+files:
+  - "dist/**"
+  - "dist-server/**"
+  - "dist-mcp/**"
+  - "electron/**"
+  - "package.json"
+  - "!node_modules/@aws-sdk/client-s3/**"
+  - "!node_modules/@workos-inc/node/**"
+  - "!node_modules/stripe/**"
+  - "!node_modules/resend/**"
+  - "!node_modules/ioredis/**"
+
+# macOS. Unsigned by default (identity: null) so `npm run electron:dist` works on
+# a Mac with no Apple Developer account; Gatekeeper then needs a one-time
+# right-click > Open on first launch. Swap in a signing identity + notarize once
+# there's a paid account.
+#
+# zip ships alongside dmg because electron-updater can only apply a macOS update
+# from a zip — the dmg is just what people download and drag.
+#
+# Cross-compiling this from Windows does not work: build it on the Mac.
+mac:
+  category: public.app-category.graphics-design
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+# Distinct names per target so the NSIS installer and the portable exe don't
+# collide (both are .exe). electron-updater's latest.yml tracks the NSIS one.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
+
+portable:
+  artifactName: "${productName}-Portable-${version}-${arch}.${ext}"
+

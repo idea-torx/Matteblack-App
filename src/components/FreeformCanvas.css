@@ -1,0 +1,1607 @@
+@keyframes ff-view-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.freeform-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 120% 100% at center, transparent 35%, rgba(0, 0, 0, 0.06) 100%),
+    var(--bg-canvas);
+  cursor: default;
+  border-radius: 12px;
+  user-select: none;
+  overscroll-behavior: none;
+  touch-action: none;
+  animation: ff-view-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freeform-canvas { animation: none; }
+}
+
+.freeform-canvas--pan-tool {
+  cursor: grab;
+}
+
+.freeform-canvas--panning {
+  cursor: grabbing;
+}
+
+.freeform-canvas--zoom-mode {
+  cursor: zoom-in;
+}
+
+.freeform-canvas--selecting {
+  cursor: crosshair;
+}
+
+.freeform-canvas--drag-over {
+  border: 2px solid var(--accent);
+}
+
+.freeform-canvas__marquee {
+  position: absolute;
+  border: 1px solid rgba(59, 130, 246, 0.8);
+  background: rgba(59, 130, 246, 0.1);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.freeform-canvas__frame-draw-preview {
+  position: absolute;
+  border: 2px solid rgba(51, 51, 51, 0.9);
+  background: rgba(51, 51, 51, 0.35);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.freeform-canvas--frame-draw {
+  cursor: crosshair;
+}
+
+.freeform-canvas--frame-draw .freeform-canvas__node {
+  cursor: crosshair;
+}
+
+.freeform-canvas--frame-draw-ready {
+  cursor: crosshair;
+}
+
+.freeform-canvas--frame-draw-ready .freeform-canvas__node {
+  cursor: crosshair;
+}
+
+.freeform-canvas__drop-placeholder {
+  position: absolute;
+  border: 2px dashed var(--accent, #0d35ff);
+  background: rgba(13, 53, 255, 0.08);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 999999;
+  overflow: hidden;
+}
+
+.freeform-canvas__drop-placeholder-img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  opacity: 0.5;
+  border-radius: 4px;
+}
+
+.freeform-canvas {
+  --cursor-x: 50%;
+  --cursor-y: 50%;
+  --grid-active: 0;
+}
+
+.freeform-canvas__grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-size: 24px 24px;
+  will-change: opacity, mask-image;
+}
+
+.freeform-canvas__grid--sm {
+  background-image: radial-gradient(circle, var(--canvas-dot-color) 0.7px, transparent 1.2px);
+  -webkit-mask-image: radial-gradient(ellipse 95% 95% at center, #000 55%, transparent 100%);
+  mask-image: radial-gradient(ellipse 95% 95% at center, #000 55%, transparent 100%);
+}
+
+.freeform-canvas__grid--lg {
+  background-image: radial-gradient(circle, var(--canvas-dot-color) 1.6px, transparent 2.1px);
+  -webkit-mask-image: radial-gradient(circle at var(--cursor-x) var(--cursor-y), #000 0, #000 28px, transparent 180px);
+  mask-image: radial-gradient(circle at var(--cursor-x) var(--cursor-y), #000 0, #000 28px, transparent 180px);
+  opacity: var(--grid-active, 0);
+  transition: opacity 220ms ease-out;
+}
+
+.freeform-canvas__radial-pulse {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 8px 2px rgba(59, 130, 246, 0.7),
+    inset 0 0 30px 8px rgba(59, 130, 246, 0.55),
+    inset 0 0 80px 20px rgba(59, 130, 246, 0.35),
+    inset 0 0 200px 40px rgba(59, 130, 246, 0.15);
+  opacity: 0;
+  will-change: opacity;
+  animation: edge-glow-pulse 2s ease-in-out forwards;
+}
+
+@keyframes edge-glow-pulse {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freeform-canvas__radial-pulse {
+    animation: none;
+    display: none;
+  }
+}
+
+.freeform-canvas__snap-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
+}
+
+.freeform-canvas__transform {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.freeform-canvas__node {
+  position: absolute;
+  cursor: pointer;
+  box-sizing: border-box;
+  border-radius: 6px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.freeform-canvas__node::before {
+  content: "";
+  position: absolute;
+  inset: -20px;
+  z-index: -1;
+}
+
+.freeform-canvas__node * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.freeform-canvas__node img,
+.freeform-canvas__node video,
+.freeform-canvas__node canvas {
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none;
+}
+
+.freeform-canvas__node--selected {
+  outline: calc(2px / var(--zoom, 1)) solid #2196F3;
+  outline-offset: 0px;
+  border-radius: 0;
+}
+
+.freeform-canvas__node:hover {
+  outline: calc(1.5px / var(--zoom, 1)) solid rgba(33, 150, 243, 0.55);
+  outline-offset: 0px;
+}
+
+.freeform-canvas__node--inside-frame:hover {
+  outline: none;
+}
+
+.freeform-canvas__node--deep-hoverable:hover {
+  outline: calc(1.5px / var(--zoom, 1)) solid rgba(33, 150, 243, 0.65);
+  outline-offset: 0px;
+}
+
+.freeform-canvas__node--selected:hover {
+  outline: calc(2px / var(--zoom, 1)) solid #2196F3;
+  outline-offset: 0px;
+}
+
+.freeform-canvas__node--locked {
+  cursor: not-allowed;
+}
+
+.freeform-canvas__node--dragging {
+  opacity: 0.7;
+  cursor: grabbing;
+}
+
+.freeform-canvas__group-bbox {
+  position: absolute;
+  border: 1.5px dashed rgba(99, 162, 255, 0.6);
+  border-radius: 2px;
+  z-index: 99998;
+}
+
+.freeform-canvas__group-bbox--multi {
+  border-style: solid;
+  border-color: rgba(99, 162, 255, 0.7);
+}
+
+.freeform-canvas__group-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1.5px solid rgba(99, 162, 255, 0.8);
+  border-radius: 2px;
+  z-index: 99999;
+  transform: scale(calc(1 / var(--zoom, 1)));
+}
+
+.freeform-canvas__group-handle--nw { top: -5px; left: -5px; cursor: nw-resize; }
+.freeform-canvas__group-handle--ne { top: -5px; right: -5px; cursor: ne-resize; }
+.freeform-canvas__group-handle--sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+.freeform-canvas__group-handle--se { bottom: -5px; right: -5px; cursor: se-resize; }
+.freeform-canvas__group-handle--n { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.freeform-canvas__group-handle--s { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.freeform-canvas__group-handle--w { left: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+.freeform-canvas__group-handle--e { right: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+
+.freeform-canvas__node--frame-selected {
+  outline: calc(2px / var(--zoom, 1)) solid #2196F3;
+  outline-offset: 0px;
+  border-radius: 0;
+  cursor: move;
+}
+
+.freeform-canvas__node--frame-selected:hover {
+  outline: calc(2px / var(--zoom, 1)) solid #2196F3;
+  outline-offset: 0px;
+}
+
+.freeform-canvas__node--frame {
+  cursor: default;
+}
+
+.freeform-canvas__text-gradient {
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.freeform-canvas__node-frame-box {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  position: relative;
+  pointer-events: none;
+  cursor: default;
+}
+
+.freeform-canvas__node-frame-box--hoverable:hover {
+  outline: calc(2px / var(--zoom, 1)) solid rgba(33, 150, 243, 0.5);
+  outline-offset: 0px;
+}
+
+.freeform-canvas__frame-label-text {
+  position: absolute;
+  top: calc(-30px / var(--zoom, 1));
+  left: calc(0px / var(--zoom, 1));
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(var(--tint-rgb), 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  cursor: grab;
+  transform: scale(calc(1 / var(--zoom, 1)));
+  transform-origin: top left;
+  pointer-events: auto;
+  z-index: 999999;
+  background: rgba(50, 50, 50, 0.85);
+  padding: 4px 10px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.freeform-canvas__frame-label-text:active {
+  cursor: grabbing;
+}
+
+.freeform-canvas__frame-label-overlay--selected .freeform-canvas__frame-label-text {
+  color: rgba(99, 162, 255, 0.9);
+  background: rgba(33, 80, 150, 0.5);
+}
+
+
+.freeform-canvas__frame-label-input {
+  position: absolute;
+  top: calc(-30px / var(--zoom, 1));
+  left: calc(0px / var(--zoom, 1));
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(99, 162, 255, 0.9);
+  background: rgba(33, 80, 150, 0.5);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  outline: none;
+  white-space: nowrap;
+  max-width: 240px;
+  z-index: 999999;
+  transform: scale(calc(1 / var(--zoom, 1)));
+  transform-origin: top left;
+  pointer-events: auto;
+  line-height: 1.4;
+}
+
+.freeform-canvas__node-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  /* Show the whole image at its true proportions — never crop. Generation
+   * placeholders are sized to the requested aspect ratio, so the finished image
+   * fills the box exactly (contain == cover when the box matches the image AR).
+   * Intentional crop-to-frame is handled separately via clip-path. */
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.freeform-canvas__node-svg {
+  object-fit: contain;
+  image-rendering: optimizeQuality;
+}
+
+.freeform-canvas__node-missing {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(var(--tint-rgb), 0.04);
+  color: rgba(var(--tint-rgb), 0.45);
+  pointer-events: none;
+  overflow: hidden;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.freeform-canvas__node-missing-label {
+  font-size: 11px;
+  text-align: center;
+  word-break: break-all;
+  max-width: 100%;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+.freeform-canvas__node-gradient {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+
+.freeform-canvas__floating-toolbar {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  transform-origin: top center;
+  display: flex;
+  gap: 1px;
+  padding: 4px 6px;
+  background: transparent;
+  border-radius: 9999px;
+  pointer-events: auto;
+  animation: floatingToolbarIn 0.15s ease forwards;
+  z-index: 10;
+}
+
+.freeform-canvas__floating-toolbar__glass-shadow {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  box-shadow:
+    0 1px 6px rgba(0, 0, 0, 0.12),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -0.5px 0 rgba(0, 0, 0, 0.15);
+}
+
+.freeform-canvas__floating-toolbar__glass-backdrop {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  backdrop-filter: blur(16px) saturate(1.6);
+  background: rgba(30, 30, 30, 0.55);
+  /* Promote to its own compositor layer so the backdrop snapshot is
+   * cached during continuous pan/zoom gestures. Without this, the
+   * `backdrop-filter` re-samples the (transforming) canvas content on
+   * every frame, which renders as a visible flash on the selected
+   * card's floating toolbar. Same recipe as the main zoom toolbar
+   * (see `.freeform-canvas__toolbar` below). */
+  isolation: isolate;
+  will-change: backdrop-filter, transform;
+  transform: translateZ(0);
+}
+
+@keyframes floatingToolbarIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+[data-theme="light"] .freeform-canvas__floating-toolbar__glass-backdrop {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+[data-theme="light"] .freeform-canvas__floating-toolbar__glass-shadow {
+  box-shadow:
+    0 1px 8px rgba(0, 0, 0, 0.1),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="light"] .freeform-canvas__toolbar-btn {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="light"] .freeform-canvas__toolbar-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+[data-theme="light"] .freeform-canvas__toolbar-btn--danger:hover {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.freeform-canvas__node--dragging.freeform-canvas__node--dragging .freeform-canvas__floating-toolbar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  animation: none !important;
+}
+
+/* Floating toolbar sits on the always-dark .freeform-canvas__floating-toolbar
+ * scrim above, so its icons are intentionally white in both themes. */
+.freeform-canvas__toolbar-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  z-index: 1;
+  transition: background 0.12s, color 0.12s;
+}
+
+.freeform-canvas__toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.freeform-canvas__toolbar-btn--saved {
+  color: #22c55e;
+}
+
+.freeform-canvas__toolbar-btn:disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.freeform-canvas__toolbar-btn--error {
+  color: #ef4444;
+}
+
+.freeform-canvas__toolbar-btn--danger:hover {
+  background: rgba(220, 38, 38, 0.6);
+  color: #fff;
+}
+
+.freeform-canvas__fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+[data-theme="light"] .freeform-canvas__fullscreen-overlay {
+  background: #f4f4f6;
+}
+
+/* When the overlay enters native browser fullscreen, the :fullscreen
+ * pseudo-class lets us guarantee it fully covers the screen across
+ * browsers (some apply default black backgrounds we override). */
+.freeform-canvas__fullscreen-overlay:fullscreen,
+.freeform-canvas__fullscreen-overlay:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
+
+[data-theme="light"] .freeform-canvas__fullscreen-overlay:fullscreen,
+[data-theme="light"] .freeform-canvas__fullscreen-overlay:-webkit-full-screen {
+  background: #f4f4f6;
+}
+
+.freeform-canvas__fullscreen-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+
+.freeform-canvas__fullscreen-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+[data-theme="light"] .freeform-canvas__fullscreen-close {
+  background: rgba(15, 17, 21, 0.08);
+  color: #18181b;
+}
+
+[data-theme="light"] .freeform-canvas__fullscreen-close:hover {
+  background: rgba(15, 17, 21, 0.16);
+}
+
+.freeform-canvas__fullscreen-media {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  object-fit: contain;
+  border-radius: 0;
+  background: transparent;
+}
+
+.freeform-canvas__handles-overlay {
+  z-index: 999999;
+  pointer-events: none;
+}
+
+.freeform-canvas__handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid #2196F3;
+  border-radius: 0;
+  z-index: 10000;
+  pointer-events: auto;
+  box-sizing: border-box;
+  transform: scale(calc(1 / var(--zoom, 1)));
+}
+
+.freeform-canvas__handle--nw { top: -5px; left: -5px; cursor: nw-resize; transform-origin: center center; }
+.freeform-canvas__handle--ne { top: -5px; right: -5px; cursor: ne-resize; transform-origin: center center; }
+.freeform-canvas__handle--sw { bottom: -5px; left: -5px; cursor: sw-resize; transform-origin: center center; }
+.freeform-canvas__handle--se { bottom: -5px; right: -5px; cursor: se-resize; transform-origin: center center; }
+
+
+.freeform-canvas__edge-handle {
+  position: absolute;
+  background: transparent;
+  border: none;
+  z-index: 10000;
+  pointer-events: auto;
+}
+
+.freeform-canvas__edge-handle--n { top: -6px; left: min(12px, 25%); right: min(12px, 25%); height: 12px; cursor: ns-resize; transform: scaleY(calc(1 / var(--zoom, 1))); }
+.freeform-canvas__edge-handle--s { bottom: -6px; left: min(12px, 25%); right: min(12px, 25%); height: 12px; cursor: ns-resize; transform: scaleY(calc(1 / var(--zoom, 1))); }
+.freeform-canvas__edge-handle--w { left: -6px; top: min(12px, 25%); bottom: min(12px, 25%); width: 12px; cursor: ew-resize; transform: scaleX(calc(1 / var(--zoom, 1))); }
+.freeform-canvas__edge-handle--e { right: -6px; top: min(12px, 25%); bottom: min(12px, 25%); width: 12px; cursor: ew-resize; transform: scaleX(calc(1 / var(--zoom, 1))); }
+
+
+.freeform-canvas__edge-handle--n:hover,
+.freeform-canvas__edge-handle--s:hover { background: linear-gradient(to bottom, transparent 4px, #2196F3 4px, #2196F3 6px, transparent 6px); }
+.freeform-canvas__edge-handle--w:hover,
+.freeform-canvas__edge-handle--e:hover { background: linear-gradient(to right, transparent 4px, #2196F3 4px, #2196F3 6px, transparent 6px); }
+
+
+.freeform-canvas__rotate-corner {
+  position: absolute;
+  width: calc(24px / var(--zoom, 1));
+  height: calc(24px / var(--zoom, 1));
+  z-index: 9999;
+  pointer-events: auto;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232196F3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 4v6h6'/%3E%3Cpath d='M3.51 15a9 9 0 1 0 2.13-9.36L1 10'/%3E%3C/svg%3E") 12 12, pointer;
+}
+
+.freeform-canvas__rotate-corner--nw {
+  top: calc(-30px / var(--zoom, 1));
+  left: calc(-30px / var(--zoom, 1));
+}
+
+.freeform-canvas__rotate-corner--ne {
+  top: calc(-30px / var(--zoom, 1));
+  right: calc(-30px / var(--zoom, 1));
+}
+
+.freeform-canvas__rotate-corner--sw {
+  bottom: calc(-30px / var(--zoom, 1));
+  left: calc(-30px / var(--zoom, 1));
+}
+
+.freeform-canvas__rotate-corner--se {
+  bottom: calc(-30px / var(--zoom, 1));
+  right: calc(-30px / var(--zoom, 1));
+}
+
+.freeform-canvas__junction-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: rgba(33, 150, 243, 0.55);
+  border: 1px solid rgba(33, 150, 243, 0.8);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10001;
+  transform: translate(-50%, -50%) scale(calc(1 / var(--zoom, 1)));
+  transform-origin: center center;
+  box-sizing: border-box;
+}
+
+.freeform-canvas--rotating {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232196F3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 4v6h6'/%3E%3Cpath d='M3.51 15a9 9 0 1 0 2.13-9.36L1 10'/%3E%3C/svg%3E") 12 12, pointer !important;
+}
+
+.freeform-canvas__dimension-label {
+  position: absolute;
+  top: calc(-36px / var(--zoom, 1));
+  left: 50%;
+  transform: translateX(-50%) scale(calc(1 / var(--zoom, 1)));
+  transform-origin: center top;
+  background: #2196F3;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10001;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
+}
+
+
+/* Cinema drag ghost */
+.cinema-drag-ghost {
+  position: fixed;
+  z-index: 100000;
+  pointer-events: none;
+  transform: translate(-50%, -110%);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.cinema-drag-ghost__thumb {
+  display: block;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.cinema-drag-ghost__audio-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #a1a1aa;
+  background: #27272a;
+  border-radius: 4px;
+}
+
+/* Toolbar — pill shaped, slightly translucent so the canvas behind
+ * shows through, with horizontal padding tuned so the first/last
+ * elements sit comfortably inside the pill ends rather than crowding
+ * the curve. */
+.freeform-canvas__toolbar {
+  position: absolute;
+  /* Align the top edge with the floating left menu (which sits at
+     --panel-float-top from the viewport top). */
+  top: var(--panel-float-top, 12px);
+  left: calc(var(--canvas-left-inset, 0px) + 16px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Asymmetric padding: the extra horizontal room (8px vs 4px) gives
+   * the pill its proper inset so the % label and chevron don't run
+   * into the rounded ends. */
+  padding: 4px 8px;
+  /* Slightly more translucent than the standard floating-panel
+   * surface so the toolbar reads as a light glass pill rather than a
+   * solid chip. Falls back to a sensible dark-glass value when the
+   * token isn't defined. */
+  background: rgba(14, 14, 18, 0.45);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: var(--panel-float-border);
+  /* Pill — full rounding so the toolbar reads as a single capsule. */
+  border-radius: 999px;
+  box-shadow: var(--panel-float-shadow);
+  /* Slide elegantly when the left panel opens/closes (canvas-left-inset changes). */
+  transition: left 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Promote to its own compositor layer so the backdrop snapshot is
+   * cached during continuous zoom gestures. Without this, the
+   * `backdrop-filter` re-samples the (transforming) canvas content on
+   * every zoom step, which renders as a visible flash on the pill. */
+  isolation: isolate;
+  will-change: backdrop-filter, transform;
+  transform: translateZ(0);
+}
+
+/* Round the inner buttons too so hover halos sit pleasantly inside
+ * the pill rather than as little squares. */
+.freeform-canvas__toolbar .freeform-canvas__zoom-btn {
+  border-radius: 999px;
+}
+
+/* ---- Dynamic expand / close animation ----
+ * Newly-mounted children spring-fade in with a left-to-right stagger,
+ * so when the toolbar expands the icons cascade into place. Items
+ * that stay mounted across toggles (the % chip, the chevron, the
+ * fullscreen toggle) only animate on initial mount, never on each
+ * subsequent toggle, because CSS animations don't replay until the
+ * element is re-inserted. */
+/* The stagger animation is gated on `data-just-mounted="true"`, which
+ * the toolbar component sets only for the very first ~360ms after
+ * mount. After that any newly-inserted child (bulk-download button,
+ * +/- zoom buttons appearing on expand, etc.) will simply pop in
+ * without re-firing the cascade — preventing the visible flash that
+ * happened when zoom-driven re-renders caused conditional children
+ * to re-mount. */
+.freeform-canvas__toolbar[data-just-mounted="true"] > * {
+  animation: toolbar-item-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  transform-origin: left center;
+}
+
+/* Stagger via :nth-child — covers up to ~15 children which is more
+ * than the toolbar ever shows. Delays kept tight (22ms) so the
+ * cascade reads as a single fluid motion, not a slow fan-out. */
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(1)  { animation-delay:   0ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(2)  { animation-delay:  22ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(3)  { animation-delay:  44ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(4)  { animation-delay:  66ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(5)  { animation-delay:  88ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(6)  { animation-delay: 110ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(7)  { animation-delay: 132ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(8)  { animation-delay: 154ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(9)  { animation-delay: 176ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(10) { animation-delay: 198ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(11) { animation-delay: 220ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(12) { animation-delay: 242ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(13) { animation-delay: 264ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(14) { animation-delay: 286ms; }
+.freeform-canvas__toolbar[data-just-mounted="true"] > *:nth-child(15) { animation-delay: 308ms; }
+
+@keyframes toolbar-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.55);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* One-shot spring "pop" on the pill itself, applied via a transient
+ * class toggled in ZoomToolbar.tsx whenever the expanded state flips.
+ * Fires in BOTH directions so the close also gets felt feedback even
+ * though the leaving items unmount instantly. */
+.freeform-canvas__toolbar--pulse {
+  animation: toolbar-pulse 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes toolbar-pulse {
+  0%   { transform: scale(1);    box-shadow: var(--panel-float-shadow); }
+  35%  { transform: scale(1.035); box-shadow: var(--panel-float-shadow), 0 6px 22px rgba(59, 130, 246, 0.18); }
+  100% { transform: scale(1);    box-shadow: var(--panel-float-shadow); }
+}
+
+/* Chevron toggle — single icon, rotated 180° when the toolbar is
+ * expanded. The rotation transition hides the binary state change
+ * behind a smooth flip. */
+.freeform-canvas__toolbar-toggle svg {
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.freeform-canvas__toolbar[data-expanded="true"] .freeform-canvas__toolbar-toggle svg {
+  transform: rotate(180deg);
+}
+
+/* Honor reduced-motion: drop the spring stagger, the pulse, and the
+ * chevron rotation easing. Items still appear instantly — they just
+ * don't animate. */
+@media (prefers-reduced-motion: reduce) {
+  .freeform-canvas__toolbar > *,
+  .freeform-canvas__toolbar--pulse {
+    animation: none;
+  }
+  .freeform-canvas__toolbar-toggle svg {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freeform-canvas__toolbar {
+    transition: none;
+  }
+}
+
+.freeform-canvas__toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(var(--tint-rgb), 0.1);
+  margin: 0 2px;
+}
+
+.freeform-canvas__bulk-download-btn {
+  position: relative;
+  width: auto !important;
+  gap: 4px;
+  padding: 0 8px;
+  color: rgba(var(--tint-rgb), 0.7);
+}
+
+.freeform-canvas__bulk-download-btn:hover {
+  background: rgba(var(--tint-rgb), 0.12);
+  color: #fff;
+}
+
+.freeform-canvas__bulk-download-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.freeform-canvas__zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.freeform-canvas__zoom-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(var(--tint-rgb), 0.5);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  font-size: 12px;
+}
+
+.freeform-canvas__zoom-btn:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: rgba(var(--tint-rgb), 0.85);
+}
+
+.freeform-canvas__zoom-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.freeform-canvas__zoom-btn--active {
+  background: rgba(59, 130, 246, 0.2);
+  color: rgba(59, 130, 246, 0.9);
+}
+
+.freeform-canvas__zoom-btn--active:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+.freeform-canvas__zoom-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--tint-rgb), 0.4);
+  min-width: 36px;
+  text-align: center;
+  cursor: pointer;
+  /* Slightly larger horizontal padding so the % label has the same
+   * visual breathing room as the icon buttons (28px square) — keeps
+   * the pill's interior rhythm even. */
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.freeform-canvas__zoom-pct:hover {
+  color: rgba(var(--tint-rgb), 0.7);
+  background: rgba(var(--tint-rgb), 0.06);
+}
+
+.freeform-canvas__grid-select {
+  background: rgba(var(--tint-rgb), 0.06);
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  border-radius: 4px;
+  color: rgba(var(--tint-rgb), 0.6);
+  font-size: 10px;
+  padding: 2px 4px;
+  height: 24px;
+  cursor: pointer;
+  outline: none;
+}
+
+.freeform-canvas__grid-select:hover {
+  border-color: rgba(var(--tint-rgb), 0.2);
+}
+
+/* ---- Light mode: zoom/canvas toolbar ----
+ * The pill toolbar gets its own translucent light-glass surface so
+ * the canvas tint shows through (the standard --panel-bg in light
+ * mode is opaque #f0f0f3, which would make the pill feel heavy). */
+[data-theme="light"] .freeform-canvas__toolbar {
+  background: rgba(255, 255, 255, 0.62);
+}
+[data-theme="light"] .freeform-canvas__toolbar-sep {
+  background: var(--border-subtle);
+}
+[data-theme="light"] .freeform-canvas__zoom-btn {
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__zoom-btn:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__zoom-btn--active {
+  background: rgba(59, 130, 246, 0.16);
+  color: rgba(37, 99, 235, 1);
+}
+[data-theme="light"] .freeform-canvas__zoom-btn--active:hover {
+  background: rgba(59, 130, 246, 0.22);
+}
+[data-theme="light"] .freeform-canvas__bulk-download-btn {
+  color: var(--text-secondary);
+}
+[data-theme="light"] .freeform-canvas__bulk-download-btn:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__zoom-pct {
+  color: var(--text-secondary);
+}
+[data-theme="light"] .freeform-canvas__zoom-pct:hover {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__grid-select {
+  background: var(--bg-base);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__grid-select:hover {
+  border-color: var(--border-strong);
+}
+
+/* Context menu */
+.freeform-canvas__context-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 99999;
+}
+
+.freeform-canvas__context-menu {
+  position: fixed;
+  z-index: 100000;
+  min-width: 140px;
+  padding: 4px;
+  background: rgba(30, 30, 34, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.freeform-canvas__context-item {
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: rgba(var(--tint-rgb), 0.7);
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.freeform-canvas__context-item:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: rgba(var(--tint-rgb), 0.95);
+}
+
+.freeform-canvas__context-item--danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.freeform-canvas__context-divider {
+  height: 1px;
+  background: rgba(var(--tint-rgb), 0.08);
+  margin: 4px 0;
+}
+
+.freeform-canvas__context-submenu {
+  padding: 2px 0;
+}
+
+.freeform-canvas__context-submenu-label {
+  display: block;
+  padding: 4px 12px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--tint-rgb), 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.freeform-canvas__context-item--saved {
+  color: #22c55e;
+}
+
+.freeform-canvas__context-item--error {
+  color: #ef4444;
+}
+
+.freeform-canvas__context-item--in-library {
+  color: #a78bfa;
+}
+
+.freeform-canvas__context-item--disabled,
+.freeform-canvas__context-item:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: default;
+}
+
+.freeform-canvas__context-folder-picker {
+  position: relative;
+}
+
+.freeform-canvas__context-folder-submenu {
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 140px;
+  max-width: 220px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  background: rgba(30, 30, 34, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  margin-left: 4px;
+}
+
+.freeform-canvas__context-folder-submenu--flip {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+.freeform-canvas__context-folder-submenu::-webkit-scrollbar {
+  width: 4px;
+}
+
+.freeform-canvas__context-folder-submenu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.freeform-canvas__context-folder-submenu::-webkit-scrollbar-thumb {
+  background: rgba(var(--tint-rgb), 0.15);
+  border-radius: 2px;
+}
+
+.freeform-canvas__context-folder-loading {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: rgba(var(--tint-rgb), 0.4);
+}
+
+.freeform-canvas__context-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Video node */
+.freeform-canvas__video-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.freeform-canvas__node-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.freeform-canvas__node-video--hidden {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+}
+
+.freeform-canvas__video-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.2s ease;
+}
+
+.freeform-canvas__video-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* Video spinner sits inside the always-dark .freeform-canvas__video-loading-overlay
+ * scrim — keep literal white in both themes. */
+.freeform-canvas__video-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  animation: freeform-canvas-spin 0.8s linear infinite;
+}
+
+@keyframes freeform-canvas-spin {
+  to { transform: rotate(360deg); }
+}
+
+.freeform-canvas__video-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+
+.freeform-canvas__video-play-overlay--hover-only {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.freeform-canvas__video-wrapper:hover .freeform-canvas__video-play-overlay--hover-only {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Video play overlay sits on top of user video — its own scrim is dark
+ * in both themes, so the icon stays literal white. */
+.freeform-canvas__video-play-overlay svg {
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.85);
+  transform: scale(calc(1 / var(--zoom, 1)));
+  transform-origin: center;
+}
+
+.freeform-canvas__video-controls {
+  position: absolute;
+  bottom: calc(8px / var(--zoom, 1));
+  left: calc(8px / var(--zoom, 1));
+  right: calc(8px / var(--zoom, 1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 9999px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 2;
+  transform: scale(calc(1 / var(--zoom, 1)));
+  transform-origin: bottom center;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - (16px / var(--zoom, 1)));
+  margin: 0 auto;
+}
+
+.freeform-canvas__video-wrapper:hover .freeform-canvas__video-controls,
+.freeform-canvas__video-controls--playing {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Video controls (play/mute/progress/time) sit on the translucent dark
+ * pill — icons & track stay literal white so they read on the always-dark
+ * backdrop. */
+.freeform-canvas__video-play-btn,
+.freeform-canvas__video-mute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  transition: color 0.1s, opacity 0.1s;
+}
+
+.freeform-canvas__video-play-btn:hover,
+.freeform-canvas__video-mute-btn:hover {
+  color: #fff;
+  background: transparent;
+}
+
+.freeform-canvas__video-progress-bar {
+  flex: 1;
+  min-width: 80px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.freeform-canvas__video-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.freeform-canvas__video-time {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Alignment toolbar */
+.freeform-canvas__align-toolbar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 8px;
+  pointer-events: auto;
+}
+
+.freeform-canvas__align-toolbar--floating {
+  transform: translateX(-50%);
+  transition: top 0.2s ease-out, left 0.2s ease-out;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.freeform-canvas__align-toolbar button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(var(--tint-rgb), 0.5);
+  transition: color 0.12s, background 0.12s;
+}
+
+.freeform-canvas__align-toolbar button:hover,
+.freeform-canvas__align-toolbar button.active {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: rgba(var(--tint-rgb), 0.85);
+}
+
+.freeform-canvas__align-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(var(--tint-rgb), 0.1);
+  margin: 0 2px;
+}
+
+.freeform-canvas__align-fit-btn {
+  width: auto !important;
+  padding: 0 8px !important;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+
+.freeform-canvas__node--animating {
+  transition: left 0.2s ease-out, top 0.2s ease-out, width 0.2s ease-out, height 0.2s ease-out !important;
+}
+
+/* Minimap */
+.freeform-canvas__minimap {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  width: 160px;
+  height: 100px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 8px;
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  overflow: hidden;
+  cursor: crosshair;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.freeform-canvas__minimap svg {
+  display: block;
+}
+
+.freeform-canvas__error-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.freeform-canvas__error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 32px;
+  background: var(--bg-surface, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  max-width: 360px;
+  text-align: center;
+}
+
+.freeform-canvas__error-msg {
+  color: var(--text-secondary, #aaa);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.freeform-canvas__error-retry {
+  padding: 8px 20px;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.freeform-canvas__error-retry:hover {
+  opacity: 0.85;
+}
+
+.freeform-canvas__frame-pill {
+  position: absolute;
+  bottom: calc(4px / var(--zoom, 1));
+  left: 50%;
+  transform: translateX(-50%) scale(calc(1 / var(--zoom, 1)));
+  transform-origin: center bottom;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(59, 130, 246, 0.85);
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.freeform-canvas__sel-order {
+  position: absolute;
+  top: calc(6px / var(--zoom, 1));
+  left: calc(6px / var(--zoom, 1));
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(99, 130, 180, 0.7);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+  padding: 0 5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transform: scale(calc(1 / var(--zoom, 1)));
+  transform-origin: top left;
+}
+
+.freeform-canvas__placement-ghost {
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  opacity: 0.75;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--accent, #2563eb);
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ---- Light mode: align toolbar, minimap, frame label, error overlay ---- */
+[data-theme="light"] .freeform-canvas__align-toolbar {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+[data-theme="light"] .freeform-canvas__align-toolbar button {
+  color: var(--text-secondary);
+}
+[data-theme="light"] .freeform-canvas__align-toolbar button:hover,
+[data-theme="light"] .freeform-canvas__align-toolbar button.active {
+  background: var(--overlay-hover);
+  color: var(--text-primary);
+}
+[data-theme="light"] .freeform-canvas__align-sep {
+  background: var(--border-subtle);
+}
+
+[data-theme="light"] .freeform-canvas__minimap {
+  background: var(--panel-bg);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .freeform-canvas__frame-label-text {
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Right-click context menu — light theme.
+ * Dark scrim background and heavy black shadow are hardcoded above
+ * because they predate the theme tokens. Item text/hover use
+ * rgba(var(--tint-rgb), …) and flip automatically; only the surface
+ * itself needs overriding. Mirrors the library context menu pattern. */
+[data-theme="light"] .freeform-canvas__context-menu,
+[data-theme="light"] .freeform-canvas__context-folder-submenu {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-theme="light"] .freeform-canvas__context-divider {
+  background: var(--border-subtle);
+}
+
+[data-theme="light"] .freeform-canvas__context-folder-submenu::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* .freeform-canvas__floating-toolbar, .freeform-canvas__fullscreen-overlay,
+ * .freeform-canvas__video-loading-overlay, .freeform-canvas__video-play-overlay,
+ * .freeform-canvas__video-controls and .freeform-canvas__error-overlay all
+ * sit on top of user media or as full-bleed lightbox scrims, so their dark
+ * backgrounds are intentionally theme-independent. */

@@ -1,0 +1,236 @@
+.gen-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  background: rgba(15, 18, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+}
+
+.gen-node--loading {
+  background: rgba(15, 18, 32, 0.65);
+  border: none;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gen-node__glow {
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  padding: 3px;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.gen-node__glow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2000px;
+  height: 2000px;
+  margin-top: -1000px;
+  margin-left: -1000px;
+  background: conic-gradient(
+    #3B82F6 0%,
+    #60a5fa 12%,
+    transparent 25%,
+    transparent 35%,
+    #3B82F6 45%,
+    #93c5fd 55%,
+    transparent 68%,
+    transparent 78%,
+    #3B82F6 90%,
+    #3B82F6 100%
+  );
+  animation: gen-glow-spin 3s linear infinite;
+}
+
+.gen-node__glow--sharp {
+  z-index: 2;
+  opacity: 1;
+}
+
+.gen-node__glow-blur {
+  position: absolute;
+  inset: -12px;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+  filter: blur(16px);
+  opacity: 0.75;
+}
+
+.gen-node__glow--soft {
+  inset: 0;
+  border-radius: inherit;
+  padding: 4px;
+}
+
+.gen-node__glow--soft::before {
+  background: conic-gradient(
+    rgba(59, 130, 246, 0.8) 0%,
+    rgba(96, 165, 250, 0.7) 12%,
+    transparent 25%,
+    transparent 35%,
+    rgba(59, 130, 246, 0.8) 45%,
+    rgba(147, 197, 253, 0.6) 55%,
+    transparent 68%,
+    transparent 78%,
+    rgba(59, 130, 246, 0.8) 90%,
+    rgba(59, 130, 246, 0.8) 100%
+  );
+}
+
+@keyframes gen-glow-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.gen-node--failed {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(220, 38, 38, 0.16) 100%);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.gen-node__content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+
+.gen-node--failed .gen-node__content {
+  color: rgba(254, 202, 202, 0.95);
+}
+
+.gen-node__spinner {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gen-node__quantum {
+  --qt-color: rgba(147, 197, 253, 0.95);
+}
+
+/* ---------- Light theme ---------------------------------------------------
+ * In light mode the canvas itself is pale, so the dark fill is replaced by
+ * a soft translucent blue tint, the pulsating border is widened, and the
+ * spinner scales up so it reads from a distance. Same calm "alive" rhythm,
+ * just sized for a brighter background. */
+[data-theme="light"] .gen-node--loading {
+  background: rgba(220, 228, 240, 0.92);
+  border: none;
+}
+
+[data-theme="light"] .gen-node__glow::before {
+  background: conic-gradient(
+    #2563EB 0%,
+    #3B82F6 12%,
+    transparent 25%,
+    transparent 35%,
+    #2563EB 45%,
+    #60a5fa 55%,
+    transparent 68%,
+    transparent 78%,
+    #2563EB 90%,
+    #2563EB 100%
+  );
+}
+
+[data-theme="light"] .gen-node__glow-blur {
+  opacity: 0.85;
+}
+
+[data-theme="light"] .gen-node__quantum {
+  --qt-color: #2563eb;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gen-node__glow::before {
+    animation: none;
+  }
+  .gen-node__glow--sharp {
+    opacity: 0.6;
+  }
+  .gen-node__glow-blur {
+    opacity: 0.3;
+  }
+}
+
+[data-theme="light"] .gen-node--failed {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.10) 0%, rgba(220, 38, 38, 0.10) 100%);
+  border: 1px solid rgba(220, 38, 38, 0.45);
+}
+
+[data-theme="light"] .gen-node--failed .gen-node__content {
+  color: #991b1b;
+}
+
+[data-theme="light"] .gen-node__prompt {
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.gen-node__label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.gen-node__dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(15, 15, 18, 0.55);
+  color: rgba(254, 202, 202, 0.95);
+  cursor: pointer;
+  padding: 0;
+  z-index: 2;
+  pointer-events: auto;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.gen-node__dismiss:hover {
+  background: rgba(239, 68, 68, 0.35);
+  transform: scale(1.05);
+}
+
+.gen-node__prompt {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 90%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
