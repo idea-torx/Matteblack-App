@@ -1,0 +1,150 @@
+/* In normal flow as the canvas card's first child, not an overlay: .canvas-area
+ * is a flex column, so a 50px band here pushes the canvas down instead of
+ * sitting on top of it. The left margin clears the floating icon rail, which
+ * paints over the card at z:20 — without it the first tab is hidden under the
+ * traffic lights. The right edge is the card's own, so it already lands on the
+ * agent-panel seam and follows the width swap for free. */
+.project-tabs {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 var(--project-tabs-h);
+  /* border-box so the 1px rule lands *inside* the 50px band and the strip's
+   * bottom edge sits on the same line as .rpanel-top-tabs__divider (top: 50px)
+   * instead of one pixel below it. */
+  box-sizing: border-box;
+  margin-left: calc(var(--panel-float-gap) + var(--icon-rail-width));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Snug to the rail: the first tab starts where the rail ends. */
+  padding: 0 12px 0 6px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(40px) saturate(140%);
+  -webkit-backdrop-filter: blur(40px) saturate(140%);
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.08);
+}
+
+.project-tabs__strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.project-tab {
+  /* Chrome's shrink behaviour: every tab wants 180px, they all give up width
+   * together as more open, and none goes below 52px — past that the close
+   * button has nowhere to sit and you can't aim at anything. */
+  flex: 1 1 180px;
+  max-width: 180px;
+  min-width: 52px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  border-radius: 8px;
+  /* Dark grey chip, dark grey stroke. White-alpha rather than a literal hex so
+   * it lands as a lighter grey on the light theme's panel instead of a hole. */
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: #9aa0a6;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+/* The active tab stays as dark as the rest — with only one project open it is
+ * always the active one, and a lit fill by default is what read as "brighter".
+ * Selection is carried by the stroke and the text, hover by the fill. */
+.project-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e5e5e5;
+}
+
+.project-tab--active {
+  border-color: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.project-tab__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tab--active .project-tab__name {
+  cursor: text;
+}
+
+.project-tab__rename {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(var(--tint-rgb), 0.25);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 4px;
+  outline: none;
+}
+
+.project-tab__close {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+/* Keep the close target present on the active tab and on hover only — a row of
+ * always-visible x's reads as a list of delete buttons. */
+.project-tab:hover .project-tab__close,
+.project-tab--active .project-tab__close,
+.project-tab__close:focus-visible {
+  opacity: 0.7;
+}
+
+.project-tab__close:hover {
+  opacity: 1;
+  background: rgba(var(--tint-rgb), 0.18);
+}
+
+/* Inside the strip, right after the last tab — not pinned to the far edge. */
+.project-tabs__new {
+  flex-shrink: 0;
+  margin-left: 4px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa0a6;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.project-tabs__new:hover {
+  background: rgba(var(--tint-rgb), 0.1);
+  color: #ffffff;
+}

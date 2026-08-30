@@ -271,6 +271,32 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     return acc;
   }, {}),
 
+  // MiniMax H3 Max: flat per-second, two resolution tiers. Standard rates
+  // (fal's launch promo halves these until 2026-09-01; we quote the standard
+  // rate so an estimate never comes in under the bill).
+  //
+  // All three modes bill at the same per-second rate, same as Kling and
+  // Seedance above. Only t2v's rate is snapshot-verified; i2v/r2v inherit it,
+  // and `falPricing.ts` overwrites all three from the live API on first
+  // refresh. Chunk-chained long-form multiplies these, so a per-clip estimate
+  // is the thing standing between the user and a surprise bill.
+  ...(["t2v", "i2v", "r2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
+    const ep =
+      v === "t2v" ? "text-to-video" : v === "i2v" ? "image-to-video" : "reference-to-video";
+    acc[`h3-max-${v}`] = {
+      endpoint: `minimax/h3-max/${ep}`,
+      unitPrice: 0.08,
+      unit: "seconds",
+      cost: (p) => {
+        const secs = n(p, "duration", 5);
+        const lo = (p.resolution ?? "768p").toLowerCase().startsWith("480");
+        const rate = lo ? 0.05 : 0.08;
+        return { usd: rate * secs, accuracy: "exact", basis: `$${rate}/s x ${secs}s (${lo ? "480P" : "768P"})` };
+      },
+    };
+    return acc;
+  }, {}),
+
   // Seedance 2.0 is TOKEN billed: the live API reports $0.014 per 1000 "units"
   // (tokens). fal's formula is tokens = (h * w * duration * fps) / 1024 at
   // fps=24. Verified against fal's published per-second rates:

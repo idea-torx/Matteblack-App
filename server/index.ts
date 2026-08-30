@@ -26,6 +26,12 @@ import { registerCheckpointFlush, scheduleCanvasFlush, flushCanvasNow } from "./
 import notificationRoutes from "./routes/notifications.js";
 import agentRoutes from "./routes/agent.js";
 import operatorRoutes from "./routes/operator.js";
+import skillRoutes from "./routes/skills.js";
+import { seedBuiltinSkills } from "./skills/builtin.js";
+import githubRoutes from "./routes/github.js";
+import agentTimelineRoutes from "./routes/agentTimeline.js";
+import agentCutsRoutes from "./routes/agentCuts.js";
+import agentRenderRoutes from "./routes/agentRender.js";
 import brandIqRoutes from "./routes/brandIq.js";
 import { getFileStream, resolveToR2Url, saveFile, rehostExternalUrlToR2, isR2HostedUrl, isLocalUploadsUrl } from "./storage.js";
 import { dispatchToFal, resolveModelName, sanitizeUrl, handleFalResult, resumeFalPolling, setFalListenersChecker, isPollingJob, ensureFalConfigured } from "./fal.js";
@@ -34,7 +40,7 @@ import { setMcpToken } from "./mcpToken.js";
 import { estimateFalCost, falPricedModelKeys, falEndpointFor } from "./config/falCost.js";
 import { unitPriceFor, falPricingStatus, scheduleFalPricingRefresh } from "./services/falPricing.js";
 import fs from "node:fs";
-import { getUserConfig, setUserConfig, maskKey, getFalKey, getAnthropicKey, getClaudeCodeToken } from "./config/userConfig.js";
+import { getUserConfig, setUserConfig, maskKey, getFalKey, getAnthropicKey } from "./config/userConfig.js";
 import { ensureLocalUser } from "./seedLocal.js";
 import { createNotification } from "./notifications.js";
 import { checkAndDebit, refundCredits, refundCreditsWithFallback, retryPendingRefunds, calculateModelCost } from "./credits/creditGate.js";
@@ -149,11 +155,9 @@ function settingsStatus() {
   const cfg = getUserConfig();
   const fal = getFalKey();
   const anthropic = getAnthropicKey();
-  const claudeToken = getClaudeCodeToken();
   return {
     falKey: { set: !!fal, masked: maskKey(fal), source: cfg.falKey ? "local" : (fal ? "env" : null) },
     anthropicKey: { set: !!anthropic, masked: maskKey(anthropic), source: cfg.anthropicKey ? "local" : (anthropic ? "env" : null) },
-    claudeCodeToken: { set: !!claudeToken, masked: maskKey(claudeToken), source: cfg.claudeCodeToken ? "local" : (claudeToken ? "env" : null) },
   };
 }
 
@@ -162,11 +166,10 @@ app.get("/api/settings", requireAuth, (_req, res) => {
 });
 
 app.post("/api/settings", requireAuth, (req, res) => {
-  const body = (req.body ?? {}) as { falKey?: unknown; anthropicKey?: unknown; claudeCodeToken?: unknown };
-  const patch: { falKey?: string; anthropicKey?: string; claudeCodeToken?: string } = {};
+  const body = (req.body ?? {}) as { falKey?: unknown; anthropicKey?: unknown };
+  const patch: { falKey?: string; anthropicKey?: string } = {};
   if (typeof body.falKey === "string") patch.falKey = body.falKey;
   if (typeof body.anthropicKey === "string") patch.anthropicKey = body.anthropicKey;
-  if (typeof body.claudeCodeToken === "string") patch.claudeCodeToken = body.claudeCodeToken.trim();
   setUserConfig(patch);
   if ("falKey" in patch) ensureFalConfigured(); // pick up the new key immediately
   res.json(settingsStatus());
@@ -1512,7 +1515,7 @@ app.get("/api/pricing", requireAuth, async (_req: AuthRequest, res) => {
     const typeMap: Record<string, string[]> = {
       text_to_image: ["nano-banana-2-t2i", "seedream-t2i", "gpt-image-2-t2i"],
       image_to_image: ["nano-banana-2", "seedream-edit", "gpt-image-2-edit"],
-      video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v"],
+      video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v"],
       remove_bg: ["pixelcut_remove_bg", "remove_bg"],
       resize: ["bria_expand"],
       upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],
@@ -2341,6 +2344,16 @@ app.post("/api/generate", requireAuth, requireVerifiedEmail, async (req: AuthReq
         return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
       });
     }
+    // Continuation references for chunk-chained long-form video. Same
+    // absolutize treatment as the image refs: an extracted tail is written to
+    // local uploads, so it arrives here as "/uploads/..." and fal can't fetch a
+    // relative path.
+    if (req.body.referenceVideoUrls) {
+      fullParams.referenceVideoUrls = (req.body.referenceVideoUrls as string[]).map((url: string) => {
+        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
+        return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+      });
+    }
     if (req.body.duration) fullParams.duration = req.body.duration;
     if (req.body.generateAudio !== undefined) fullParams.generateAudio = req.body.generateAudio;
     if (req.body.firstFrameUrl) {
@@ -2426,13 +2439,14 @@ app.post("/api/generate", requireAuth, requireVerifiedEmail, async (req: AuthReq
       if (firstFrame) fullParams.firstFrameUrl = firstFrame;
       const lastFrame = absolutize(fullParams.lastFrameUrl);
       if (lastFrame) fullParams.lastFrameUrl = lastFrame;
-      if (Array.isArray(fullParams.referenceImageUrls)) {
+      for (const key of ["referenceImageUrls", "referenceVideoUrls"] as const) {
+        if (!Array.isArray(fullParams[key])) continue;
         const absRefs: string[] = [];
-        for (const r of fullParams.referenceImageUrls as unknown[]) {
+        for (const r of fullParams[key] as unknown[]) {
           const u = absolutize(r);
           if (u) absRefs.push(u);
         }
-        fullParams.referenceImageUrls = absRefs;
+        fullParams[key] = absRefs;
       }
       const candidates: string[] = [];
       if (firstFrame && isProbeable(firstFrame)) candidates.push(firstFrame);
@@ -3187,6 +3201,12 @@ app.post("/api/canvas/beacon-flush", injectUserId, async (req: AuthRequest, res:
 app.use(agentRoutes);
 app.use(brandIqRoutes);
 app.use(operatorRoutes);
+seedBuiltinSkills();
+app.use(skillRoutes);
+app.use(githubRoutes);
+app.use(agentTimelineRoutes);
+app.use(agentCutsRoutes);
+app.use(agentRenderRoutes);
 app.use(requireAuth, requireVerifiedEmail, folderRoutes);
 app.use(requireAuth, requireVerifiedEmail, bucketRoutes);
 app.use(requireAuth, requireVerifiedEmail, assetRoutes);
@@ -3693,6 +3713,20 @@ async function start() {
     // Phase L: refresh fal's at-cost unit prices in the background. Delayed and
     // un-awaited so it never competes with startup; a no-op without a fal key.
     scheduleFalPricingRefresh();
+  });
+  // The desktop shell pins a port so the renderer keeps one origin across
+  // restarts — localStorage (chat history, prefs) is keyed by origin, and an
+  // ephemeral port silently threw it away every launch. If something else
+  // already holds the pinned port, fall back to ephemeral rather than refusing
+  // to boot: a lost history beats a dead app.
+  server.on("error", (err) => {
+    if ((err as NodeJS.ErrnoException).code === "EADDRINUSE" && PORT !== 0) {
+      console.warn(`[server] port ${PORT} in use — falling back to an ephemeral port`);
+      server.listen(0, HOST);
+      return;
+    }
+    console.error("[server] listen failed:", err);
+    process.exit(1);
   });
   // Stripe billing reconciliation jobs (purchase/subscription backfill, refund
   // retries) are meaningless in a free, single-user local app — skip both the

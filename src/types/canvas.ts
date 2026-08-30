@@ -167,4 +167,8 @@ export const ZOOM_STEP = ZOOM_BASELINE * 0.1;
 export const DEBOUNCE_MS = 500;
 export const MIN_NODE_SIZE = 3;
 export const DEFAULT_GRID_SIZE = 20;
-export const VIEWPORT_BUFFER = 200;
+// Nodes outside this margin are unmounted entirely, so a node crossing the
+// edge remounts its <img>/<video> — that remount is the visible flash while
+// scrolling. A margin under half a screen meant it happened constantly; mount
+// them well before they're on screen instead.
+export const VIEWPORT_BUFFER = 900;

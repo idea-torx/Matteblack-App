@@ -1,7 +1,7 @@
 .sidebar {
   position: absolute;
   left: calc(var(--panel-float-gap) + var(--icon-rail-width));
-  top: var(--panel-float-top);
+  top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
   /* Must sit above .canvas-area--card (z-index: 10) so the left
    * floating panel isn't hidden behind the canvas card, while staying

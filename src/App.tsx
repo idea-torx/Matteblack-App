@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect, lazy, Suspense } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { getDefaultFrameFill, applyTheme, getStoredTheme } from "./theme";
 import { useGenerationSound } from "./hooks/useGenerationSound";
 import { useCreditsContext } from "./contexts/CreditsContext";
@@ -6,8 +7,7 @@ import { useWorkspace } from "./contexts/WorkspaceContext";
 import { IconRail, type RailView } from "./components/IconRail";
 import { QuantumThinking } from "./components/QuantumThinking";
 import { QuickSettingsPanel } from "./components/QuickSettingsPanel";
-import { ProjectsSidePanel } from "./components/ProjectsSidePanel";
-import { BrandIQPanel } from "./components/BrandIQPanel";
+import { type ProjectsHandlers } from "./components/ProjectsSidePanel";
 import { useNotifications } from "./hooks/useNotifications";
 import { LeftToolbar, type ToolId, type PageMode } from "./components/LeftToolbar";
 import { GENERATION_LOOKUP } from "./components/demoGenerations";
@@ -49,11 +49,14 @@ import { findOverlappingVideoNodes } from "./utils/frameExportHelpers";
 import { LayersPanel } from "./components/LayersPanel";
 import { AgentPanel, type AgentHandoff } from "./components/AgentPanel";
 import { OperatorPanel } from "./components/OperatorPanel";
+import { SkillsPanel } from "./components/SkillsPanel";
+import { GitHubPanel } from "./components/GitHubPanel";
 // Phase K: the Matte panel is now the in-app operator (drives Claude Code). The
 // legacy BYOK AgentPanel is retained behind this flag for a clean revert; flip
 // to true to restore it. It stays referenced so its prop wiring doesn't rot.
 const SHOW_LEGACY_AGENT = false;
-import { type Project, type ProjectsTab } from "./components/ProjectsPage";
+import { ProjectsPage, type Project, type ProjectsTab } from "./components/ProjectsPage";
+import { ProjectTabs } from "./components/ProjectTabs";
 import { NodeCanvas } from "./components/NodeCanvas";
 import { NodesPanelDefault } from "./components/NodesPanelDefault";
 import { NodeInspectorPanel } from "./components/NodeInspectorPanel";
@@ -105,6 +108,9 @@ function App() {
   const { balance, refetch: refreshCredits, unlimited } = useCreditsContext();
   const [pageMode, setPageMode] = useState<PageMode>("tools");
   const [railView, setRailView] = useState<RailView>(null);
+  // Text handed to the agent composer from another panel (Skills). The nonce
+  // makes a repeat hand-off of the same skill re-seed rather than no-op.
+  const [agentSeed, setAgentSeed] = useState<{ text: string; nonce: number } | null>(null);
   // Agent panel is tracked independently of railView so it can stay open
   // alongside any left-side panel (e.g. Library + Agent simultaneously).
   const [agentOpen, setAgentOpen] = useState<boolean>(true);
@@ -152,14 +158,6 @@ function App() {
     pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean }[] }[] } | null;
   } | null>(null);
   const [fitAllTrigger, setFitAllTrigger] = useState(0);
-  const projectsOpen = railView === "projects";
-  const setProjectsOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
-    setRailView((prev) => {
-      const open = typeof next === "function" ? (next as (p: boolean) => boolean)(prev === "projects") : next;
-      if (open) return "projects";
-      return prev === "projects" ? "toolkit" : prev;
-    });
-  }, []);
   const [presentMode, setPresentMode] = useState(false);
   const [rightPanelHidden, setRightPanelHidden] = useState(false);
   const [panelSwapping, setPanelSwapping] = useState(false);
@@ -173,6 +171,20 @@ function App() {
   const isGuest = !authUser;
   const sharingEnabled = !!authFeatures?.sharingV1;
   const [activeProjectId, _setActiveProjectId] = useState<string | null>(null);
+
+  // Which projects have a tab. Purely client-side — the server has no notion of
+  // "open", so closing a tab is free and deleting stays a home-screen action.
+  const [openProjectIds, setOpenProjectIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("openProjects") || "[]"); } catch { return []; }
+  });
+  useEffect(() => {
+    // The project you're looking at always has a tab, however you got to it.
+    setOpenProjectIds((prev) => {
+      const next = activeProjectId && !prev.includes(activeProjectId) ? [...prev, activeProjectId] : prev;
+      try { localStorage.setItem("openProjects", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [activeProjectId]);
   const setActiveProjectId = useCallback((id: string | null) => {
     _setActiveProjectId(id);
     if (activeWorkspace?.id && id) {
@@ -248,8 +260,10 @@ function App() {
     const api = canvasApiRef.current;
     if (!api || !isCanvasMountedRef.current) return false;
     const vp = api.getViewport?.();
-    const w = 800;
-    const h = 800;
+    // Matches the dropdown preset and the agent's ensureCinemaNode: 1080 of
+    // picture plus the ~620px the toolbar and timeline rows take at 2.2x chrome zoom.
+    const w = 1920;
+    const h = 1700;
     const cx = vp ? vp.cx - w / 2 : 0;
     const cy = vp ? vp.cy - h / 2 : 0;
     api.addNode?.(cx, cy, {
@@ -277,7 +291,6 @@ function App() {
   // chain into a continuous row regardless of which surface initiated them.
   // Scoped by canvasId so a turn that finishes after the user switches
   // canvases can't poison the new canvas's anchor.
-  const lastGenRectRef = useRef<{ canvasId: string; x: number; y: number; w: number; h: number; rowAnchorX: number } | null>(null);
   // Stable proxy passed to children (e.g. AgentPanel) that need the canvas
   // api. Each method delegates to the *current* canvasApiRef on every call,
   // so it never goes stale when the underlying api object identity changes
@@ -460,62 +473,10 @@ function App() {
           : placeholderSize("quality", ar, sizeKind, resolution);
       const sizes = new Array(count).fill(baseSize);
       const viewport = api.getViewport();
-      // Try row-cursor placement first: walk right of the previously placed
-      // rect (wrapping into a new row when the viewport edge is reached).
-      // If any trial slot collides with existing nodes, fall back to the
-      // generic empty-slot finder so we never overwrite the user's content.
-      const gap = 24;
-      const allNodes = api.getNodes();
-      // Mirror `findEmptySlots`/`nodesToRects`: frames and groups are layout
-      // containers, not obstacles — placeholders are allowed to land inside
-      // them. Counting them here would force fallback whenever the anchor
-      // sits inside a framed area.
-      const existing = allNodes.filter(
-        (n) => n.node_type !== "frame" && n.node_type !== "group",
-      );
-      const collides = (
-        x: number, y: number, w: number, h: number,
-        boxes: Array<{ x: number; y: number; w?: number; width?: number; h?: number; height?: number }>,
-      ) => boxes.some((b) => {
-        const bw = (b.w ?? b.width ?? 0);
-        const bh = (b.h ?? b.height ?? 0);
-        if (!bw || !bh) return false;
-        return x < b.x + bw && x + w > b.x && y < b.y + bh && y + h > b.y;
-      });
-      let rowSlots: Array<{ x: number; y: number; w: number; h: number }> | null = null;
-      // Only honor the anchor if it belongs to the canvas we're placing on.
-      const storedAnchor = lastGenRectRef.current;
-      const anchor = storedAnchor && storedAnchor.canvasId === canvasIdRef.current ? storedAnchor : null;
-      if (anchor) {
-        const trial: Array<{ x: number; y: number; w: number; h: number }> = [];
-        const maxRowWidth = Math.max(viewport.w * 0.85, baseSize.w * 4);
-        let cx = anchor.x + anchor.w + gap;
-        let cy = anchor.y;
-        let rowMaxH = anchor.h;
-        let allFit = true;
-        for (let i = 0; i < count; i++) {
-          if (cx + baseSize.w - anchor.rowAnchorX > maxRowWidth) {
-            cx = anchor.rowAnchorX;
-            cy += rowMaxH + gap;
-            rowMaxH = baseSize.h;
-          }
-          if (
-            collides(cx, cy, baseSize.w, baseSize.h, existing) ||
-            collides(cx, cy, baseSize.w, baseSize.h, trial)
-          ) {
-            allFit = false;
-            break;
-          }
-          trial.push({ x: cx, y: cy, w: baseSize.w, h: baseSize.h });
-          rowMaxH = Math.max(rowMaxH, baseSize.h);
-          cx += baseSize.w + gap;
-        }
-        if (allFit) rowSlots = trial;
-      }
-      // `findEmptySlots` re-applies the frame/group filter internally via
-      // its own helper, so passing the full node list keeps its semantics
-      // unchanged from before this row-cursor optimization.
-      const slots = rowSlots ?? findEmptySlots(viewport, sizes, allNodes);
+      // Placement reads its anchor off the canvas (rightmost node), so there is
+      // nothing to remember between calls and nothing to lose on reload or a
+      // canvas switch — see src/utils/canvasPlacement.ts.
+      const slots = findEmptySlots(viewport, sizes, api.getNodes());
       placedNodeIds = slots.map((slot) => {
         const node = api.addNode!(slot.x, slot.y, {
           node_type: "generating",
@@ -525,17 +486,6 @@ function App() {
         });
         return node?.id || "";
       }).filter(Boolean);
-      // Remember the *last* placed rect as the anchor for the next call.
-      // The rowAnchorX captures the left edge of the row so a wrapped second
-      // row continues to align under the first instead of marching offscreen.
-      if (slots.length > 0) {
-        const last = slots[slots.length - 1];
-        const rowAnchorX = anchor && rowSlots ? anchor.rowAnchorX : slots[0].x;
-        const cid = canvasIdRef.current;
-        if (cid) {
-          lastGenRectRef.current = { canvasId: cid, x: last.x, y: last.y, w: last.w, h: last.h, rowAnchorX };
-        }
-      }
     }
 
     // Issue one POST per placeholder. On success attach the job_id to the
@@ -1043,7 +993,6 @@ function App() {
     if (!pending) return;
     manualProjectSelectTsRef.current = Date.now();
     setActiveProjectId(pending);
-    setProjectsOpen(false);
   }, [activeWorkspace?.id, setActiveProjectId]);
 
   // Authoritative access state for the active project, fetched from the
@@ -1127,11 +1076,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (projectsOpen) {
+    if (railView === "home") {
       fetchProjects(activeProjectId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectsOpen]);
+  }, [railView]);
 
   const activeAudioProjectIdRef = useRef(activeAudioProjectId);
   activeAudioProjectIdRef.current = activeAudioProjectId;
@@ -1486,14 +1435,6 @@ function App() {
   const [reuseParams, setReuseParams] = useState<AudioGenerationParams | null>(null);
   const [reuseVersion, setReuseVersion] = useState(0);
   const [selectedNodeMeta, setSelectedNodeMeta] = useState<Map<string, ReferenceImage>>(new Map());
-  if (canvasIdRef.current !== effectiveCanvasProjectId) {
-    // Switching canvases invalidates the last-placed anchor — coordinates
-    // from one board don't make sense on another. The anchor is also
-    // canvasId-scoped on read, so this is belt-and-suspenders.
-    if (lastGenRectRef.current && lastGenRectRef.current.canvasId !== effectiveCanvasProjectId) {
-      lastGenRectRef.current = null;
-    }
-  }
   canvasIdRef.current = effectiveCanvasProjectId;
 
   const referenceImage = useMemo<ReferenceImage | null>(() => {
@@ -2035,6 +1976,101 @@ function App() {
     setAgentOpen(false);
   }, []);
 
+  // One handler set, three consumers: the side panel, the top tab strip and
+  // the home screen. Hoisted rather than duplicated so "create a project"
+  // means the same thing everywhere it can be triggered from.
+  const openWithAgent = () => {
+    setRailView(null);
+    setAgentOpen(true);
+  };
+
+  const projectHandlers: ProjectsHandlers = {
+          projects: projects.map((p) => ({
+            id: p.id, name: p.name,
+            date: p.date || new Date(p.updated_at || p.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+            items: p.node_count ?? p.items ?? 0,
+            thumbnails: p.thumbnails || [],
+          })),
+          sharingEnabled,
+          sharedProjects: sharedProjects.map((p) => ({
+            id: p.id, name: p.name,
+            date: p.date || new Date(p.updated_at || p.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+            items: p.node_count ?? p.items ?? 0,
+            thumbnails: p.thumbnails || [],
+            viewer_role: "viewer" as const,
+            owner_display_name: p.owner_display_name,
+            owner_email: p.owner_email,
+          })),
+          activeTab: projectsTab,
+          onTabChange: (t: ProjectsTab) => setProjectsTab(t),
+          currentProject: activeProjectId || "",
+          onSelect: async (id: string) => {
+            // Opening a project lands you in the agent, not the toolkit — the
+            // first thing you do in a project is ask for something.
+            if (id === activeProjectId) { openWithAgent(); return; }
+            manualProjectSelectTsRef.current = Date.now();
+            await canvasFlushRef.current?.();
+            setSelectedTool("create");
+            setActiveProjectId(id);
+            openWithAgent();
+          },
+          onCreate: async (name: string) => {
+            const wsId = activeWorkspace?.id;
+            if (!wsId) {
+              console.warn("[create-project] aborted: no active workspace");
+              return;
+            }
+            try {
+              const r = await fetch(`/api/projects/${wsId}`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+              });
+              if (!r.ok) {
+                let detail = "";
+                try { detail = JSON.stringify(await r.json()); } catch {}
+                console.error(`[create-project] POST /api/projects/${wsId} failed: ${r.status} ${detail}`);
+                return;
+              }
+              const data = await r.json();
+              const newProject = data?.project;
+              if (!newProject?.id) {
+                console.error("[create-project] response missing project.id", data);
+                return;
+              }
+              manualProjectSelectTsRef.current = Date.now();
+              await canvasFlushRef.current?.();
+              setSelectedTool("create");
+              setProjects((prev) => prev.some((p) => p.id === newProject.id) ? prev : [newProject, ...prev]);
+              setActiveProjectId(newProject.id);
+              openWithAgent();
+              fetchProjects(newProject.id);
+            } catch (err) {
+              console.error("[create-project] unexpected error", err);
+            }
+          },
+          onDelete: (id: string) => {
+            fetch(`/api/projects/${id}`, { method: "DELETE", credentials: "include" })
+              .then((r) => { if (r.ok) return r.json(); throw new Error("Failed"); })
+              .then(() => {
+                if (activeWorkspace?.id) invalidateCanvasCache(`ws:${activeWorkspace.id}:project:${id}`);
+                fetchProjects(activeProjectId === id ? null : activeProjectId);
+              })
+              .catch(() => {});
+          },
+          onRename: (id: string, newName: string) => {
+            fetch(`/api/projects/${id}/rename`, {
+              method: "PUT", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: newName }),
+            })
+              .then((r) => { if (r.ok) return r.json(); throw new Error("Failed"); })
+              .then(() => fetchProjects(activeProjectId))
+              .catch(() => {});
+          },
+          defaultName: "Untitled Project",
+  };
+
   return (
     <div className="app">
       {/* Frameless-window drag strip, confined to the right panel area so the
@@ -2106,7 +2142,6 @@ function App() {
             }
           }}
           unreadCount={unreadCount}
-          onHomeClick={() => { setGifMakerOpen(false); setSvgMakerOpen(false); setRailView("toolkit"); setSelectedTool("create"); setAgentOpen(false); }}
           onActivateDesign={() => { setGifMakerOpen(false); setSvgMakerOpen(false); setSelectedTool("design"); }}
           isDesignActive={selectedTool === "design"}
           agentOpen={agentOpen}
@@ -2131,14 +2166,16 @@ function App() {
             onMarkAllRead={markAllRead}
           />
         )}
-        {railView === "brandiq" && (
-          <BrandIQPanel
+        {railView === "skills" && (
+          <SkillsPanel
             onClose={() => setRailView(null)}
-            activeProjectId={activeProjectId || null}
-            selectedImageIds={selectedImageIds}
-            selectedNodeMeta={selectedNodeMeta}
+            onUseSkill={(slug, title) => {
+              setAgentOpen(true);
+              setAgentSeed({ text: `Use my "${title}" skill (slug: ${slug}) — read it with get_skill first, then follow it.`, nonce: Date.now() });
+            }}
           />
         )}
+        {railView === "github" && <GitHubPanel onClose={() => setRailView(null)} />}
         {showLeftToolbar && (
           <LeftToolbar
             mode={leftToolbarMode}
@@ -2150,97 +2187,6 @@ function App() {
             activeLibraryView={libraryView}
             readOnly={isActiveProjectViewer}
             onClose={() => setRailView(null)}
-          />
-        )}
-        {projectsOpen && (
-          <ProjectsSidePanel
-            onClose={() => setRailView("toolkit")}
-            onSettingsOpen={(section?: string) => { setSettingsSection(section || "account"); setSettingsOpen(true); }}
-            handlers={{
-              projects: projects.map((p) => ({
-                id: p.id, name: p.name,
-                date: p.date || new Date(p.updated_at || p.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-                items: p.node_count ?? p.items ?? 0,
-                thumbnails: p.thumbnails || [],
-              })),
-              sharingEnabled,
-              sharedProjects: sharedProjects.map((p) => ({
-                id: p.id, name: p.name,
-                date: p.date || new Date(p.updated_at || p.created_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-                items: p.node_count ?? p.items ?? 0,
-                thumbnails: p.thumbnails || [],
-                viewer_role: "viewer" as const,
-                owner_display_name: p.owner_display_name,
-                owner_email: p.owner_email,
-              })),
-              activeTab: projectsTab,
-              onTabChange: (t: ProjectsTab) => setProjectsTab(t),
-              currentProject: activeProjectId || "",
-              onSelect: async (id: string) => {
-                if (id === activeProjectId) { setRailView("toolkit"); return; }
-                manualProjectSelectTsRef.current = Date.now();
-                await canvasFlushRef.current?.();
-                setSelectedTool("create");
-                setActiveProjectId(id);
-                setRailView("toolkit");
-              },
-              onCreate: async (name: string) => {
-                const wsId = activeWorkspace?.id;
-                if (!wsId) {
-                  console.warn("[create-project] aborted: no active workspace");
-                  return;
-                }
-                try {
-                  const r = await fetch(`/api/projects/${wsId}`, {
-                    method: "POST", credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name }),
-                  });
-                  if (!r.ok) {
-                    let detail = "";
-                    try { detail = JSON.stringify(await r.json()); } catch {}
-                    console.error(`[create-project] POST /api/projects/${wsId} failed: ${r.status} ${detail}`);
-                    return;
-                  }
-                  const data = await r.json();
-                  const newProject = data?.project;
-                  if (!newProject?.id) {
-                    console.error("[create-project] response missing project.id", data);
-                    return;
-                  }
-                  manualProjectSelectTsRef.current = Date.now();
-                  await canvasFlushRef.current?.();
-                  setSelectedTool("create");
-                  setProjects((prev) => prev.some((p) => p.id === newProject.id) ? prev : [newProject, ...prev]);
-                  setActiveProjectId(newProject.id);
-                  setRailView("toolkit");
-                  fetchProjects(newProject.id);
-                } catch (err) {
-                  console.error("[create-project] unexpected error", err);
-                }
-              },
-              onDelete: (id: string) => {
-                fetch(`/api/projects/${id}`, { method: "DELETE", credentials: "include" })
-                  .then((r) => { if (r.ok) return r.json(); throw new Error("Failed"); })
-                  .then(() => {
-                    if (activeWorkspace?.id) invalidateCanvasCache(`ws:${activeWorkspace.id}:project:${id}`);
-                    fetchProjects(activeProjectId === id ? null : activeProjectId);
-                  })
-                  .catch(() => {});
-              },
-              onRename: (id: string, newName: string) => {
-                fetch(`/api/projects/${id}/rename`, {
-                  method: "PUT", credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: newName }),
-                })
-                  .then((r) => { if (r.ok) return r.json(); throw new Error("Failed"); })
-                  .then(() => fetchProjects(activeProjectId))
-                  .catch(() => {});
-              },
-              defaultName: "Untitled Project",
-            }}
-            fetchError={projectsFetchError}
           />
         )}
         {showLayersPanel && (
@@ -2255,7 +2201,6 @@ function App() {
           <OperatorPanel
             onClose={() => setAgentOpen(false)}
             onBusyChange={setAgentBusy}
-            onOpenSettings={() => setApiKeysOpen(true)}
             getCanvasContext={() => {
               // Snapshot the open canvas + viewport so operator generations land
               // where the user is looking (first gen) and cascade from there.
@@ -2267,6 +2212,7 @@ function App() {
               return { canvasId: canvasIdRef.current || undefined, viewport };
             }}
             canvasReferenceImages={canvasReferenceImages}
+            seedPrompt={agentSeed}
           />
         )}
         {SHOW_LEGACY_AGENT && showAgentPanel && (
@@ -2277,20 +2223,6 @@ function App() {
             isGuest={isGuest}
             canvasApi={canvasApiProxy}
             onBusyChange={setAgentBusy}
-            getLastGenRect={() => {
-              const a = lastGenRectRef.current;
-              if (!a || a.canvasId !== canvasIdRef.current) return null;
-              return { x: a.x, y: a.y, w: a.w, h: a.h, rowAnchorX: a.rowAnchorX };
-            }}
-            setLastGenRect={(r) => {
-              const cid = canvasIdRef.current;
-              if (!cid) return;
-              if (r === null) {
-                if (lastGenRectRef.current?.canvasId === cid) lastGenRectRef.current = null;
-                return;
-              }
-              lastGenRectRef.current = { canvasId: cid, ...r };
-            }}
             onClose={() => setAgentOpen(false)}
             onFullCanvas={() => { setRightPanelHidden(true); }}
             onSignInRequest={authSignIn}
@@ -2371,11 +2303,17 @@ function App() {
               // narrower viewports. Other left-rail panels (toolkit,
               // projects, layers, library) still use fixed widths and
               // keep their original insets.
+              // Each arm is (left stack width) + (open panel width) +
+              // --canvas-inset-pad, rather than a baked-in pixel total: the
+              // rail width and the trailing pad both change when the stack
+              // docks (html.is-mac), and a hardcoded total leaves the canvas —
+              // and the zoom pill anchored to it — floating off the rail edge.
               settingsOpen ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--qs-settings-gap) + 4px)" :
-              railView === "library" ? "760px" :
-              railView === "quick-settings" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + 12px)" :
-              railView === "toolkit" || railView === "projects" || railView === "layers" ? "388px" :
-              "88px",
+              railView === "library" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 672px + var(--canvas-inset-pad))" :
+              railView === "quick-settings" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--canvas-inset-pad))" :
+              railView === "skills" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--skills-panel-width) + var(--canvas-inset-pad))" :
+              railView === "toolkit" || railView === "layers" || railView === "github" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))" :
+              "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--canvas-inset-pad))",
             // Right inset: when the agent is open the right reserved
             // area is 360px — that's a 16px breathing gap + 320px
             // panel + 12px wing + 12px wing (the panel sits at right:
@@ -2395,6 +2333,58 @@ function App() {
               (rightPanelHidden && !presentMode) ? "20px" : "0px",
           }}
         >
+          {!presentMode && (
+            <ProjectTabs
+              projects={projects}
+              openIds={openProjectIds}
+              activeId={activeProjectId || ""}
+              onSelect={(id) => projectHandlers.onSelect(id)}
+              onClose={(id) => setOpenProjectIds((prev) => {
+                const next = prev.filter((x) => x !== id);
+                try { localStorage.setItem("openProjects", JSON.stringify(next)); } catch {}
+                // Closing the tab you're on falls back to the neighbour, or home.
+                if (id === activeProjectId) {
+                  if (next.length) setActiveProjectId(next[next.length - 1]);
+                  else setRailView("home");
+                }
+                return next;
+              })}
+              onCreate={() => projectHandlers.onCreate(projectHandlers.defaultName || "Untitled Project")}
+              onRename={(id, name) => projectHandlers.onRename?.(id, name)}
+            />
+          )}
+          {railView === "home" && (
+            <div
+              // Covers the canvas only; the tab strip is a flow sibling above it,
+              // so switching stays one click away from the home screen.
+              style={{
+                position: "absolute",
+                inset: "var(--project-tabs-h, 0px) 0 0 0",
+                display: "flex",
+                flexDirection: "column",
+                zIndex: 10,
+                background: "var(--app-bg, #0e0e12)",
+                borderRadius: "inherit",
+              }}
+            >
+              {projectsFetchError && (
+                <div style={{ padding: "10px 40px", color: "#f0a0a0", fontSize: 12 }}>{projectsFetchError}</div>
+              )}
+              <ProjectsPage
+                category="make"
+                projects={projectHandlers.projects}
+                currentProject={projectHandlers.currentProject}
+                onSelect={projectHandlers.onSelect}
+                onCreate={projectHandlers.onCreate}
+                onDelete={projectHandlers.onDelete}
+                onRename={projectHandlers.onRename}
+                sharingEnabled={projectHandlers.sharingEnabled}
+                sharedProjects={projectHandlers.sharedProjects}
+                activeTab={projectHandlers.activeTab}
+                onTabChange={projectHandlers.onTabChange}
+              />
+            </div>
+          )}
           <div className="canvas-glow canvas-glow--sharp" aria-hidden="true" />
           <div className="canvas-glow-blur" aria-hidden="true">
             <div className="canvas-glow canvas-glow--soft" />
@@ -2462,6 +2452,7 @@ function App() {
               }}
             />
           ) : (
+            <ErrorBoundary what="The canvas">
             <FreeformCanvas
                 selectedImageIds={selectedImageIds}
                 onSelectImage={handleCanvasSelectImage}
@@ -2507,6 +2498,7 @@ function App() {
                 dotPulseKey={dotPulseKey}
                 onCanvasApi={handleCanvasApi}
               />
+            </ErrorBoundary>
           )}
         </div>
         {rightPanelHidden && !presentMode && !settingsOpen && (

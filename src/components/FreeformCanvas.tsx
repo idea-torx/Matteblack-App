@@ -123,7 +123,7 @@ export function FreeformCanvas({
   const { activeWorkspace } = useWorkspace();
   const { signIn } = useAuth();
   const viewportRef = useRef<HTMLDivElement>(null);
-  const { fullscreen, openFullscreen, closeFullscreen, downloadNode: rawDownloadNode, saveToLibrary: rawSaveToLibrary, deleteNode } = useNodeToolbar();
+  const { fullscreen, openFullscreen, closeFullscreen, downloadNode: rawDownloadNode, saveToLibrary: rawSaveToLibrary, savePrompt, deleteNode } = useNodeToolbar();
 
   const handleToolbarSave = useCallback((node: CanvasNode): Promise<{ ok: boolean }> => {
     return rawSaveToLibrary(node, () => onLibrarySaved?.());
@@ -670,6 +670,20 @@ export function FreeformCanvas({
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+
+  // --zoom exists only so chrome (outlines, handles, labels) can counter-scale
+  // itself to stay 1px on screen. It lives on the transform container, i.e. the
+  // root of every canvas node — so writing it invalidates style for the whole
+  // subtree. During a wheel-zoom that is a full recalc of every node per frame,
+  // which is why panning (transform only) is smooth and zooming is not, and why
+  // it gets worse with more assets. Let the transform track zoom live and let
+  // the counter-scale settle once the gesture stops; chrome being a fraction of
+  // a pixel off mid-gesture is invisible.
+  const [settledZoom, setSettledZoom] = useState(zoom);
+  useEffect(() => {
+    const t = setTimeout(() => setSettledZoom(zoom), 140);
+    return () => clearTimeout(t);
+  }, [zoom]);
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
 
@@ -1438,7 +1452,7 @@ export function FreeformCanvas({
                 enqueueDirty({ type: "update", canvasId, nodeId: cinemaId, fields: { metadata: capturedNewMeta }, committed: true });
                 const prevTimeline = capturedPrevMeta ? parseTimelineFromMetadata(capturedPrevMeta) : parseTimelineFromMetadata({});
                 const nextTimeline = parseTimelineFromMetadata(capturedNewMeta);
-                syncTimelineToServer(canvasId, prevTimeline, nextTimeline).catch((err) => {
+                syncTimelineToServer(canvasId, cinemaId, prevTimeline, nextTimeline).catch((err) => {
                   console.error("[FreeformCanvas] cinema sync after drag-drop failed:", err);
                 });
               }
@@ -1607,11 +1621,10 @@ export function FreeformCanvas({
     });
 
     if (cId) {
-      const deletingCinema = deletedNodes.some((n) => n.node_type === "cinema");
-      if (deletingCinema) {
-        // Drop any debounced cinema/sync flush so it can't race the node
-        // delete and resurrect tracks/clips on the server.
-        cancelTimelineSync(cId);
+      // Drop any debounced cinema/sync flush so it can't race the node delete
+      // and resurrect tracks/clips on the server.
+      for (const n of deletedNodes) {
+        if (n.node_type === "cinema") cancelTimelineSync(cId, n.id);
       }
       toDelete.forEach((id) => {
         enqueueDirty({ type: "delete", canvasId: cId, nodeId: id, committed: true });
@@ -3053,7 +3066,7 @@ export function FreeformCanvas({
 
       <div
         className="freeform-canvas__transform"
-        style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, "--zoom": zoom } as React.CSSProperties}
+        style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, "--zoom": settledZoom } as React.CSSProperties}
       >
         {sortedNodes.map((node) => {
           if (node.visible === false) return null;
@@ -3086,6 +3099,7 @@ export function FreeformCanvas({
               onRotatePointerDown={handleRotatePointerDown}
               onDownloadNode={downloadNode}
               onSaveToLibrary={handleToolbarSave}
+              onSavePrompt={savePrompt}
               onDeleteNode={deleteNode}
               onOpenFullscreen={openFullscreen}
               onToggleVideoPlay={toggleVideoPlay}
@@ -3134,7 +3148,7 @@ export function FreeformCanvas({
                 width: node.width,
                 height: 0,
                 pointerEvents: "none",
-                "--zoom": zoom,
+                "--zoom": settledZoom,
               } as React.CSSProperties}
             >
               {editingFrameLabel === node.id ? (
@@ -3181,7 +3195,7 @@ export function FreeformCanvas({
                 transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
                 pointerEvents: inFlightTextNodeId === node.id ? "none" : (node.node_type === "video" ? "none" : "auto"),
                 overflow: svgPathEdit.isEditingPath(node.id) ? "visible" : undefined,
-                "--zoom": zoom,
+                "--zoom": settledZoom,
               } as React.CSSProperties}
               onPointerDown={(e) => handleNodePointerDown(e, node.id)}
               onClick={(e) => { e.stopPropagation(); handleNodeClick(e, node.id); }}
@@ -3245,7 +3259,7 @@ export function FreeformCanvas({
               width: selectionBox.bounds.width,
               height: selectionBox.bounds.height,
               pointerEvents: "none",
-              "--zoom": zoom,
+              "--zoom": settledZoom,
             } as React.CSSProperties}
           >
             {(["nw", "ne", "sw", "se", "n", "s", "w", "e"] as const).map((h) => (
@@ -3463,8 +3477,11 @@ export function FreeformCanvas({
                   const cy = (vh / 2 - panY) / zoom - 250;
                   addNodeAtPosition(cx, cy, {
                     node_type: "cinema",
-                    width: 800,
-                    height: 800,
+                    // The viewer is what's left after the fixed toolbar and
+                    // timeline take their rows, so the height is 1080 plus the
+                    // ~620px of chrome — that makes the picture a true 1920x1080.
+                    width: 1920,
+                    height: 1700,
                     label: "Cinema Frame",
                     locked: true,
                     metadata: { timelineState: { tracks: [{ id: crypto.randomUUID(), type: "video", clips: [] }, { id: crypto.randomUUID(), type: "audio", clips: [] }], playheadPosition: 0, zoomLevel: 1 } },
@@ -3479,7 +3496,7 @@ export function FreeformCanvas({
                   <line x1="2" y1="12" x2="22" y2="12" />
                 </svg>
                 <span>Cinema Frame</span>
-                <span className="design-subtool-dropdown-dim">800×500</span>
+                <span className="design-subtool-dropdown-dim">1920×1080</span>
               </button>
               {[
                 { label: "HD", w: 1920, h: 1080 },

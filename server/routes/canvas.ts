@@ -1199,6 +1199,17 @@ router.get("/api/canvas/:canvasId/load", async (req: AuthRequest, res: Response)
         await pool.query(`DELETE FROM cinema_clips WHERE canvas_id = $1`, [canvasState.id]);
         await pool.query(`DELETE FROM cinema_tracks WHERE canvas_id = $1`, [canvasState.id]);
       } else {
+        // One-time adoption of pre-multi-node rows: they were canvas-scoped, so
+        // they belong to whichever cinema frame the canvas already had.
+        const firstCinema = resultNodes.find(
+          (n) => (n as { node_type?: string }).node_type === "cinema"
+        ) as { id: string } | undefined;
+        if (firstCinema) {
+          await pool.query(
+            `UPDATE cinema_tracks SET node_id = $2 WHERE canvas_id = $1 AND node_id = ''`,
+            [canvasState.id, firstCinema.id]
+          );
+        }
         const tracksResult = await pool.query(
           `SELECT * FROM cinema_tracks WHERE canvas_id = $1 ORDER BY sort_order ASC`,
           [canvasState.id]
@@ -1479,17 +1490,21 @@ router.delete("/api/canvas/:canvasId/nodes/:nodeId", async (req: AuthRequest, re
         }
       }
 
-      // Cinema frames "own" the canvas-scoped cinema_tracks/cinema_clips rows
-      // (one cinema node per canvas). Cascade-delete those rows (and tombstone
-      // every clip) in the same transaction as the node delete + tombstone
-      // write so an in-flight client `cinema/sync` flush cannot resurrect them.
+      // A cinema frame owns the cinema_tracks rows tagged with its node id (and
+      // their clips). Cascade-delete just those (tombstoning each clip) in the
+      // same transaction as the node delete + tombstone write, so an in-flight
+      // client `cinema/sync` flush cannot resurrect them — and so deleting one
+      // frame leaves every other frame's timeline alone. (Legacy node_id ''
+      // rows are adopted by the loader, so by here every row is tagged.)
       if (node.node_type === "cinema") {
         const cinemaClient = await pool.connect();
         try {
           await cinemaClient.query("BEGIN");
           const orphanClips = await cinemaClient.query(
-            `SELECT id FROM cinema_clips WHERE canvas_id = $1`,
-            [canvasId]
+            `SELECT c.id FROM cinema_clips c
+               JOIN cinema_tracks t ON t.id = c.track_id
+              WHERE c.canvas_id = $1 AND t.node_id = $2`,
+            [canvasId, nodeId]
           );
           for (const r of orphanClips.rows as { id: string }[]) {
             await cinemaClient.query(
@@ -1497,8 +1512,15 @@ router.delete("/api/canvas/:canvasId/nodes/:nodeId", async (req: AuthRequest, re
               [canvasId, r.id]
             );
           }
-          await cinemaClient.query(`DELETE FROM cinema_clips WHERE canvas_id = $1`, [canvasId]);
-          await cinemaClient.query(`DELETE FROM cinema_tracks WHERE canvas_id = $1`, [canvasId]);
+          await cinemaClient.query(
+            `DELETE FROM cinema_clips WHERE canvas_id = $1 AND track_id IN (
+               SELECT id FROM cinema_tracks WHERE canvas_id = $1 AND node_id = $2)`,
+            [canvasId, nodeId]
+          );
+          await cinemaClient.query(
+            `DELETE FROM cinema_tracks WHERE canvas_id = $1 AND node_id = $2`,
+            [canvasId, nodeId]
+          );
           await cinemaClient.query(`DELETE FROM canvas_nodes WHERE id = $1`, [nodeId]);
           await cinemaClient.query(
             `INSERT INTO canvas_node_tombstones (node_id, canvas_id) VALUES ($1, $2) ON CONFLICT (node_id) DO NOTHING`,
@@ -1695,20 +1717,24 @@ router.post("/api/canvas/:canvasId/cinema/sync", async (req: AuthRequest, res: R
   try {
     const { canvasId } = req.params;
     const { tracks, clips, deletedClipIds, deletedTrackIds } = req.body;
+    // Which cinema frame this timeline belongs to. Older clients don't send it;
+    // '' matches the legacy canvas-scoped rows.
+    const nodeId: string = typeof req.body?.nodeId === "string" ? req.body.nodeId : "";
 
     const access = await ensureCanvasAccess(req, res, canvasId, "write");
     if (!access.ok) return;
 
-    // Refuse to write tracks/clips for a canvas whose cinema frame is gone or
+    // Refuse to write tracks/clips for a cinema frame that is gone or
     // tombstoned — otherwise a queued client sync flushed after the user
     // deleted the frame would resurrect orphan rows that the next page load
     // would re-attach to a freshly created cinema node.
     const parentCheck = await pool.query(
       `SELECT 1 FROM canvas_nodes
         WHERE canvas_id = $1 AND node_type = 'cinema'
+          AND ($2 = '' OR id::text = $2)
           AND id NOT IN (SELECT node_id FROM canvas_node_tombstones WHERE canvas_id = $1)
         LIMIT 1`,
-      [canvasId]
+      [canvasId, nodeId]
     );
     if (parentCheck.rows.length === 0) {
       return res.status(409).json({ error: "Cinema frame not found for canvas" });
@@ -1754,8 +1780,8 @@ router.post("/api/canvas/:canvasId/cinema/sync", async (req: AuthRequest, res: R
             }
           }
           await client.query(
-            `DELETE FROM cinema_tracks WHERE canvas_id = $1 AND id = ANY($2::uuid[])`,
-            [canvasId, validDeletedTrackIds]
+            `DELETE FROM cinema_tracks WHERE canvas_id = $1 AND node_id = $3 AND id = ANY($2::uuid[])`,
+            [canvasId, validDeletedTrackIds, nodeId]
           );
         }
       }
@@ -1764,14 +1790,16 @@ router.post("/api/canvas/:canvasId/cinema/sync", async (req: AuthRequest, res: R
         for (const track of tracks) {
           if (!isUuid(track.id)) continue;
           await client.query(
-            `INSERT INTO cinema_tracks (id, canvas_id, track_type, sort_order)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO cinema_tracks (id, canvas_id, node_id, track_type, sort_order, muted)
+             VALUES ($1, $2, $5, $3, $4, $6)
              ON CONFLICT (id) DO UPDATE SET
                track_type = COALESCE(EXCLUDED.track_type, cinema_tracks.track_type),
                sort_order = COALESCE(EXCLUDED.sort_order, cinema_tracks.sort_order),
+               node_id = EXCLUDED.node_id,
+               muted = EXCLUDED.muted,
                updated_at = NOW()
              WHERE cinema_tracks.canvas_id = $2`,
-            [track.id, canvasId, track.track_type, track.sort_order ?? 0]
+            [track.id, canvasId, track.track_type, track.sort_order ?? 0, nodeId, track.muted === true]
           );
         }
       }
@@ -1787,8 +1815,8 @@ router.post("/api/canvas/:canvasId/cinema/sync", async (req: AuthRequest, res: R
         const tombstonedSet = new Set(tombstoned.rows.map((r: { clip_id: string }) => r.clip_id));
 
         const validTrackIds = await client.query(
-          `SELECT id FROM cinema_tracks WHERE canvas_id = $1`,
-          [canvasId]
+          `SELECT id FROM cinema_tracks WHERE canvas_id = $1 AND node_id = $2`,
+          [canvasId, nodeId]
         );
         const validTrackIdSet = new Set(validTrackIds.rows.map((r: { id: string }) => r.id));
 

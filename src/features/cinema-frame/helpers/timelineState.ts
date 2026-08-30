@@ -32,6 +32,11 @@ export type TimelineTrack = {
   id: string;
   type: "video" | "audio";
   clips: TimelineClip[];
+  /** Silence every clip on this track without touching their own volumes, so
+   *  unmuting restores the mix the user set. The common case is muting V1 so a
+   *  music bed on A1 plays under the picture instead of fighting the dialogue
+   *  and room tone baked into generated clips. */
+  muted?: boolean;
 };
 
 export type TimelineState = {
@@ -140,8 +145,13 @@ export function addVideoWithLinkedAudio(
     startOffset = lastVideoClip ? lastVideoClip.startOffset + getEffectiveDuration(lastVideoClip) : 0;
   }
 
+  // A generated id with no matching track silently dropped the mirror clip —
+  // the drop looked fine and the sound was simply gone. Create the track.
   const audioTrack = state.tracks.find((t) => t.type === "audio");
   const audioTrackId = audioTrack?.id || generateId();
+  const tracksWithAudio = audioTrack
+    ? state.tracks
+    : [...state.tracks, { id: audioTrackId, type: "audio" as const, clips: [] }];
 
   const linkedVideoClip: TimelineClip = {
     ...videoClip,
@@ -166,7 +176,7 @@ export function addVideoWithLinkedAudio(
     linkedClipId: videoClip.id,
   };
 
-  const tracks = state.tracks.map((track) => {
+  const tracks = tracksWithAudio.map((track) => {
     if (track.id === videoTrackId) {
       return { ...track, clips: [...track.clips, linkedVideoClip].sort((a, b) => a.startOffset - b.startOffset) };
     }
@@ -420,6 +430,35 @@ export function getActiveClipAtTime(
   return null;
 }
 
+/**
+ * The volume a clip actually plays at. Track mute wins over the clip's own
+ * level and is NOT written into it, so unmuting is lossless.
+ *
+ * Playback and export must never compute this differently — a mute that is
+ * audible in the preview but present in the export (or vice versa) is worse
+ * than no mute at all, so both call this.
+ */
+export function effectiveVolume(track: TimelineTrack | undefined, clip: TimelineClip): number {
+  if (track?.muted) return 0;
+  return Math.max(0, Math.min(1, clip.volume ?? 1));
+}
+
+/** Track ids whose audio is muted — the form the export and viewer want. */
+export function mutedTrackIds(state: TimelineState): Set<string> {
+  return new Set(state.tracks.filter((t) => t.muted).map((t) => t.id));
+}
+
+export function setTrackMuted(
+  state: TimelineState,
+  trackId: string,
+  muted: boolean
+): TimelineState {
+  return {
+    ...state,
+    tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, muted } : t)),
+  };
+}
+
 export function getTrackLabel(state: TimelineState, track: TimelineTrack): string {
   const sameType = state.tracks.filter((t) => t.type === track.type);
   const idx = sameType.indexOf(track);
@@ -459,7 +498,7 @@ function normalizeTrackGeneric(raw: unknown, idx: number): TimelineTrack | null 
   const clips = Array.isArray(track.clips)
     ? (track.clips.map(normalizeClip).filter(Boolean) as TimelineClip[])
     : [];
-  return { id, type: trackType, clips };
+  return { id, type: trackType, clips, muted: track.muted === true };
 }
 
 let _cachedTimelineStateObj: unknown = null;

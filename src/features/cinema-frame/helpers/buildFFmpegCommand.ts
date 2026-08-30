@@ -30,11 +30,16 @@ export function buildFFmpegCommand(
   const audioTracks = timeline.tracks.filter((t) => t.type === "audio");
 
   const videoClips: ClipFileEntry[] = [];
+  // Clips whose track is muted still render picture — they just contribute no
+  // audio to the mix. Tracked by clip id because the audio pass below works
+  // from flat clip lists that have lost which track they came from.
+  const mutedVideoClipIds = new Set<string>();
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       const filename = clipFileMap.get(clip.id);
       if (filename && clip.type === "video") {
         videoClips.push({ clip, filename });
+        if (track.muted) mutedVideoClipIds.add(clip.id);
       }
     }
   }
@@ -43,8 +48,13 @@ export function buildFFmpegCommand(
   const audioClipsFromTimeline: ClipFileEntry[] = [];
   if (config.includeAudio) {
     for (const track of audioTracks) {
+      if (track.muted) continue;
       for (const clip of track.clips) {
         const filename = clipFileMap.get(clip.id);
+        // A video dropped on the timeline gets a MIRROR clip on the audio track
+        // carrying that video's own audio. Muting the video track has to drop
+        // the mirror too, or the sound comes back in through the side door.
+        if (clip.linkedClipId && mutedVideoClipIds.has(clip.linkedClipId)) continue;
         if (filename) {
           audioClipsFromTimeline.push({ clip, filename });
         }
@@ -52,6 +62,7 @@ export function buildFFmpegCommand(
     }
 
     for (const entry of videoClips) {
+      if (mutedVideoClipIds.has(entry.clip.id)) continue;
       const hasLinkedAudio = audioClipsFromTimeline.some(
         (ac) => ac.clip.linkedClipId === entry.clip.id || entry.clip.linkedClipId === ac.clip.id
       );

@@ -14,6 +14,9 @@ import { checkAndDebit, refundCreditsWithFallback, reserveAgentCredits, settleAg
 import { v4 as uuidv4 } from "uuid";
 import { pool } from "../db.js";
 import probe from "probe-image-size";
+import fs from "node:fs";
+import { UPLOADS_DIR } from "../config/runtime.js";
+import { resolveUploadPath } from "../utils/uploadPath.js";
 import { getAnthropicKey } from "../config/userConfig.js";
 import { listAvailableModels } from "../fal.js";
 import { estimateFalCost, falPricedModelKeys } from "../config/falCost.js";
@@ -25,7 +28,8 @@ import { scheduleCanvasFlush } from "../services/canvasCheckpointScheduler.js";
 import redisClient from "../services/redisClient.js";
 import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
-import { getOperatorContext, setOperatorAnchor } from "../services/operatorCanvasContext.js";
+import { extractLastFrame, extractTailClip, VideoTailError, MIN_TAIL_SECONDS } from "../utils/videoTail.js";
+import { getOperatorContext } from "../services/operatorCanvasContext.js";
 
 const router = Router();
 
@@ -1438,10 +1442,20 @@ function resolveImageModel(tier: GenTier, hasReference: boolean): string {
 // Tier → base video model family. The concrete variant (t2v / i2v / flf2v /
 // r2v) is decided later by selectVideoVariant() based on the user-specified
 // reference mode, so this only picks the family.
-function resolveVideoModelFamily(tier: GenTier): "veo3.1-lite" | "kling-o3-pro" | "seedance-2.0" {
+//
+// Video is MiniMax H3 Max, full stop — no cheaper substitute. This used to hold
+// only for text-to-video, because fal shipped no i2v/r2v endpoint for H3 Max and
+// an attached reference had to be handed to another family. Both endpoints now
+// exist, so the reason for that substitution is gone and references stay on H3
+// Max too. An explicitly chosen non-default tier still names its own family, and
+// `model` still overrides everything.
+function resolveVideoModelFamily(
+  tier: GenTier,
+  _hasReference: boolean,
+): "h3-max" | "veo3.1-lite" | "kling-o3-pro" | "seedance-2.0" {
   if (tier === "quick") return "veo3.1-lite";
   if (tier === "quality") return "kling-o3-pro";
-  return "seedance-2.0";
+  return "h3-max";
 }
 
 // Returns true if the user has completed Seedance geo verification and is in
@@ -1499,7 +1513,7 @@ type ModelEntry = {
   tier: GenTier;
   label: string;
   t2: string;
-  i2: string;
+  i2?: string;
   i2_first_last?: string;
   i2_multi?: string;
 };
@@ -1513,6 +1527,10 @@ const MODEL_WHITELIST: Record<string, ModelEntry> = {
   "kling-o3-pro": { kind: "video", tier: "quality", label: "Kling O3 Pro", t2: "kling-o3-pro-t2v", i2: "kling-o3-pro-i2v", i2_multi: "kling-o3-pro-r2v" },
   "kling-o3-4k": { kind: "video", tier: "quality", label: "Kling O3 4K", t2: "kling-o3-4k-t2v", i2: "kling-o3-4k-i2v", i2_multi: "kling-o3-4k-r2v" },
   "veo3.1-lite": { kind: "video", tier: "quick", label: "Veo 3.1 Lite", t2: "veo3.1-lite-t2v", i2: "veo3.1-lite-i2v", i2_first_last: "veo3.1-lite-flf2v" },
+  // H3 Max does all three modes. i2_first_last shares the i2v endpoint: one
+  // endpoint takes image_url and end_image_url, so the mode is which of the two
+  // the caller fills, not a different model.
+  "h3-max": { kind: "video", tier: "quick", label: "MiniMax H3 Max", t2: "h3-max-t2v", i2: "h3-max-i2v", i2_first_last: "h3-max-i2v", i2_multi: "h3-max-r2v" },
 };
 
 // Three explicit ways the user can want references attached to a video:
@@ -1530,6 +1548,10 @@ function selectVideoVariant(
   mode: VideoReferenceMode,
   refCount: number,
 ): { id: string; notice?: string } {
+  // A family with no image-to-video endpoint can only ever run text-to-video.
+  if (!entry.i2) {
+    return { id: entry.t2, notice: `${entry.label} is text-to-video only — generated from the prompt without the reference.` };
+  }
   if (mode === "first_frame") {
     return { id: entry.i2 };
   }
@@ -1579,6 +1601,12 @@ const MODEL_ALIASES: Record<string, string> = {
   "seedance 2": "seedance-2.0",
   "seedance 2.0": "seedance-2.0",
   "seedance2": "seedance-2.0",
+  "h3": "h3-max",
+  "h3 max": "h3-max",
+  "minimax": "h3-max",
+  "minimax h3": "h3-max",
+  "minimax h3 max": "h3-max",
+  "hailuo": "h3-max",
 };
 // Resolve an explicit-model name to a ModelEntry. The concrete variant
 // (t2 / i2 / flf / multi) is picked later by the caller based on refs +
@@ -1593,6 +1621,62 @@ function resolveExplicitModel(name: string | undefined): ModelEntry | null {
   if (MODEL_ALIASES[key]) key = MODEL_ALIASES[key];
   return MODEL_WHITELIST[key] ?? null;
 }
+
+/**
+ * Chunk-chained long-form video. Each call is one ordinary H3 Max generation
+ * whose reference is the END of the previous clip, so a sequence of calls walks
+ * a scene forward past any single clip's 15s ceiling.
+ *
+ * Not offered to the in-app agent panel: that path dispatches only
+ * generate_media / transform_media / generate_music, so it is served to the MCP
+ * bridge alone (see /api/agent/tools).
+ */
+const CONTINUE_VIDEO_TOOL: Tool = {
+  name: "continue_video",
+  description:
+    "Continue an existing video clip with a new clip that picks up where it ended, using MiniMax H3 Max. Call this repeatedly — feeding each result's URL back in as the next `sourceUrl` — to build long-form video past the 15s per-clip limit. Use it whenever the user wants a video longer than 15 seconds, a multi-shot sequence, or 'what happens next' from a clip already on the canvas. The result lands on the canvas like any other generation.",
+  input_schema: {
+    type: "object",
+    properties: {
+      sourceUrl: {
+        type: "string",
+        description: "URL of the clip to continue from — usually the result URL of the previous continue_video or generate_media call. Get it from list_canvas if the user is pointing at something already on the canvas.",
+      },
+      prompt: {
+        type: "string",
+        description: "What happens in THIS chunk only, 1-3 vivid English sentences. Describe the action continuing, not the whole story — the model already sees the end of the previous clip. Keep the subject, wardrobe, lighting and camera language identical across chunks; a changed adjective is how a sequence drifts.",
+      },
+      seam: {
+        type: "string",
+        enum: ["frame", "reference"],
+        description: "How to join the chunks. 'frame' (default) starts the new clip on the previous clip's exact final frame — a hard, invisible cut, best for continuous action within one shot. 'reference' feeds the previous clip's final seconds as a motion/subject reference — a softer join that carries movement and identity but not an exact frame, best across a cut or when the camera changes.",
+      },
+      durationSeconds: {
+        type: "integer",
+        minimum: 5,
+        maximum: 15,
+        description: "Length of this chunk in seconds (5-15, default 5). Longer chunks mean fewer seams for the same runtime.",
+      },
+      tailSeconds: {
+        type: "number",
+        minimum: 2,
+        maximum: 15,
+        description: "Only for seam='reference': how many seconds off the end of the source clip to use as the reference (2-15, default 2). Longer carries more motion context and costs nothing extra.",
+      },
+      resolution: {
+        type: "string",
+        enum: ["480p", "768p"],
+        description: "Output resolution. Defaults to 768p. Keep it the same across every chunk of one sequence.",
+      },
+      aspectRatio: {
+        type: "string",
+        enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+        description: "Only used to size the canvas placeholder; the clip itself follows the source. Pass the sequence's aspect ratio so the card lands at the right shape.",
+      },
+    },
+    required: ["sourceUrl", "prompt"],
+  },
+};
 
 const GENERATE_MEDIA_TOOL: Tool = {
   name: "generate_media",
@@ -1613,15 +1697,15 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedance-2.0", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite"],
+        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedance-2.0", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max"],
         description:
-          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick). Video: 'seedance-2.0' (premium default), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick).",
+          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick). Video: 'seedance-2.0' (premium default), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form).",
       },
       tier: {
         type: "string",
         enum: ["premium", "quality", "quick"],
         description:
-          "Model tier. Default 'premium' (best: nano-banana-2 for images, seedance-2.0 for video). 'quality' is the mid step (kling-o3-pro for video — image 'quality' falls back to nano-banana-2). 'quick' is the cheap/fast option (seedream for images, veo3.1-lite for video) — only use it when the user explicitly asks for cheap, fast, draft, rough, or 'save credits'. Ignored when `model` is set.",
+          "Model tier. Default 'premium' (best: nano-banana-2 for images, seedance-2.0 for video). 'quality' is the mid step (kling-o3-pro for video — image 'quality' falls back to nano-banana-2). 'quick' is the cheap/fast option (seedream for images) — only use it when the user explicitly asks for cheap, fast, draft, rough, or 'save credits'. Ignored when `model` is set. Tier does NOT affect text-to-video: video generated from a prompt alone is always MiniMax H3 Max. Tier only picks the video family when a reference image is attached.",
       },
       aspectRatio: {
         type: "string",
@@ -1639,6 +1723,12 @@ const GENERATE_MEDIA_TOOL: Tool = {
         enum: ["1k", "2k", "4k"],
         description:
           "Image output resolution. Set this whenever the user mentions a resolution (e.g. '2K', '4k', 'high res', 'ultra HD'). Defaults to '1k' when unspecified. Ignored for video.",
+      },
+      videoResolution: {
+        type: "string",
+        enum: ["480p", "720p", "1080p"],
+        description:
+          "Video output resolution. Set it when the user names one ('480p', 'draft res', '1080p', 'full HD'). Omit for the 720p default. Ignored for images. Each model clamps to what it actually supports (H3 Max: 480p or 768p).",
       },
       durationSeconds: {
         type: "integer",
@@ -1803,10 +1893,12 @@ function buildSystemPromptStatic(
     "Content policy: do NOT pre-filter, refuse, or warn about generation requests on your own — including requests that mention real people, public figures, celebrities, brands, logos, copyrighted characters, mature themes, or anything else you might think is sensitive. The downstream image/video providers run their own moderation and will reject anything that violates their policies, returning a clear error the user will see. Your job is to forward the request faithfully by calling the tool. The only things you should refuse outright are requests that are illegal under US law (CSAM, credible threats, etc.). For everything else: call the tool, do not lecture the user, do not add disclaimers.",
     "",
     "Model selection (generate_media):",
-    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedance-2.0, kling-o3-pro, kling-o3-4k, veo3.1-lite.",
+    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedance-2.0, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
+    "- NEVER substitute a different model than the one the user named. If the named model can't do what's asked (e.g. veo3.1-lite has no multi-reference mode), say so and ask — don't silently generate with another one.",
     "- Otherwise use `tier`. Default 'premium' (nano-banana-2 for images, seedance-2.0 for video — the highest-quality options).",
     "- 'quality' is the mid step (kling-o3-pro for video; for images it's the same as premium).",
-    "- Use tier 'quick' ONLY when the user explicitly asks for something cheap, fast, draft, rough, low-cost, 'save credits', or similar (seedream for images, veo3.1-lite for video).",
+    "- Use tier 'quick' ONLY when the user explicitly asks for something cheap, fast, draft, rough, low-cost, 'save credits', or similar (seedream for images).",
+    "- Text-to-video is always MiniMax H3 Max. Never offer or substitute another video model for a prompt-only video, whatever the tier or the budget. Other video families exist only for image-to-video, first/last-frame and reference blending, which H3 Max has no endpoint for.",
     "",
     "Kling O3 reference syntax (`@element` tags):",
     "- ONLY use `@element` tags when the chosen video model is `kling-o3-pro` or `kling-o3-4k` AND `videoReferenceMode='references'` (the reference-blending r2v mode). In every other case — including Kling first_frame (i2v) and every other model — DO NOT put `@element` tags in the prompt.",
@@ -1822,6 +1914,7 @@ function buildSystemPromptStatic(
     "- Otherwise omit it and the system will default to '1k'.",
     "",
     "Duration (video only):",
+    "- If the user names a video resolution ('480p', '720p', '1080p', 'full HD', 'draft quality'), set `videoResolution`. H3 Max only does 480p or 768p, so it renders 720p/1080p requests at 768p.",
     "- If the user mentions a clip length (e.g. '5 second video', '10s clip', 'make it 8 seconds long', 'short clip', 'long video'), set `durationSeconds` to an integer between 3 and 15.",
     "- Map vague words: 'short' → 5, 'medium' → 8, 'long' → 12. For unit-less numbers obviously meant as seconds in a video request ('a 7 video'), use that number.",
     "- Otherwise omit `durationSeconds` and the system will use the model's default (5s for Kling/Seedance, 6s for Veo3.1 Lite).",
@@ -2111,6 +2204,8 @@ type AgentToolUse = {
   // Video clip length in seconds. Only meaningful when kind === "video";
   // null means "use the backend default for the chosen video model"
   // (5s for Kling/Seedance, 6s for Veo3.1 Lite).
+  /** Video output resolution. null → the 720p default. */
+  videoResolution: string | null;
   durationSeconds: number | null;
   referenceImageIds?: string[];
   // Required when kind === "video" AND references will be attached. Tells
@@ -2216,6 +2311,8 @@ function parseGenerateMediaInput(
 
   // Duration (video only): explicit value wins; otherwise sniff the user's
   // message for "5 second video" / "10s clip" etc. null = backend default.
+  const vresRaw = typeof input.videoResolution === "string" ? input.videoResolution.toLowerCase().trim() : "";
+  const videoResolution = ["480p", "720p", "1080p"].includes(vresRaw) ? vresRaw : null;
   let durationSeconds: number | null = null;
   if (kind === "video") {
     const durRaw = input.durationSeconds ?? input.duration_seconds ?? input.duration;
@@ -2323,6 +2420,7 @@ function parseGenerateMediaInput(
     aspectRatioExplicit,
     quality,
     resolution,
+    videoResolution,
     durationSeconds,
     referenceImageIds,
     videoReferenceMode,
@@ -2373,6 +2471,7 @@ function selectLogoUrl(
 // We snap rather than reject so a "20-second Veo clip" silently becomes
 // an 8-second one instead of a hard backend failure.
 function snapDurationForModel(model: string, seconds: number): number {
+  if (model.startsWith("h3-max")) return Math.max(5, Math.min(15, Math.round(seconds)));
   if (model.startsWith("kling-o3-")) {
     // Clamp to the fal-accepted range; pass every other integer through
     // unchanged so e.g. 8s requests stay at 8s instead of snapping to 5/10.
@@ -2505,7 +2604,7 @@ function buildGenerateBody(
 
   if (tool.kind === "image") {
     const model = useExplicit
-      ? (hasRef ? useExplicit.i2 : useExplicit.t2)
+      ? ((hasRef && useExplicit.i2) || useExplicit.t2)
       : resolveImageModel(tool.tier, hasRef);
     const type = hasRef ? "image_to_image" : "text_to_image";
     const body: Record<string, unknown> = {
@@ -2530,8 +2629,9 @@ function buildGenerateBody(
     ? (useExplicit.t2.startsWith("veo3.1-lite") ? "veo3.1-lite"
        : useExplicit.t2.startsWith("kling-o3-4k") ? "kling-o3-4k"
        : useExplicit.t2.startsWith("kling-o3-pro") ? "kling-o3-pro"
+       : useExplicit.t2.startsWith("h3-max") ? "h3-max"
        : "seedance-2.0")
-    : resolveVideoModelFamily(tool.tier);
+    : resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null);
   const family = MODEL_WHITELIST[familyKey];
   let model: string;
   let notice: string | undefined;
@@ -2582,7 +2682,7 @@ function buildGenerateBody(
     model,
     prompt: safePrompt,
     aspect_ratio: tool.aspectRatio,
-    resolution: "720p",
+    resolution: tool.videoResolution ?? "720p",
     duration: String(duration),
     generateAudio: tool.generateAudio,
     canvas_id: canvasId,
@@ -2846,6 +2946,28 @@ async function dispatchAgentGeneration(
   }
 }
 
+/**
+ * Locally-served images (`/uploads/foo.png`) are neither `data:` nor `http(s)://`,
+ * so they used to fall through both arms of the vision-block builder and vanish
+ * silently — the model still got their ids in the reference catalog, so tools
+ * worked and only *seeing* the image was broken. An absolute localhost URL is no
+ * fix either: Anthropic fetches `source: {type:"url"}` from its own servers and
+ * cannot reach this machine. So read the bytes off disk and inline them.
+ *
+ * ponytail: files over the per-image cap are left alone (and then skipped, as
+ * before) rather than downscaled — add sharp resizing if users actually hit it.
+ */
+function localImageToDataUrl(url: string): string | null {
+  const hit = resolveUploadPath(url, UPLOADS_DIR);
+  if (!hit) return null;
+  try {
+    if (fs.statSync(hit.path).size > MAX_IMAGE_BYTES) return null;
+    return `data:${hit.mime};base64,${fs.readFileSync(hit.path).toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 function isHttpUrl(url: string): boolean {
   return typeof url === "string" && /^https?:\/\//i.test(url);
 }
@@ -2930,8 +3052,11 @@ function buildAnthropicMessages(messages: ClientMessage[]): BuildResult {
           omittedImageCount += 1;
           continue;
         }
-        if (isDataUrl(img.url)) {
-          const parsed = parseDataUrl(img.url);
+        const url = isDataUrl(img.url) || isHttpUrl(img.url)
+          ? img.url
+          : (localImageToDataUrl(img.url) ?? img.url);
+        if (isDataUrl(url)) {
+          const parsed = parseDataUrl(url);
           if (!parsed) continue;
           if (dataUrlByteSize(parsed.data) > MAX_IMAGE_BYTES) {
             return { ok: false, error: "An attached image exceeds the 5 MB per-image limit." };
@@ -2946,10 +3071,10 @@ function buildAnthropicMessages(messages: ClientMessage[]): BuildResult {
           });
           hasVision = true;
           imageCount += 1;
-        } else if (isHttpUrl(img.url)) {
+        } else if (isHttpUrl(url)) {
           blocks.push({
             type: "image",
-            source: { type: "url", url: img.url },
+            source: { type: "url", url },
           });
           hasVision = true;
           imageCount += 1;
@@ -4339,14 +4464,7 @@ async function placeAgentGenerationOnCanvas(
     // first generation lands on-screen); fall back to a synthesized one.
     const ctx = getOperatorContext(userId);
     const viewport = ctx?.viewport ?? fallbackViewport(occupied, size);
-    const { rect, nextAnchor } = placeNext({
-      canvasId,
-      viewport,
-      occupied,
-      anchor: ctx?.anchor,
-      size,
-    });
-    setOperatorAnchor(userId, nextAnchor);
+    const rect = placeNext({ viewport, occupied, size });
 
     const zRes = await pool.query(
       `SELECT COALESCE(MAX(z_index), 0) AS z FROM canvas_nodes WHERE canvas_id = $1`,
@@ -4375,7 +4493,7 @@ async function placeAgentGenerationOnCanvas(
 // Schema discovery: framework-neutral shape (MCP wants `inputSchema`; Anthropic
 // wants `input_schema`). The MCP server fetches this to register its tools.
 router.get("/api/agent/tools", requireMcpToken, requireAuth, (_req: AuthRequest, res) => {
-  const tools = [GENERATE_MEDIA_TOOL, GENERATE_MUSIC_TOOL, TRANSFORM_MEDIA_TOOL].map((t) => ({
+  const tools = [GENERATE_MEDIA_TOOL, CONTINUE_VIDEO_TOOL, GENERATE_MUSIC_TOOL, TRANSFORM_MEDIA_TOOL].map((t) => ({
     name: t.name,
     description: t.description,
     inputSchema: t.input_schema,
@@ -4562,6 +4680,15 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       if (!parsed.aspectRatioExplicit && ctxAr && GEN_ALLOWED_AR.has(ctxAr)) {
         parsed.aspectRatio = ctxAr;
       }
+      // Over the bridge a reference is the OPERATOR's own choice (a keyframe it
+      // just generated), not an ambiguous image the user dropped on a video
+      // request — so the in-app "ask which mode" rule doesn't apply. Default the
+      // mode instead of asking: without one, buildGenerateBody silently drops
+      // the reference and dispatches text-to-video, which is exactly how a
+      // keyframe-chained sequence loses continuity shot by shot.
+      if (parsed.kind === "video" && referenceUrls.length > 0 && parsed.videoReferenceMode == null) {
+        parsed.videoReferenceMode = referenceUrls.length === 1 ? "first_frame" : "references";
+      }
       const seedanceAllowed = parsed.kind === "video" ? await isSeedanceAllowed(userId) : true;
       const built = buildGenerateBody(parsed, referenceUrls, canvasId, workspaceId, seedanceAllowed);
       if (!built) { res.status(400).json({ error: "This request couldn't be mapped to a supported generation." }); return; }
@@ -4572,6 +4699,62 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         { aspectRatio: parsed.aspectRatio, resolution: parsed.resolution },
       );
       res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
+      return;
+    }
+    if (toolName === "continue_video") {
+      const src = typeof input.sourceUrl === "string" ? input.sourceUrl.trim() : "";
+      const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+      if (!src) { res.status(400).json({ error: "continue_video requires `sourceUrl` — the clip to continue from." }); return; }
+      if (!prompt) { res.status(400).json({ error: "continue_video requires a `prompt` describing what happens next." }); return; }
+      const seam = input.seam === "reference" ? "reference" : "frame";
+      const duration = snapDurationForModel("h3-max", Number(input.durationSeconds) || 5);
+
+      // Pull the handoff off the previous clip. This is the whole technique:
+      // the next chunk is an ordinary H3 generation whose reference IS the end
+      // of the last one, so continuity is carried by the model's own inputs.
+      let handoff: string;
+      try {
+        handoff = seam === "reference"
+          ? await extractTailClip(src, Number(input.tailSeconds) || MIN_TAIL_SECONDS)
+          : await extractLastFrame(src);
+      } catch (err) {
+        // A bad seam is worth failing on: continuing from the wrong frame
+        // silently produces a cut, which is the exact failure this tool exists
+        // to prevent.
+        const msg = err instanceof VideoTailError ? err.message : "Couldn't read the end of that clip.";
+        res.status(400).json({ error: msg });
+        return;
+      }
+
+      const body: Record<string, unknown> = {
+        type: "video_gen",
+        model: seam === "reference" ? "h3-max-r2v" : "h3-max-i2v",
+        prompt,
+        duration,
+        resolution: typeof input.resolution === "string" ? input.resolution : undefined,
+        canvas_id: canvasId,
+        workspace_id: workspaceId,
+        params: { source: "agent", continuedFrom: src },
+      };
+      if (seam === "reference") {
+        body.referenceVideoUrls = [handoff];
+        // Pinned stills (characters, palette) ride along on every chunk, which
+        // is what holds identity together once the tail is many chunks behind.
+        if (referenceUrls.length) body.referenceImageUrls = referenceUrls;
+      } else {
+        body.firstFrameUrl = handoff;
+      }
+
+      const dispatch = await dispatchAgentGeneration(req, body);
+      if (!dispatch.ok) { res.status(dispatch.status).json({ error: dispatch.error }); return; }
+      await placeAgentGenerationOnCanvas(
+        userId, canvasId, dispatch.jobId!, "video", prompt,
+        { aspectRatio: typeof input.aspectRatio === "string" ? input.aspectRatio : undefined, resolution: null },
+      );
+      res.json({
+        jobId: dispatch.jobId, type: "video_gen",
+        model: body.model, canvasId, seam, handoffUrl: handoff, durationSeconds: duration,
+      });
       return;
     }
     if (toolName === "transform_media") {
@@ -4611,7 +4794,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
       return;
     }
-    res.status(400).json({ error: `Unknown tool: ${toolName ?? "(none)"}. Expected generate_media, transform_media, or generate_music.` });
+    res.status(400).json({ error: `Unknown tool: ${toolName ?? "(none)"}. Expected generate_media, continue_video, transform_media, or generate_music.` });
   } catch (err) {
     console.error("[agent/tool] error:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });

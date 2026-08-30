@@ -87,7 +87,7 @@ const VIEW_TITLES: Record<string, string> = {
   images: "Images",
   videos: "Videos",
   axioms: "Products",
-  styles: "Styles",
+  styles: "Prompts",
   music: "Music",
   voices: "Voices",
   sfx: "Sound Effects",
@@ -1521,7 +1521,7 @@ function StylesGrid({ source, onDragStyle, onOpenStyleManager, refreshKey = 0, v
       {loading ? (
         <EmptyState message="Loading..." />
       ) : error ? (
-        <EmptyState message="Failed to load styles" subtext="Please try again later" />
+        <EmptyState message="Failed to load prompts" subtext="Please try again later" />
       ) : filteredStyles.length > 0 ? (
         <div className={`lib-grid${viewLayout === "list" ? " lib-grid--list" : ""}`}>
           {filteredStyles.map((style) => {
@@ -1551,7 +1551,7 @@ function StylesGrid({ source, onDragStyle, onOpenStyleManager, refreshKey = 0, v
           })}
         </div>
       ) : (
-        <EmptyState message="No styles yet" subtext="Create styles to define your aesthetic" />
+        <EmptyState message="No prompts yet" subtext="Save a cut, or create one, to build your library" />
       )}
     </>
   );

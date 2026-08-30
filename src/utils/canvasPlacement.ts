@@ -9,6 +9,19 @@ export type Viewport = {
   h: number;
 };
 
+export const GAP = 24;
+
+/**
+ * ponytail: rows wrap on a fixed canvas-unit width, not the viewport's. Row
+ * width used to be `viewport.w * 0.85`, which meant the same canvas wrapped
+ * after two items zoomed in and after twelve zoomed out — the single biggest
+ * source of "placement is random". Six items across is a screenful at a normal
+ * working zoom; make it a per-canvas setting if anyone wants tighter columns.
+ */
+function rowMaxWidth(w: number): number {
+  return Math.max(w * 6, 8192);
+}
+
 /**
  * Compute axis-aligned rectangles for an array of existing nodes (excluding
  * frames so placeholders can land inside frames if needed).
@@ -18,12 +31,13 @@ function nodesToRects(nodes: CanvasNode[], excludeIds?: Set<string>): Rect[] {
   for (const n of nodes) {
     if (excludeIds && excludeIds.has(n.id)) continue;
     if (n.node_type === "frame" || n.node_type === "group") continue;
+    if (!(n.width > 0) || !(n.height > 0)) continue;
     out.push({ x: n.x, y: n.y, w: n.width, h: n.height });
   }
   return out;
 }
 
-function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
+function overlaps(a: Rect, b: Rect, gap: number): boolean {
   return (
     a.x < b.x + b.w + gap &&
     a.x + a.w + gap > b.x &&
@@ -32,141 +46,98 @@ function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
   );
 }
 
-function fitsAt(x: number, y: number, w: number, h: number, occupied: Rect[], gap: number): boolean {
-  const test: Rect = { x, y, w, h };
+/**
+ * The node the next one goes to the right of: the furthest-right edge on the
+ * canvas, ties broken downward.
+ *
+ * Derived from the canvas rather than remembered in a ref, which is the whole
+ * point — a remembered anchor is lost on reload, on switching canvases, and
+ * between the UI and the agent (they each kept their own), and every one of
+ * those losses dropped placement back into a spiral search. The canvas is the
+ * one thing all of them can see.
+ */
+function anchorOf(occupied: Rect[]): Rect {
+  let best = occupied[0];
   for (const r of occupied) {
-    if (rectsOverlap(test, r, gap)) return false;
+    const d = (r.x + r.w) - (best.x + best.w);
+    if (d > 0 || (d === 0 && r.y > best.y)) best = r;
   }
-  return true;
+  return best;
 }
 
 /**
- * Find empty slots near the user's viewport for `count` placeholders of the
- * given size. Lays them out left-to-right first, wrapping into rows. If the
- * preferred area is occupied, expands outward in a spiral-ish pattern until
- * each placeholder finds open space.
+ * Slide right until nothing is in the way. Always right, never up/left/down:
+ * the caller asked for "next to the last one", and a search that is allowed to
+ * go backwards is a search whose result nobody can predict.
+ */
+function slideRight(x: number, y: number, w: number, h: number, occupied: Rect[]): number {
+  let cx = x;
+  // Each pass jumps clear of the worst collider, so the bound is the number of
+  // rects, not a step count.
+  for (let pass = 0; pass <= occupied.length; pass++) {
+    let moved = false;
+    for (const r of occupied) {
+      if (overlaps({ x: cx, y, w, h }, r, GAP)) {
+        cx = Math.max(cx, r.x + r.w + GAP);
+        moved = true;
+      }
+    }
+    if (!moved) return cx;
+  }
+  return cx;
+}
+
+/**
+ * Place `sizes.length` placeholders, left to right, starting to the right of
+ * whatever is furthest right on the canvas and wrapping into a new row under
+ * everything when the row gets too wide. An empty canvas starts at the centre
+ * of what the user is looking at; after that the viewport is not consulted, so
+ * where a node lands does not depend on pan, zoom, or who asked for it.
  */
 export function findEmptySlots(
   viewport: Viewport,
   sizes: { w: number; h: number }[],
   existingNodes: CanvasNode[],
-  excludeIds?: Set<string>
-): { x: number; y: number; w: number; h: number }[] {
+  excludeIds?: Set<string>,
+): Rect[] {
+  return layout(viewport, sizes, nodesToRects(existingNodes, excludeIds));
+}
+
+/** The rect-only core, shared with the server port. Keep the two identical. */
+export function layout(viewport: Viewport, sizes: { w: number; h: number }[], occupied: Rect[]): Rect[] {
   if (sizes.length === 0) return [];
-  const gap = 24;
-  const occupied = nodesToRects(existingNodes, excludeIds);
-  const placed: Rect[] = [];
+  const obstacles = occupied.slice();
+  const out: Rect[] = [];
 
-  // Lay out as a single row centered on viewport center, then wrap to a new
-  // row if the row would exceed viewport width. If the resulting block
-  // overlaps existing nodes, push it down (and slightly outward) until it
-  // doesn't.
-  const maxRowWidth = Math.max(viewport.w * 0.85, sizes[0].w * 2 + gap);
-  type Row = { items: { idx: number; w: number; h: number }[]; w: number; h: number };
-  const rows: Row[] = [];
-  let cur: Row = { items: [], w: 0, h: 0 };
-  for (let i = 0; i < sizes.length; i++) {
-    const s = sizes[i];
-    const itemW = s.w + (cur.items.length > 0 ? gap : 0);
-    if (cur.w + itemW > maxRowWidth && cur.items.length > 0) {
-      rows.push(cur);
-      cur = { items: [], w: 0, h: 0 };
-    }
-    cur.items.push({ idx: i, w: s.w, h: s.h });
-    cur.w += (cur.items.length > 1 ? gap : 0) + s.w;
-    cur.h = Math.max(cur.h, s.h);
-  }
-  if (cur.items.length > 0) rows.push(cur);
-
-  const blockW = Math.max(...rows.map((r) => r.w));
-  const blockH = rows.reduce((sum, r, i) => sum + r.h + (i > 0 ? gap : 0), 0);
-
-  // Search positions in expanding rings around the viewport center.
-  const baseX = viewport.cx - blockW / 2;
-  const baseY = viewport.cy - blockH / 2;
-  const step = Math.max(80, Math.min(viewport.w, viewport.h) * 0.15);
-  const maxRings = 30;
-
-  const tryPlace = (originX: number, originY: number): { x: number; y: number; w: number; h: number }[] | null => {
-    const trial: { x: number; y: number; w: number; h: number }[] = new Array(sizes.length);
-    let cy = originY;
-    for (const row of rows) {
-      let cx = originX + (blockW - row.w) / 2;
-      for (const it of row.items) {
-        if (!fitsAt(cx, cy, it.w, it.h, occupied, gap)) return null;
-        // Also check against already-placed items in this trial.
-        let collidesSelf = false;
-        for (const p of trial) {
-          if (p && rectsOverlap({ x: cx, y: cy, w: it.w, h: it.h }, p, gap)) {
-            collidesSelf = true;
-            break;
-          }
-        }
-        if (collidesSelf) return null;
-        trial[it.idx] = { x: cx, y: cy, w: it.w, h: it.h };
-        cx += it.w + gap;
-      }
-      cy += row.h + gap;
-    }
-    return trial;
-  };
-
-  // Try the base location first.
-  let result = tryPlace(baseX, baseY);
-  if (result) return result;
-
-  // Spiral outward.
-  for (let ring = 1; ring <= maxRings && !result; ring++) {
-    const offsets: { dx: number; dy: number }[] = [];
-    // Prefer "below" first (less likely to obscure existing context above).
-    offsets.push({ dx: 0, dy: ring * step });
-    offsets.push({ dx: ring * step, dy: 0 });
-    offsets.push({ dx: -ring * step, dy: 0 });
-    offsets.push({ dx: 0, dy: -ring * step });
-    offsets.push({ dx: ring * step, dy: ring * step });
-    offsets.push({ dx: -ring * step, dy: ring * step });
-    offsets.push({ dx: ring * step, dy: -ring * step });
-    offsets.push({ dx: -ring * step, dy: -ring * step });
-    for (const off of offsets) {
-      result = tryPlace(baseX + off.dx, baseY + off.dy);
-      if (result) break;
-    }
+  let cursorX: number;
+  let cursorY: number;
+  let rowLeft: number;
+  if (obstacles.length === 0) {
+    cursorX = viewport.cx - sizes[0].w / 2;
+    cursorY = viewport.cy - sizes[0].h / 2;
+    rowLeft = cursorX;
+  } else {
+    const anchor = anchorOf(obstacles);
+    cursorX = anchor.x + anchor.w + GAP;
+    cursorY = anchor.y;
+    rowLeft = Math.min(...obstacles.map((r) => r.x));
   }
 
-  if (result) {
-    placed.push(...result);
-    return result;
-  }
-
-  // Fallback: stack below the viewport, walking each row down further until
-  // it clears every existing node so we never visibly overlap.
-  const fallback: { x: number; y: number; w: number; h: number }[] = new Array(sizes.length);
-  let cy = viewport.cy + viewport.h * 0.6;
-  for (const row of rows) {
-    let cx = viewport.cx - row.w / 2;
-    // Scan down until placing the entire row at this `cy` clears all
-    // occupied rects. Cap iterations to avoid infinite loops on pathological
-    // inputs.
-    let safety = 200;
-    while (safety-- > 0) {
-      let ok = true;
-      let testX = cx;
-      for (const it of row.items) {
-        if (!fitsAt(testX, cy, it.w, it.h, occupied, gap)) { ok = false; break; }
-        testX += it.w + gap;
-      }
-      if (ok) break;
-      cy += step;
+  for (const s of sizes) {
+    // Wrap: back to the left edge of the content, below all of it. Measured
+    // fresh each time so a wrap clears items placed earlier in this same call.
+    if (out.length > 0 && cursorX + s.w - rowLeft > rowMaxWidth(s.w)) {
+      const bottom = Math.max(...obstacles.map((r) => r.y + r.h), cursorY);
+      cursorX = rowLeft;
+      cursorY = bottom + GAP;
     }
-    for (const it of row.items) {
-      const placedItem = { x: cx, y: cy, w: it.w, h: it.h };
-      fallback[it.idx] = placedItem;
-      occupied.push(placedItem);
-      cx += it.w + gap;
-    }
-    cy += row.h + gap;
+    const x = slideRight(cursorX, cursorY, s.w, s.h, obstacles);
+    const rect = { x, y: cursorY, w: s.w, h: s.h };
+    out.push(rect);
+    obstacles.push(rect);
+    cursorX = x + s.w + GAP;
   }
-  return fallback;
+  return out;
 }
 
 /**

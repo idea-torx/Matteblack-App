@@ -1,13 +1,29 @@
-import { useRef, useEffect, useState, memo } from "react";
+import { useRef, useEffect, useState, memo, useSyncExternalStore } from "react";
 import type { CanvasNode } from "../../types/canvas";
 import { useVideoThumbnail } from "../../features/cinema-frame/hooks/useVideoThumbnail";
+
+
+/* Mute is canvas-wide, not per-node: every clip starts muted, and hitting the
+ * speaker on one is the user saying "let me hear the canvas" — making them
+ * click through every node to get there was the bug. Module-level rather than
+ * context so no provider has to be threaded through the node tree. */
+let canvasMuted = true;
+const muteListeners = new Set<() => void>();
+function subscribeMuted(fn: () => void) {
+  muteListeners.add(fn);
+  return () => { muteListeners.delete(fn); };
+}
+function setCanvasMuted(next: boolean) {
+  canvasMuted = next;
+  for (const fn of muteListeners) fn();
+}
 
 export const VideoNode = memo(function VideoNode({ node, isPlaying, onTogglePlay, isInViewport = true, zoom = 1 }: { node: CanvasNode; isPlaying: boolean; onTogglePlay: (id: string) => void; isInViewport?: boolean; zoom?: number }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
+  const isMuted = useSyncExternalStore(subscribeMuted, () => canvasMuted);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
 
@@ -145,7 +161,7 @@ export const VideoNode = memo(function VideoNode({ node, isPlaying, onTogglePlay
         <button
           type="button"
           className="freeform-canvas__video-mute-btn"
-          onClick={(e) => { e.stopPropagation(); setIsMuted((m) => !m); }}
+          onClick={(e) => { e.stopPropagation(); setCanvasMuted(!isMuted); }}
         >
           {isMuted ? (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -8,6 +8,7 @@ import { InvitePage } from './components/InvitePage'
 import { SharePage } from './components/SharePage'
 import { PaymentResult } from './components/PaymentResult'
 import { MobileGate } from './components/MobileGate'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useIsMobile } from './hooks/useIsMobile'
 import { MobileChatShell } from './components/MobileChatShell'
 import './index.css'
@@ -17,7 +18,13 @@ import { isDesktopApp } from './desktop'
 
 // Mark the desktop app so the layout can reserve space for the frameless
 // window's title bar strip (--titlebar-h). The web build keeps 0.
-if (isDesktopApp()) document.documentElement.classList.add('is-desktop')
+// macOS draws its traffic lights top-LEFT instead of a top-RIGHT overlay, so it
+// reserves that space on the other side of the window (see html.is-mac in
+// index.css). Gated on isDesktopApp() so a Mac *browser* is unaffected.
+if (isDesktopApp()) {
+  document.documentElement.classList.add('is-desktop')
+  if (navigator.userAgent.includes('Mac')) document.documentElement.classList.add('is-mac')
+}
 
 // Apply the stored theme (dark by default) before React renders.
 //
@@ -127,6 +134,8 @@ function AppShell() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppShell />
+    <ErrorBoundary what="The app" reloadOnly>
+      <AppShell />
+    </ErrorBoundary>
   </StrictMode>,
 )

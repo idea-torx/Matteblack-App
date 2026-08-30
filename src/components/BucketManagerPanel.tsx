@@ -16,7 +16,7 @@ type Bucket = {
 
 export function BucketManagerPanel({ onClose, context }: BucketManagerPanelProps) {
   const bucketType = context === "axioms" ? "axiom" : "style";
-  const label = context === "axioms" ? "Product" : "Style";
+  const label = context === "axioms" ? "Product" : "Prompt";
   const { activeWorkspace } = useWorkspace();
 
   const isOrg = activeWorkspace?.type === "org";

@@ -106,7 +106,9 @@
   pointer-events: none;
   z-index: 0;
   background-size: 24px 24px;
-  will-change: opacity, mask-image;
+  /* ponytail: mask-image is not compositor-animatable, so listing it in
+   * will-change buys nothing and keeps a full-viewport layer hot. */
+  will-change: opacity;
 }
 
 .freeform-canvas__grid--sm {
@@ -1266,37 +1268,50 @@
   height: 40px;
   padding: 10px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* ponytail: no backdrop-filter here. This overlay exists once per video
+   * node, and a backdrop blur re-samples the transforming canvas every frame —
+   * the cost scaled with asset count, which is why scrolling only fell apart
+   * once the canvas filled up. The scrim is already 50% black; the blur under
+   * it was doing almost nothing visible. */
+  background: rgba(0, 0, 0, 0.62);
   color: rgba(255, 255, 255, 0.85);
-  transform: scale(calc(1 / var(--zoom, 1)));
+  transform: scale(calc(1 / var(--cscale-z)));
   transform-origin: center;
+}
+
+/* Video chrome counter-scales by 1/zoom so it stays a constant size on screen.
+ * Clamping the divisor at 1 killed the overflow but threw the baby out with it:
+ * zoomed out the chrome then shrank with the node and became unreadable. The
+ * overflow was never the counter-scale, it was max-width — a percentage
+ * resolves against the node *before* the transform, so a bar capped at 100%
+ * still renders 1/z times wider than the node. Cap it at `100% * z` instead and
+ * the counter-scale can stay, floored so it can't run away at extreme zoom-out. */
+.freeform-canvas__node {
+  --cscale-z: max(0.35, var(--zoom, 1));
 }
 
 .freeform-canvas__video-controls {
   position: absolute;
-  bottom: calc(8px / var(--zoom, 1));
-  left: calc(8px / var(--zoom, 1));
-  right: calc(8px / var(--zoom, 1));
+  bottom: calc(8px / var(--cscale-z));
+  left: calc(8px / var(--cscale-z));
+  right: calc(8px / var(--cscale-z));
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* Same reason as the play overlay above: one per video node. */
+  background: rgba(0, 0, 0, 0.72);
   border-radius: 9999px;
   opacity: 0;
   transition: opacity 0.15s;
   pointer-events: none;
   z-index: 2;
-  transform: scale(calc(1 / var(--zoom, 1)));
+  transform: scale(calc(1 / var(--cscale-z)));
   transform-origin: bottom center;
   box-sizing: border-box;
   width: max-content;
-  max-width: calc(100% - (16px / var(--zoom, 1)));
+  max-width: calc(100% * var(--cscale-z) - 16px);
   margin: 0 auto;
 }
 
@@ -1605,3 +1620,13 @@
  * .freeform-canvas__video-controls and .freeform-canvas__error-overlay all
  * sit on top of user media or as full-bleed lightbox scrims, so their dark
  * backgrounds are intentionally theme-independent. */
+
+/* macOS: the rail is docked to the top-left corner, so the zoom pill sits in
+ * the same band as the traffic lights rather than below the (now absent)
+ * floating inset. */
+html.is-mac .freeform-canvas__toolbar {
+  top: 10px;
+  /* 10px in from whatever the left stack currently ends at — the inset tracks
+   * the open panel, so the pill follows the rail or the panel beside it. */
+  left: calc(var(--canvas-left-inset, 0px) + 10px);
+}

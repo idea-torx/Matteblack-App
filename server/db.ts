@@ -564,13 +564,25 @@ export async function initDB() {
     CREATE TABLE IF NOT EXISTS cinema_tracks (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       canvas_id UUID NOT NULL REFERENCES canvas_states(id) ON DELETE CASCADE,
+      -- Which cinema node owns this track. '' means "the canvas's one cinema
+      -- frame", the pre-multi-node shape; the loader adopts those rows into the
+      -- first cinema node it finds so old canvases keep their timelines.
+      node_id TEXT NOT NULL DEFAULT '',
       track_type TEXT NOT NULL CHECK (track_type IN ('video', 'audio')),
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE cinema_tracks ADD COLUMN IF NOT EXISTS node_id TEXT NOT NULL DEFAULT '';
+    -- Silences every clip on the track without touching their own volumes, so
+    -- unmuting restores the mix. The case it exists for: mute the video track
+    -- so a music bed plays under the picture instead of fighting the audio
+    -- baked into generated clips.
+    ALTER TABLE cinema_tracks ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT FALSE;
+
     CREATE INDEX IF NOT EXISTS idx_cinema_tracks_canvas ON cinema_tracks(canvas_id);
+    CREATE INDEX IF NOT EXISTS idx_cinema_tracks_node ON cinema_tracks(canvas_id, node_id);
 
     DROP TRIGGER IF EXISTS trg_cinema_tracks_updated_at ON cinema_tracks;
     CREATE TRIGGER trg_cinema_tracks_updated_at
@@ -1331,8 +1343,8 @@ export async function initDB() {
             const track = ts.tracks[ti];
             if (!track || !track.type) continue;
             const trackResult = await migClient.query(
-              `INSERT INTO cinema_tracks (canvas_id, track_type, sort_order) VALUES ($1, $2, $3) RETURNING id`,
-              [canvasId, track.type, ti]
+              `INSERT INTO cinema_tracks (canvas_id, node_id, track_type, sort_order) VALUES ($1, $2, $3, $4) RETURNING id`,
+              [canvasId, node.id, track.type, ti]
             );
             const trackId = trackResult.rows[0].id;
             totalTracks++;

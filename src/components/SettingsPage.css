@@ -9,7 +9,7 @@
   position: absolute;
   /* QuickSettings panel + a small gap so the two panels read as related but distinct. */
   left: calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--qs-settings-gap));
-  top: var(--panel-float-top);
+  top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
   right: var(--panel-float-gap);
   z-index: 16;

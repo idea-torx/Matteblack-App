@@ -5,7 +5,7 @@
   flex-shrink: 0;
   position: absolute;
   left: calc(var(--panel-float-gap) + var(--icon-rail-width));
-  top: var(--panel-float-top);
+  top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
   /* Above .canvas-area--card (10), below .icon-rail (20). */
   z-index: 15;

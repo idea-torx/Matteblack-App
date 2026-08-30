@@ -10,6 +10,11 @@ import { requireAuth, type AuthRequest } from "../sessions.js";
 import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
 import { setOperatorContext } from "../services/operatorCanvasContext.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
+import fs from "node:fs";
+import path from "node:path";
+import { UPLOADS_DIR } from "../config/runtime.js";
+import { REPOS_DIR } from "../github/ghCli.js";
+import { resolveUploadPath } from "../utils/uploadPath.js";
 
 const router = Router();
 
@@ -22,6 +27,65 @@ function parseViewport(v: unknown): Viewport | undefined {
   const [cx, cy, w, h] = nums as number[];
   if (w <= 0 || h <= 0) return undefined;
   return { cx, cy, w, h };
+}
+
+/** Attachments are staged here so the spawned claude can Read them: its cwd is
+ *  pinned to REPOS_DIR, and anything outside that needs a permission prompt. */
+const ATTACH_DIR = path.join(REPOS_DIR, ".attachments");
+
+const EXT_FOR_MIME: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+};
+
+/**
+ * Copy the turn's reference images into the operator's working directory and
+ * return their paths.
+ *
+ * The operator runs as a `claude -p` subprocess, so there is no message array to
+ * push vision blocks onto — the only way it can actually SEE an attachment is to
+ * Read the file. Without this it got a text note saying images were attached and
+ * nothing else, and correctly reported that it couldn't see them.
+ *
+ * ponytail: the whole staging dir is wiped each turn. Single-user desktop app,
+ * one turn in flight at a time — give each turn its own subdir if that changes.
+ */
+async function stageAttachments(urls: string[]): Promise<string[]> {
+  try { fs.rmSync(ATTACH_DIR, { recursive: true, force: true }); } catch { /* first run */ }
+  const paths: string[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    try {
+      let bytes: Buffer;
+      let ext: string;
+      const local = resolveUploadPath(url, UPLOADS_DIR);
+      if (local) {
+        bytes = fs.readFileSync(local.path);
+        ext = EXT_FOR_MIME[local.mime] || ".png";
+      } else if (/^https?:\/\//i.test(url)) {
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        bytes = Buffer.from(await r.arrayBuffer());
+        ext = EXT_FOR_MIME[(r.headers.get("content-type") || "").split(";")[0].trim()] || ".png";
+      } else if (url.startsWith("data:image/")) {
+        const m = url.match(/^data:([^;]+);base64,(.+)$/);
+        if (!m) continue;
+        bytes = Buffer.from(m[2], "base64");
+        ext = EXT_FOR_MIME[m[1]] || ".png";
+      } else {
+        continue;
+      }
+      fs.mkdirSync(ATTACH_DIR, { recursive: true });
+      const full = path.join(ATTACH_DIR, `reference-${i + 1}${ext}`);
+      fs.writeFileSync(full, bytes);
+      paths.push(full);
+    } catch {
+      /* one bad attachment must not fail the turn */
+    }
+  }
+  return paths;
 }
 
 router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
@@ -69,7 +133,18 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     const n = referenceUrls.length;
     const it = n > 1 ? "them" : "it";
     const img = n > 1 ? "images" : "image";
-    let note = `\n\n[System note: the user attached ${n} reference ${img} for this request. ${n > 1 ? "They are" : "It is"} automatically provided to the generation tools as the reference — you do NOT need a URL and ${it} does NOT need to be on the canvas. To edit, restyle, recolor, or build on the attached ${img}, call generate_media now (the attached ${img} ${n > 1 ? "are" : "is"} passed as ${it}s reference). Use transform_media only for background removal, upscaling, or resizing. Do NOT ask the user to add ${it} to the canvas.`;
+    const staged = await stageAttachments(referenceUrls);
+    let note = `\n\n[System note: the user attached ${n} reference ${img} for this request.`;
+    if (staged.length > 0) {
+      note += ` To SEE ${it}, use the Read tool on ${staged.length > 1 ? "these files" : "this file"}: ${staged.join(", ")}. Read ${it} before answering anything about what the ${img} look${n > 1 ? "" : "s"} like.`;
+    }
+    note += ` ${n > 1 ? "They are" : "It is"} automatically provided to the generation tools as the reference — you do NOT need a URL and ${it} does NOT need to be on the canvas. To edit, restyle, recolor, or build on the attached ${img}, call generate_media now (the attached ${img} ${n > 1 ? "are" : "is"} passed as ${it}s reference). Use transform_media only for background removal, upscaling, or resizing. Do NOT ask the user to add ${it} to the canvas.`;
+    // The URLs, verbatim. The auto-injection above only covers THIS turn: the
+    // context store is re-set (to []) on every message, so a follow-up like
+    // "now make another video from that image" arrives with no reference at
+    // all and silently generates text-to-video — which is exactly the moment
+    // continuity is lost. Holding the URLs means the agent can re-pass them.
+    note += ` Reference URL${n > 1 ? "s" : ""}: ${referenceUrls.join(", ")}. Keep ${n > 1 ? "these" : "this"} for the rest of the conversation: on ANY later generation that continues the same subject — a second video, a variation, another shot — pass ${it} yourself in referenceUrls, because the automatic attachment only applies to this message. Omitting ${it} does not error; it silently falls back to text-to-video and the subject will not match.`;
     if (referenceAspectRatio) {
       note += ` The attached ${img} ${n > 1 ? "are" : "is"} ${referenceAspectRatio} — use aspectRatio "${referenceAspectRatio}" to keep the lineage consistent, unless the user asked for a different shape.`;
     }

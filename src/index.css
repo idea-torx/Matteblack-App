@@ -85,8 +85,16 @@
    * stack. */
   --icon-rail-width: 64px;
   --panel-float-top: 12px;
+  --project-tabs-h: 50px;
+  /* Left flyout panels start below the project tab strip so they stack under it
+   * instead of covering it. The rail itself keeps --panel-float-top: it holds
+   * the traffic lights and has to reach the window's top edge. */
+  --left-panel-top: calc(var(--panel-float-top) + var(--project-tabs-h));
   --panel-float-bottom: 12px;
   --panel-float-gap: 12px;
+  /* Breathing room between the left stack and the canvas edge. 0 when the
+   * stack is docked, so the canvas (and the zoom pill on it) meets the rail. */
+  --canvas-inset-pad: 12px;
   --panel-radius: 12px;
   --panel-float-border: 1px solid rgba(255, 255, 255, 0.06);
   --panel-float-shadow:
@@ -188,6 +196,31 @@ html {
 html.is-desktop {
   --titlebar-h: 32px;
   --panel-inset-top: 6px;
+}
+/* macOS puts the window controls top-LEFT, inside the content area, so the
+ * reservation flips sides: nothing on the right needs to drop (--titlebar-h
+ * back to 0, right panels and the agent card sit flush to the top border) and
+ * the floating left stack — icon rail, toolbar, projects/library/settings
+ * panels — drops clear of the traffic lights instead. The drag strip moves
+ * with it; see html.is-mac .app-titlebar in App.css. */
+html.is-mac {
+  --titlebar-h: 0px;
+  --panel-inset-top: 12px;
+  --panel-float-top: 0px;
+  /* The rail is docked to the window edge (IconRail.css), so the left panels
+   * that sit beside it drop their gap too and stay flush against it. */
+  --panel-float-gap: 0px;
+  /* Wider docked rail: it now has to hold the traffic lights, which the
+   * floating 64px version didn't. */
+  --icon-rail-width: 76px;
+  /* The whole left stack docks with the rail rather than floating beside it:
+   * flush to the top and bottom window edges, square, and separated by the
+   * right-hand strokes each panel already carries (--panel-float-border)
+   * instead of by a gap. --panel-radius is used only by these panels, so
+   * zeroing it here squares the stack without touching anything else. */
+  --panel-float-bottom: 0px;
+  --panel-radius: 0px;
+  --canvas-inset-pad: 0px;
 }
 
 body {

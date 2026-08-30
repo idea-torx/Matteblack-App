@@ -19,7 +19,7 @@
   /* Sits one floating-gap to the right of the LeftToolbar's right edge
    * (which itself sits flush against the IconRail). */
   left: calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--panel-float-gap));
-  top: var(--panel-float-top);
+  top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
   /* Above .canvas-area--card (10), below .icon-rail (20). */
   z-index: 15;

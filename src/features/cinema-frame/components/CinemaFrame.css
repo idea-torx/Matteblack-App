@@ -30,6 +30,12 @@
 }
 
 .cinema-frame__titlebar {
+  /* ponytail: one zoom per chrome band instead of rewriting ~40 px values.
+   * At 1920 wide, 11px labels and 28px bands read as miniature. zoom (not transform) because the timeline's own hit-testing
+   * derives its scale from getBoundingClientRect / clientWidth, which stays
+   * self-consistent under it — a px rewrite would also have to move
+   * TRACK_GUTTER in CinemaTimeline.tsx. */
+  zoom: 2.2;
   flex: 0 0 auto;
   height: 28px;
   background: #141418;
@@ -107,6 +113,12 @@
 }
 
 .cinema-toolbar {
+  /* ponytail: one zoom per chrome band instead of rewriting ~40 px values.
+   * At 1920 wide, 11px labels and 28px bands read as miniature. zoom (not transform) because the timeline's own hit-testing
+   * derives its scale from getBoundingClientRect / clientWidth, which stays
+   * self-consistent under it — a px rewrite would also have to move
+   * TRACK_GUTTER in CinemaTimeline.tsx. */
+  zoom: 2.2;
   display: flex;
   align-items: center;
   padding: 4px 12px;
@@ -255,6 +267,12 @@
 }
 
 .cinema-timeline {
+  /* ponytail: one zoom per chrome band instead of rewriting ~40 px values.
+   * At 1920 wide, 11px labels and 28px bands read as miniature. zoom (not transform) because the timeline's own hit-testing
+   * derives its scale from getBoundingClientRect / clientWidth, which stays
+   * self-consistent under it — a px rewrite would also have to move
+   * TRACK_GUTTER in CinemaTimeline.tsx. */
+  zoom: 2.2;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -331,6 +349,10 @@
 .cinema-timeline__track-label {
   width: 32px;
   display: flex;
+  /* Column, not row: the rail is 32px and the label + mute button will not sit
+   * side by side in it without one of them being unhittable. */
+  flex-direction: column;
+  gap: 2px;
   align-items: center;
   justify-content: center;
   font-size: 10px;
@@ -340,6 +362,32 @@
   flex-shrink: 0;
   border-right: 1px solid #2a2a30;
   border-radius: 6px 0 0 6px;
+}
+
+.cinema-timeline__track-mute {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #6b6b78;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.cinema-timeline__track-mute:hover {
+  background: rgba(var(--tint-rgb), 0.12);
+  color: #e5e5e5;
+}
+
+/* Muted is a state you must be able to spot without hovering — a music bed
+ * playing under silent picture looks identical to a broken export otherwise. */
+.cinema-timeline__track-mute--on {
+  color: #e5484d;
 }
 
 .cinema-timeline__track-clips {

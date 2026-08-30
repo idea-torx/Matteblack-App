@@ -195,9 +195,9 @@ export function StyleManagerPanel({ onClose, styleId, onDeleted, onSaved }: Styl
           </svg>
         </button>
         <div className="rpanel-scroll">
-          <div className="gifmaker-title">Manage Style</div>
+          <div className="gifmaker-title">Manage Prompt</div>
           <div style={{ padding: "2rem", textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
-            {loadError ? "Style not found or access denied" : "Loading..."}
+            {loadError ? "Prompt not found or access denied" : "Loading..."}
           </div>
         </div>
       </aside>
@@ -214,7 +214,7 @@ export function StyleManagerPanel({ onClose, styleId, onDeleted, onSaved }: Styl
       </button>
 
       <div className="rpanel-scroll">
-        <div className="gifmaker-title">Manage Style</div>
+        <div className="gifmaker-title">Manage Prompt</div>
 
         <div className="rpanel-card">
           <button type="button" className="rpanel-card-toggle" onClick={() => toggle("image")}>
@@ -276,7 +276,7 @@ export function StyleManagerPanel({ onClose, styleId, onDeleted, onSaved }: Styl
                 <label className="axiom-field-label">Prompt</label>
                 <textarea
                   className="axiom-field-textarea"
-                  placeholder="Style prompt that will be applied when dragging to canvas..."
+                  placeholder="The prompt text applied when dragging to canvas..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={4}
