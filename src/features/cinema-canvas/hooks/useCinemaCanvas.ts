@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { CanvasNode } from "../../../types/canvas";
 import {
-  isCinemaVideoNode,
   isCinemaAudioNode,
   getCinemaNodeType,
 } from "../helpers/cinemaMetadata";
@@ -39,9 +38,11 @@ export function useCinemaCanvas({
         onToolSelect?.(toolId);
       };
 
-      if (isCinemaVideoNode(node)) {
-        selectToolIfDifferent("create");
-      } else if (isCinemaAudioNode(node)) {
+      // Video clips deliberately select nothing: "create" is the generic tool,
+      // so the only effect was yanking the rail back to the toolkit every time
+      // you clicked a clip. Audio keeps its mapping — it opens the matching
+      // editor, which is the point.
+      if (isCinemaAudioNode(node)) {
         const sub = (node.metadata?.audioSubtype as string) || "tts";
         const toolMap: Record<string, string> = {
           tts: "tts",

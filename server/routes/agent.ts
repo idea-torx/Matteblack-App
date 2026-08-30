@@ -1631,6 +1631,23 @@ function resolveExplicitModel(name: string | undefined): ModelEntry | null {
  * generate_media / transform_media / generate_music, so it is served to the MCP
  * bridge alone (see /api/agent/tools).
  */
+/** Snap real pixel dimensions to the nearest aspect-ratio label we can send. */
+function nearestAspectLabel(width: number, height: number): string {
+  const presets: Array<[string, number]> = [
+    ["1:1", 1], ["4:3", 4 / 3], ["3:4", 3 / 4],
+    ["16:9", 16 / 9], ["9:16", 9 / 16],
+    ["21:9", 21 / 9], ["3:2", 3 / 2], ["2:3", 2 / 3],
+  ];
+  const r = width / height;
+  let bestLabel = "1:1";
+  let bestDiff = Infinity;
+  for (const [label, value] of presets) {
+    const d = Math.abs(r - value);
+    if (d < bestDiff) { bestDiff = d; bestLabel = label; }
+  }
+  return bestLabel;
+}
+
 const CONTINUE_VIDEO_TOOL: Tool = {
   name: "continue_video",
   description:
@@ -1671,7 +1688,7 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       aspectRatio: {
         type: "string",
         enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
-        description: "Only used to size the canvas placeholder; the clip itself follows the source. Pass the sequence's aspect ratio so the card lands at the right shape.",
+        description: "The sequence's aspect ratio. Defaults to the source clip's own shape. seam='frame' inherits it from the seed frame anyway, but seam='reference' does NOT read it off the tail clip and will fall back to 16:9 — so pass it on every chunk of a non-16:9 sequence.",
       },
     },
     required: ["sourceUrl", "prompt"],
@@ -3830,18 +3847,7 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
             aspectProbeCache.set(referenceUrls[0], meta);
           }
           if (meta) {
-            const presets: Array<[string, number]> = [
-              ["1:1", 1], ["4:3", 4 / 3], ["3:4", 3 / 4],
-              ["16:9", 16 / 9], ["9:16", 9 / 16],
-              ["21:9", 21 / 9], ["3:2", 3 / 2], ["2:3", 2 / 3],
-            ];
-            const r = meta.width / meta.height;
-            let bestLabel = "1:1";
-            let bestDiff = Infinity;
-            for (const [label, value] of presets) {
-              const d = Math.abs(r - value);
-              if (d < bestDiff) { bestDiff = d; bestLabel = label; }
-            }
+            const bestLabel = nearestAspectLabel(meta.width, meta.height);
             built.body.aspect_ratio = bestLabel;
             parsed.aspectRatio = bestLabel;
           }
@@ -4443,13 +4449,15 @@ async function placeAgentGenerationOnCanvas(
   jobId: string,
   kind: "image" | "video",
   prompt: string,
-  sizeHint: { aspectRatio?: string; resolution?: string | null },
+  sizeHint: { aspectRatio?: string; resolution?: string | null; size?: { w: number; h: number } },
 ): Promise<void> {
   try {
     // Size the placeholder to the REQUESTED aspect ratio (mirrors the frontend's
     // placeholderSize) so the finished image drops in at true proportions with
     // no resize. "quality" tier + resolution matches startGeneration's call.
-    const size = placeholderSize("quality", sizeHint.aspectRatio, kind, sizeHint.resolution ?? null);
+    // An explicit `size` wins: a continuation has to match the clip it
+    // continues, whatever tier that one happened to be generated at.
+    const size = sizeHint.size ?? placeholderSize("quality", sizeHint.aspectRatio, kind, sizeHint.resolution ?? null);
 
     // Existing occupancy (skip frames/groups — they're containers, not obstacles).
     const existing = await pool.query(
@@ -4726,12 +4734,35 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         return;
       }
 
+      // The source clip's node, read BEFORE dispatch: it carries the geometry
+      // of the clip being continued, and that geometry has to reach the
+      // generation, not just the placeholder.
+      const prevNode = await pool.query(
+        `SELECT width, height FROM canvas_nodes WHERE canvas_id = $1 AND src = $2 ORDER BY z_index DESC LIMIT 1`,
+        [canvasId, src],
+      );
+      const prev = prevNode.rows[0];
+
+      // seam='frame' pins the shape for free — the seed frame IS the aspect
+      // ratio. seam='reference' gets only a tail clip, does NOT read the
+      // dimensions off it, and falls back to a 16:9 default, so a portrait
+      // sequence turns landscape mid-cut. Send the ratio explicitly: whatever
+      // the caller asked for, else the source clip's own shape.
+      const askedAr = typeof input.aspectRatio === "string" && GEN_ALLOWED_AR.has(input.aspectRatio)
+        ? input.aspectRatio
+        : undefined;
+      const sourceAr = prev && Number(prev.width) > 0 && Number(prev.height) > 0
+        ? nearestAspectLabel(Number(prev.width), Number(prev.height))
+        : undefined;
+      const aspectRatio = askedAr ?? sourceAr;
+
       const body: Record<string, unknown> = {
         type: "video_gen",
         model: seam === "reference" ? "h3-max-r2v" : "h3-max-i2v",
         prompt,
         duration,
         resolution: typeof input.resolution === "string" ? input.resolution : undefined,
+        aspect_ratio: aspectRatio,
         canvas_id: canvasId,
         workspace_id: workspaceId,
         params: { source: "agent", continuedFrom: src },
@@ -4747,13 +4778,20 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
 
       const dispatch = await dispatchAgentGeneration(req, body);
       if (!dispatch.ok) { res.status(dispatch.status).json({ error: dispatch.error }); return; }
+      // Match the clip being continued, node for node. Without this the
+      // continuation is sized from the default "quality" tier and a chunk-one
+      // clip generated at any other tier gets a sibling twice its size.
       await placeAgentGenerationOnCanvas(
         userId, canvasId, dispatch.jobId!, "video", prompt,
-        { aspectRatio: typeof input.aspectRatio === "string" ? input.aspectRatio : undefined, resolution: null },
+        {
+          aspectRatio,
+          resolution: null,
+          size: prev ? { w: Number(prev.width), h: Number(prev.height) } : undefined,
+        },
       );
       res.json({
         jobId: dispatch.jobId, type: "video_gen",
-        model: body.model, canvasId, seam, handoffUrl: handoff, durationSeconds: duration,
+        model: body.model, canvasId, seam, handoffUrl: handoff, durationSeconds: duration, aspectRatio,
       });
       return;
     }

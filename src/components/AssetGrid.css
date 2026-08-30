@@ -1,0 +1,164 @@
+.asset-grid {
+  position: absolute;
+  /* Clears the project tab band — the toggle that got you here lives in it,
+   * and so does the way back. */
+  top: var(--project-tabs-h);
+  /* The icon rail is an absolutely-positioned overlay (z:20), not a flex
+   * sibling that reserves width — so anything filling .canvas-area has to step
+   * around it itself or the first column disappears underneath. */
+  left: calc(var(--icon-rail-width) + var(--panel-float-gap, 0px));
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.asset-grid__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(var(--tint-rgb), 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.asset-grid__back {
+  padding: 5px 10px;
+  border: 1px solid rgba(var(--tint-rgb), 0.14);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.asset-grid__back:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  color: var(--text-primary);
+}
+
+.asset-grid__items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Bottom room for the floating zoom pill (z-index 20), which stays above the
+   * grid on purpose — the same button that opened the grid closes it. */
+  padding: 2px 2px 72px;
+  display: grid;
+  /* A FIXED column width, not a fractional one, is what makes the masonry work
+   * without measuring anything: the tile knows its own aspect ratio from the
+   * node, so with a known column width it can compute its own row span in CSS
+   * units. Change --asset-col and --asset-row together or spans go wrong. */
+  /* --asset-col is set inline by the size slider; the tiles' row spans are
+   * computed from the same number. --asset-row must match ROW in AssetGrid.tsx. */
+  --asset-col: 200px;
+  --asset-row: 4px;
+  grid-template-columns: repeat(auto-fill, var(--asset-col));
+  grid-auto-rows: var(--asset-row);
+  justify-content: center;
+  gap: 2px;
+  align-content: start;
+}
+
+.asset-grid__scale {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.asset-grid__scale input {
+  width: 120px;
+  accent-color: var(--text-secondary);
+}
+
+.asset-grid__count {
+  white-space: nowrap;
+}
+
+.asset-grid__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.asset-grid__tile {
+  position: relative;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: rgba(var(--tint-rgb), 0.04);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* Outline, not a border: a border would resize the tile and reflow the whole
+ * masonry on hover. */
+.asset-grid__tile:hover {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.asset-grid__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.asset-grid__audio {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.asset-grid__badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.asset-grid__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 8px 6px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  color: #fff;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* Chrome off until asked for: with tight spacing the badges and labels tile
+ * into a wall of grey boxes and you stop seeing the work. */
+.asset-grid__tile:hover .asset-grid__badge,
+.asset-grid__tile:hover .asset-grid__label {
+  opacity: 1;
+}

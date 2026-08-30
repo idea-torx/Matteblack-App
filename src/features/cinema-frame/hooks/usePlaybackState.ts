@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { flushSync } from "react-dom";
 import type { TimelineState, TimelineClip } from "../helpers/timelineState";
-import { getTotalDuration, getActiveClipAtTime } from "../helpers/timelineState";
+import { getTotalDuration, getActiveClipAtTime, getNextVideoClipAfterTime } from "../helpers/timelineState";
 
 export type PlaybackState = {
   isPlaying: boolean;
@@ -66,10 +67,15 @@ export function usePlaybackState(
 
   const rawActiveClip = findActiveVideoClip(timeline, currentTime);
   const rawActiveAudioClips = findActiveAudioClips(timeline, currentTime);
+  const rawNextClip = getNextVideoClipAfterTime(timeline, currentTime);
 
   const activeClip = useMemo(() => {
     return rawActiveClip;
   }, [rawActiveClip?.id, timeline.tracks]);
+
+  const nextClip = useMemo(() => {
+    return rawNextClip;
+  }, [rawNextClip?.id, timeline.tracks]);
 
   const activeAudioClips = useMemo(() => {
     return rawActiveAudioClips;
@@ -181,7 +187,16 @@ export function usePlaybackState(
         newAudioIds !== activeAudioClipIdsRef.current;
 
       if (clipBoundaryChanged) {
-        setCurrentTime(next);
+        // flushSync, because this is the frame the cut happens on. A plain
+        // setState from a rAF callback is batched and scheduled: React renders
+        // a frame or two later, and CinemaViewer's promotion effect — the thing
+        // that swaps the standby <video> in — lands later still. Meanwhile the
+        // outgoing element keeps painting past its out point. That overrun is
+        // the gap between clips. Flushed, render and effects run inside this
+        // frame, before paint.
+        flushSync(() => {
+          setCurrentTime(next);
+        });
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -214,6 +229,7 @@ export function usePlaybackState(
     volume,
     totalDuration,
     activeClip,
+    nextClip,
     activeAudioClips,
     play,
     pause,

@@ -1131,13 +1131,9 @@
 .agent-panel__glow::before {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 800px;
-  height: 800px;
-  margin-top: -400px;
-  margin-left: -400px;
+  inset: 0;
   background: conic-gradient(
+    from 0deg,
     #3B82F6 0%,
     #60a5fa 12%,
     transparent 25%,
@@ -1149,7 +1145,6 @@
     #3B82F6 90%,
     #3B82F6 100%
   );
-  animation: agent-glow-spin 4s linear infinite;
 }
 
 .agent-panel__glow-blur {
@@ -1169,6 +1164,7 @@
 }
 .agent-panel__glow--soft::before {
   background: conic-gradient(
+    from 0deg,
     rgba(59, 130, 246, 0.8) 0%,
     rgba(96, 165, 250, 0.7) 12%,
     transparent 25%,
@@ -1203,17 +1199,16 @@
   opacity: 0;
 }
 
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow--sharp {
-  border-radius: 999px;
-}
+/* Idle and empty: the composer is a plain pill. The spin is paused in this
+ * state (the ring no longer animates at all), so the glow was a static
+ * blue smear rather than motion — dark enough to read as a rendering fault.
+ * It lights up again the moment the field is focused or has text. */
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow--sharp,
 .agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow-blur {
   border-radius: 999px;
+  opacity: 0;
 }
 
-@keyframes agent-glow-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
 
 /* Perpetual animations are this app's single largest idle cost. Any animation
  * still running keeps Chromium compositing the whole window at 60fps, and with
@@ -1222,16 +1217,8 @@
  * the renderer on top. With nothing animating, the same idle window sits at
  * ~1%. So the decorative loops now run only while the composer is actually in
  * use, and are a static gradient / plain grey chip at rest.
- * ponytail: hand-listed states rather than a JS "is idle" flag — CSS already
- * knows all three, and a flag would need threading through two panels. */
-.agent-panel__glow::before {
-  animation-play-state: paused;
-}
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow::before,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow::before,
-.agent-panel__textarea-wrap--generating .agent-panel__glow::before {
-  animation-play-state: running;
-}
+ * The composer ring is now static in every state; what is left below are the
+ * other decorative loops, still gated to when the composer is in use. */
 
 
 .agent-panel__textarea {
@@ -3069,7 +3056,7 @@
 /* Kept at the end of the file on purpose: the `animation:` shorthands above
  * (including the dark-theme .agent-panel__send:disabled variant) would reset
  * play-state back to running if these came first. See the note by
- * @keyframes agent-glow-spin for why the idle loops are paused at all. */
+ * the note above for why the idle loops are paused at all. */
 .agent-panel__send:disabled,
 .agent-panel__send:disabled::after {
   animation-play-state: paused;

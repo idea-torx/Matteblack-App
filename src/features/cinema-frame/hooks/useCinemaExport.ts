@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import type { TimelineState } from "../helpers/timelineState";
 import { getEffectiveDuration, getTotalDuration } from "../helpers/timelineState";
 import { buildFFmpegCommand, type ExportConfig, type StreamInfo } from "../helpers/buildFFmpegCommand";
@@ -51,65 +51,75 @@ async function probeStreamInfo(ffmpeg: FFmpegInstance, filename: string): Promis
   return { hasAudio, isH264, width, height };
 }
 
-export function useCinemaExport(timeline: TimelineState | null) {
-  const [progress, setProgress] = useState(0);
-  const [stage, setStage] = useState<ExportStage>("idle");
-  const [isExporting, setIsExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const cancelRef = useRef(false);
-  const ffmpegRef = useRef<{ terminate: () => void } | null>(null);
+/**
+ * The export lives OUTSIDE React.
+ *
+ * An ffmpeg.wasm encode takes minutes, and the cinema frame unmounts the
+ * moment it scrolls out of the viewport or the user switches panels — which
+ * used to terminate the worker mid-encode. Progress state and the running
+ * worker are module-level, so the export keeps going and any remount picks
+ * the same run back up.
+ * ponytail: one export at a time, which is all the UI offers.
+ */
+type ExportState = { progress: number; stage: ExportStage; isExporting: boolean; error: string | null };
+let exportState: ExportState = { progress: 0, stage: "idle", isExporting: false, error: null };
+let running: FFmpegInstance | null = null;
+let cancelled = false;
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    return () => {
-      if (ffmpegRef.current) {
-        try { ffmpegRef.current.terminate(); } catch {}
-        ffmpegRef.current = null;
-      }
-    };
-  }, []);
+function setExportState(patch: Partial<ExportState>) {
+  exportState = { ...exportState, ...patch };
+  for (const l of listeners) l();
+}
+
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+export function useCinemaExport(timeline: TimelineState | null) {
+  const { progress, stage, isExporting, error } = useSyncExternalStore(subscribe, () => exportState);
 
   const cancelExport = useCallback(() => {
-    cancelRef.current = true;
-    if (ffmpegRef.current) {
-      try { ffmpegRef.current.terminate(); } catch {}
-      ffmpegRef.current = null;
+    cancelled = true;
+    if (running) {
+      try { running.terminate(); } catch {}
+      running = null;
     }
-    setStage("cancelled");
-    setIsExporting(false);
-    setProgress(0);
+    setExportState({ stage: "cancelled", isExporting: false, progress: 0 });
   }, []);
 
   const startExport = useCallback(async (config: ExportConfig) => {
     if (!timeline) return;
-    cancelRef.current = false;
-    setIsExporting(true);
-    setError(null);
-    setProgress(0);
+    // A second start while one is running would race the shared worker.
+    if (exportState.isExporting) return;
+    cancelled = false;
+    setExportState({ isExporting: true, error: null, progress: 0 });
 
     let ffmpeg: FFmpegInstance | null = null;
     const writtenFiles: string[] = [];
 
     try {
-      setStage("loading-ffmpeg");
+      setExportState({ stage: "loading-ffmpeg" });
       const { FFmpeg } = await import("@ffmpeg/ffmpeg");
       const { fetchFile } = await import("@ffmpeg/util");
 
-      if (cancelRef.current) return;
+      if (cancelled) return;
 
       ffmpeg = new FFmpeg() as unknown as FFmpegInstance;
-      ffmpegRef.current = ffmpeg;
+      running = ffmpeg;
 
       ffmpeg.on("progress", ({ progress: p }) => {
-        if (cancelRef.current) return;
+        if (cancelled) return;
         if (typeof p === "number") {
-          setProgress(Math.min(0.95, 0.35 + p * 0.60));
+          setExportState({ progress: Math.min(0.95, 0.35 + p * 0.60) });
         }
       });
 
       await ffmpeg.load();
-      if (cancelRef.current) return;
+      if (cancelled) return;
 
-      setStage("fetching-media");
+      setExportState({ stage: "fetching-media" });
       const allClips = timeline.tracks.flatMap((t) => t.clips);
       const clipFileMap = new Map<string, string>();
       const uniqueSrcs = new Map<string, string>();
@@ -132,7 +142,7 @@ export function useCinemaExport(timeline: TimelineState | null) {
           }
 
           const data = await fetchFile(fetchUrl);
-          if (cancelRef.current) return;
+          if (cancelled) return;
           await ffmpeg.writeFile(vfsName, data);
           writtenFiles.push(vfsName);
           uniqueSrcs.set(clip.src, vfsName);
@@ -140,20 +150,17 @@ export function useCinemaExport(timeline: TimelineState | null) {
 
         clipFileMap.set(clip.id, vfsName);
         fetched++;
-        setProgress(0.05 + (fetched / Math.max(clipsToFetch.length, 1)) * 0.15);
+        setExportState({ progress: 0.05 + (fetched / Math.max(clipsToFetch.length, 1)) * 0.15 });
       }
 
-      if (cancelRef.current) return;
+      if (cancelled) return;
 
       if (clipFileMap.size === 0) {
-        setError("No clips to export");
-        setStage("error");
-        setIsExporting(false);
+        setExportState({ error: "No clips to export", stage: "error", isExporting: false });
         return;
       }
 
-      setStage("probing");
-      setProgress(0.20);
+      setExportState({ stage: "probing", progress: 0.20 });
 
       const probedSrcs = new Map<string, StreamInfo>();
       let probed = 0;
@@ -170,20 +177,19 @@ export function useCinemaExport(timeline: TimelineState | null) {
             info = { hasAudio: true, isH264: false };
           } else {
             info = await probeStreamInfo(ffmpeg, vfsName);
-            if (cancelRef.current) return;
+            if (cancelled) return;
           }
 
           streamInfoMap.set(clip.id, info);
           probedSrcs.set(clip.src, info);
         }
         probed++;
-        setProgress(0.20 + (probed / Math.max(clipsToFetch.length, 1)) * 0.15);
+        setExportState({ progress: 0.20 + (probed / Math.max(clipsToFetch.length, 1)) * 0.15 });
       }
 
-      if (cancelRef.current) return;
+      if (cancelled) return;
 
-      setStage("encoding");
-      setProgress(0.35);
+      setExportState({ stage: "encoding", progress: 0.35 });
 
       const totalDuration = getTotalDuration(timeline);
       const { args, concatListContent } = buildFFmpegCommand(timeline, clipFileMap, config, totalDuration, streamInfoMap);
@@ -194,14 +200,13 @@ export function useCinemaExport(timeline: TimelineState | null) {
       }
 
       const exitCode = await ffmpeg.exec(args);
-      if (cancelRef.current) return;
+      if (cancelled) return;
 
       if (exitCode !== 0) {
         throw new Error(`FFmpeg exited with code ${exitCode}`);
       }
 
-      setStage("finalizing");
-      setProgress(0.95);
+      setExportState({ stage: "finalizing", progress: 0.95 });
 
       const outputName = config.filename.endsWith(".mp4") ? config.filename : `${config.filename}.mp4`;
       const outputData = await ffmpeg.readFile(outputName);
@@ -212,25 +217,28 @@ export function useCinemaExport(timeline: TimelineState | null) {
       const a = document.createElement("a");
       a.href = url;
       a.download = outputName;
+      // Detached anchors and a same-tick revoke both drop the download in
+      // Chromium — the click has to happen on a node in the document, and the
+      // object URL has to outlive it. Same shape as downloadAsset().
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
 
-      setProgress(1);
-      setStage("done");
+      setExportState({ progress: 1, stage: "done" });
     } catch (err) {
-      if (cancelRef.current) return;
+      if (cancelled) return;
       console.error("[CinemaExport] Export failed:", err);
-      setError(err instanceof Error ? err.message : "Export failed");
-      setStage("error");
+      setExportState({ error: err instanceof Error ? err.message : "Export failed", stage: "error" });
     } finally {
       if (ffmpeg) {
         for (const f of writtenFiles) {
           try { await ffmpeg.deleteFile(f); } catch {}
         }
         try { ffmpeg.terminate(); } catch {}
-        ffmpegRef.current = null;
+        running = null;
       }
-      setIsExporting(false);
+      setExportState({ isExporting: false });
     }
   }, [timeline]);
 

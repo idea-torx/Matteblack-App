@@ -48,6 +48,9 @@ export type CanvasNode = {
   asset_id: string | null;
   job_id: string | null;
   metadata: Record<string, unknown>;
+  /** Server-assigned. Absent on nodes created this session until they round
+   *  trip, which is why the grid falls back to z_index for ordering. */
+  created_at?: string;
 };
 
 export type ContextMenu = {
@@ -114,9 +117,14 @@ export type FreeformCanvasProps = {
   onSvgEditStateChange?: (state: { isEditing: boolean; selectedPoints: { subPathIdx: number; anchorIdx: number }[]; pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean }[] }[] } | null } | null) => void;
   onSyncStatusChange?: (status: "synced" | "syncing" | "confirming" | "failed", failedSeconds: number, retry: () => void) => void;
   onOpenLibrary?: (view: string, folderId?: string, assetId?: string) => void;
+  /** Cinema node's export button. Selection alone can't reach the export
+   * panel: the right slot is occupied by the agent panel whenever it is open. */
+  onRequestCinemaExport?: (nodeId: string) => void;
   projectName?: string;
   onNodesChange?: (nodes: CanvasNode[]) => void;
   dotPulseKey?: number | null;
+  gridView?: boolean;
+  onToggleGridView?: () => void;
 };
 
 export type CanvasApi = {

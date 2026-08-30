@@ -173,20 +173,18 @@ html.is-mac .app-titlebar {
 }
 
 .canvas-area--card {
+  /* Matches .freeform-canvas — the card paints --bg-canvas behind the canvas,
+   * so a square corner here would fill in the rounded one and there would be
+   * nothing to see. */
+  border-radius: 8px;
   margin-right: var(--canvas-right-inset, 0px);
   box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
-  transition: margin-right 240ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 360ms ease;
-}
-
-/* During an agent ↔ rpanel swap the inset only swings 60px (360 → 300
- * or back). Animating that swing each frame combined with the right
- * panel's backdrop-filter blur caused a white flash and made the
- * canvas appear to "zoom out". The .app-body--swap class is already
- * applied for the swap window, so we kill the margin transition only
- * while it's set — opens-from-nothing and pure rpanel-tool switches
- * (where the inset doesn't change) keep the smooth animation. */
-.app-body--swap .canvas-area--card {
+  /* margin-right is NOT animated. Animating the inset re-lays-out the canvas
+   * every frame for 240ms with the right panel's backdrop-filter blur on top,
+   * and the compositor drops the canvas's cached layers — that is the white
+   * flash on every tool switch that opens or closes the right panel. The swap
+   * case was already exempted for exactly this reason; open/close leaked
+   * through the exemption. The inset snaps; the panels still crossfade. */
   transition: box-shadow 360ms ease;
 }
 
@@ -208,8 +206,10 @@ html.is-mac .app-titlebar {
 .canvas-glow {
   position: absolute;
   inset: -3px;
-  border-top-right-radius: 39px;
-  border-bottom-right-radius: 39px;
+  /* The canvas radius plus this ring's own 3px inset. Kept in step by hand:
+   * a glow rounder than the card it traces reads as a halo that has come
+   * loose from the edge. */
+  border-radius: 11px;
   z-index: 20;
   overflow: hidden;
   pointer-events: none;
@@ -228,13 +228,9 @@ html.is-mac .app-titlebar {
 .canvas-glow::before {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4000px;
-  height: 4000px;
-  margin-top: -2000px;
-  margin-left: -2000px;
+  inset: 0;
   background: conic-gradient(
+    from 0deg,
     #3B82F6 0%,
     #60a5fa 12%,
     transparent 25%,
@@ -246,67 +242,19 @@ html.is-mac .app-titlebar {
     #3B82F6 90%,
     #3B82F6 100%
   );
-  animation: canvas-glow-spin 4s linear infinite;
 }
 
-/* Two 4000x4000 conic gradients sit here permanently at opacity 0, waiting for
- * the busy state. `opacity: 0` hides them but does NOT stop the rotation:
- * Chromium keeps recompositing both layers at 60fps forever, which is why the
- * GPU helper idled at ~50% CPU / 455MB with nothing on screen. Spin them only
- * while they are actually visible. (`will-change: opacity` was dropped above
- * for the same reason — it pinned the 4000px raster in GPU memory at all
- * times; the 420ms fade still promotes on its own.) */
-.canvas-glow::before {
-  animation-play-state: paused;
-}
-.canvas-area--agent-busy .canvas-glow::before {
-  animation-play-state: running;
-}
 
-.canvas-glow-blur {
-  position: absolute;
-  inset: -16px;
-  border-top-right-radius: 52px;
-  border-bottom-right-radius: 52px;
-  z-index: 19;
-  pointer-events: none;
-  filter: blur(20px);
-  transition: opacity 420ms ease;
-}
-
-.canvas-glow--soft {
-  inset: 0;
-  border-radius: inherit;
-  padding: 5px;
-}
-.canvas-glow--soft::before {
-  background: conic-gradient(
-    rgba(59, 130, 246, 0.8) 0%,
-    rgba(96, 165, 250, 0.7) 12%,
-    transparent 25%,
-    transparent 35%,
-    rgba(59, 130, 246, 0.8) 45%,
-    rgba(147, 197, 253, 0.6) 55%,
-    transparent 68%,
-    transparent 78%,
-    rgba(59, 130, 246, 0.8) 90%,
-    rgba(59, 130, 246, 0.8) 100%
-  );
-}
+/* The outer blurred bloom that used to live here is gone. Its inner element
+ * (.canvas-glow--soft) inherited `opacity: 0` from .canvas-glow and nothing
+ * ever raised it, so the wrapper composited a full-card `blur(20px)` layer
+ * that drew nothing at all. */
 
 .canvas-area--card.canvas-area--agent-busy {
   box-shadow: none;
 }
 .canvas-area--agent-busy .canvas-glow--sharp {
   opacity: 1;
-}
-.canvas-area--agent-busy .canvas-glow-blur {
-  opacity: 0.7;
-}
-
-@keyframes canvas-glow-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -315,9 +263,6 @@ html.is-mac .app-titlebar {
   }
   .canvas-area--agent-busy .canvas-glow--sharp {
     opacity: 0.7;
-  }
-  .canvas-area--agent-busy .canvas-glow-blur {
-    opacity: 0.4;
   }
 }
 

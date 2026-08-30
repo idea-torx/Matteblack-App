@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState, useEffect, useMemo } from "react";
+import { memo, useCallback, useRef, useState, useEffect, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import WaveSurfer from "wavesurfer.js";
 import type { TimelineState, TimelineTrack, TimelineClip, IncomingDragPreview } from "../helpers/timelineState";
@@ -171,6 +171,7 @@ function RulerTicks({ pps, containerWidth }: { pps: number; containerWidth: numb
 function Playhead({
   currentTimeRef,
   pps,
+  isPlaying,
   className,
 }: {
   currentTimeRef: React.RefObject<number>;
@@ -179,33 +180,39 @@ function Playhead({
   className: string;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef<number | null>(null);
   const ppsRef = useRef(pps);
   ppsRef.current = pps;
 
-  useEffect(() => {
+  // transform, not `left`: left is a layout property, so moving the playhead
+  // through it re-laid-out and repainted the entire timeline — every clip,
+  // thumbnail and ruler tick — 60 times a second.
+  const place = () => {
     const el = elRef.current;
-    if (!el) return;
+    if (el) {
+      el.style.transform =
+        `translateX(${TRACK_GUTTER + currentTimeRef.current * ppsRef.current - 1}px)`;
+    }
+  };
 
-    el.style.left = `${TRACK_GUTTER + currentTimeRef.current * ppsRef.current}px`;
+  // Paused, the playhead only moves on seek or zoom, and both re-render.
+  useLayoutEffect(place);
 
+  // The rAF loop used to run for the life of the component whether or not
+  // anything was playing, which pins Chromium to compositing the whole window
+  // at 60fps for as long as a cinema node is on the canvas.
+  useEffect(() => {
+    if (!isPlaying) return;
+    let raf = 0;
     const update = () => {
-      if (el) {
-        el.style.left = `${TRACK_GUTTER + currentTimeRef.current * ppsRef.current}px`;
-      }
-      rafRef.current = requestAnimationFrame(update);
+      place();
+      raf = requestAnimationFrame(update);
     };
-    rafRef.current = requestAnimationFrame(update);
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying]);
 
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [currentTimeRef]);
-
-  return <div ref={elRef} className={className} />;
+  return <div ref={elRef} className={className} style={{ left: 0 }} />;
 }
 
 function TrimHandle({

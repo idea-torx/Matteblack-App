@@ -352,6 +352,7 @@ export const CinemaFrame = memo(function CinemaFrame({
           (t) => t.type === "video" && t.muted && t.clips.some((c) => c.id === playback.activeClip?.id),
         )}
         activeClip={playback.activeClip}
+        nextClip={playback.nextClip}
         activeAudioClips={playback.activeAudioClips}
         isPlaying={playback.isPlaying}
         currentTimeRef={playback.currentTimeRef}
