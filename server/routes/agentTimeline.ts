@@ -46,24 +46,71 @@ function clipTypeFor(src: string): "video" | "image" | "audio" {
   return "video";
 }
 
-/** Find the canvas's cinema frame, creating one if the user hasn't yet. */
-async function ensureCinemaNode(canvasId: string): Promise<string> {
-  const found = await pool.query(
-    `SELECT id FROM canvas_nodes
+/** Live (non-tombstoned) clip count for one cinema frame. */
+async function clipCount(canvasId: string, nodeId: string): Promise<number> {
+  const r = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM cinema_clips c
+       JOIN cinema_tracks t ON t.id = c.track_id
+      WHERE c.canvas_id = $1 AND t.node_id = $2
+        AND c.id NOT IN (SELECT clip_id FROM cinema_clip_tombstones WHERE canvas_id = $1)`,
+    [canvasId, nodeId],
+  );
+  return (r.rows[0]?.n as number) ?? 0;
+}
+
+/** The canvas's cinema frames, oldest first. */
+async function cinemaNodes(canvasId: string): Promise<{ id: string; label: string }[]> {
+  const r = await pool.query(
+    `SELECT id, label FROM canvas_nodes
       WHERE canvas_id = $1 AND node_type = 'cinema'
         AND id NOT IN (SELECT node_id FROM canvas_node_tombstones WHERE canvas_id = $1)
-      LIMIT 1`,
+      ORDER BY z_index ASC`,
     [canvasId],
   );
-  if (found.rows.length > 0) return found.rows[0].id as string;
+  return r.rows as { id: string; label: string }[];
+}
+
+async function createCinemaNode(canvasId: string): Promise<string> {
   const z = await pool.query(`SELECT COALESCE(MAX(z_index), 0) + 1 AS z FROM canvas_nodes WHERE canvas_id = $1`, [canvasId]);
+  // Stack below whatever cinema frames already exist rather than landing on
+  // top of one at 0,0.
+  const below = await pool.query(
+    `SELECT COALESCE(MAX(y + height), -200) + 200 AS y FROM canvas_nodes
+      WHERE canvas_id = $1 AND node_type = 'cinema'
+        AND id NOT IN (SELECT node_id FROM canvas_node_tombstones WHERE canvas_id = $1)`,
+    [canvasId],
+  );
   const nodeId = uuidv4();
   await pool.query(
     `INSERT INTO canvas_nodes (id, canvas_id, node_type, x, y, width, height, rotation, z_index, locked, visible, label, src, gradient, metadata, asset_id, job_id)
-     VALUES ($1, $2, 'cinema', 0, 0, 1920, 1700, 0, $3, true, true, 'Cinema Frame', '', '', '{}', NULL, NULL)`,
-    [nodeId, canvasId, z.rows[0]?.z ?? 1],
+     VALUES ($1, $2, 'cinema', 0, $4, 1920, 1700, 0, $3, true, true, 'Cinema Frame', '', '', '{}', NULL, NULL)`,
+    [nodeId, canvasId, z.rows[0]?.z ?? 1, below.rows[0]?.y ?? 0],
   );
   return nodeId;
+}
+
+/**
+ * Pick the cinema frame to write to.
+ *
+ * A named nodeId is the "extend this cut" path. Without one, an existing cut
+ * is never clobbered: only an empty frame is reused, otherwise a new frame is
+ * added beside it.
+ */
+async function targetCinemaNode(
+  canvasId: string,
+  opts: { nodeId?: string; newNode?: boolean },
+): Promise<string> {
+  const nodes = await cinemaNodes(canvasId);
+  if (opts.nodeId) {
+    if (!nodes.some((n) => n.id === opts.nodeId)) {
+      throw new Error(`No cinema frame ${opts.nodeId} on this canvas — call get_timeline for the current ids.`);
+    }
+    return opts.nodeId;
+  }
+  if (!opts.newNode) {
+    for (const n of nodes) if ((await clipCount(canvasId, n.id)) === 0) return n.id;
+  }
+  return createCinemaNode(canvasId);
 }
 
 /** One cinema frame's video + audio tracks, created on first use. */
@@ -111,29 +158,40 @@ async function insertClip(
   );
 }
 
-/** The cut as it stands, in play order — so Claude can reason about what to fix. */
+/** Every cinema frame on the canvas, each with its own cut, in play order —
+ *  so Claude knows which one to extend and which one to leave alone. */
 router.get("/api/agent/timeline", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
   const canvasId = activeCanvas(req);
-  if (!canvasId) { res.json({ clips: [], music: null, canvasId: null }); return; }
+  if (!canvasId) { res.json({ timelines: [], canvasId: null }); return; }
   try {
-    const tracks = await pool.query(`SELECT id, track_type, muted FROM cinema_tracks WHERE canvas_id = $1`, [canvasId]);
+    const nodes = await cinemaNodes(canvasId);
+    const tracks = await pool.query(`SELECT id, node_id, track_type, muted FROM cinema_tracks WHERE canvas_id = $1`, [canvasId]);
     const tombs = await pool.query(`SELECT clip_id FROM cinema_clip_tombstones WHERE canvas_id = $1`, [canvasId]);
     const dead = new Set((tombs.rows as { clip_id: string }[]).map((r) => r.clip_id));
     const clips = await pool.query(
-      `SELECT id, track_id, src, clip_type, duration, start_offset, label FROM cinema_clips WHERE canvas_id = $1 ORDER BY start_offset ASC`,
+      `SELECT id, track_id, src, duration, start_offset, label FROM cinema_clips WHERE canvas_id = $1 ORDER BY start_offset ASC`,
       [canvasId],
     );
-    const typeOf = new Map((tracks.rows as { id: string; track_type: string }[]).map((t) => [t.id, t.track_type]));
+    type Track = { id: string; node_id: string; track_type: string; muted: boolean };
+    const trackRows = tracks.rows as Track[];
     const live = (clips.rows as { id: string; track_id: string; src: string; duration: number; start_offset: number; label: string }[])
       .filter((c) => !dead.has(c.id));
     res.json({
       canvasId,
-      clips: live.filter((c) => typeOf.get(c.track_id) !== "audio")
-        .map((c) => ({ src: c.src, durationSeconds: c.duration, startsAt: c.start_offset, label: c.label })),
-      music: live.filter((c) => typeOf.get(c.track_id) === "audio")
-        .map((c) => ({ src: c.src, durationSeconds: c.duration }))[0] ?? null,
-      muteVideoAudio: (tracks.rows as { track_type: string; muted: boolean }[])
-        .some((t) => t.track_type === "video" && t.muted),
+      timelines: nodes.map((n) => {
+        const mine = trackRows.filter((t) => t.node_id === n.id);
+        const typeOf = new Map(mine.map((t) => [t.id, t.track_type]));
+        const ours = live.filter((c) => typeOf.has(c.track_id));
+        return {
+          nodeId: n.id,
+          label: n.label || "Cinema Frame",
+          clips: ours.filter((c) => typeOf.get(c.track_id) !== "audio")
+            .map((c) => ({ src: c.src, durationSeconds: c.duration, startsAt: c.start_offset, label: c.label })),
+          music: ours.filter((c) => typeOf.get(c.track_id) === "audio")
+            .map((c) => ({ src: c.src, durationSeconds: c.duration }))[0] ?? null,
+          muteVideoAudio: mine.some((t) => t.track_type === "video" && t.muted),
+        };
+      }),
     });
   } catch (err) {
     console.error("[agent/timeline] load failed:", err);
@@ -149,6 +207,8 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
     clips?: { src?: string; durationSeconds?: number; label?: string }[];
     music?: { src?: string; durationSeconds?: number; volume?: number } | null;
     muteVideoAudio?: boolean;
+    nodeId?: string;
+    newNode?: boolean;
   };
   const incoming = (body.clips ?? [])
     .filter((c): c is { src: string; durationSeconds?: number; label?: string } => usableSrc(c?.src));
@@ -156,7 +216,7 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
   // ponytail: 120-clip ceiling — a sane cap for an ad, not a real editor limit.
   if (incoming.length > 120) { res.status(400).json({ error: "That's more than 120 clips." }); return; }
   try {
-    const nodeId = await ensureCinemaNode(canvasId);
+    const nodeId = await targetCinemaNode(canvasId, { nodeId: body.nodeId, newNode: body.newNode === true });
     const { video, audio } = await ensureTracks(canvasId, nodeId);
     // Always written, not only when true, so a later call without the flag
     // unmutes — `set_timeline` is declarative everywhere else and a mute you
@@ -180,10 +240,13 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
       });
     }
     broadcastCanvasUpdate(canvasId, "");
-    res.json({ clips: incoming.length, totalSeconds: at, canvasId, muteVideoAudio });
+    res.json({ clips: incoming.length, totalSeconds: at, canvasId, nodeId, muteVideoAudio });
   } catch (err) {
     console.error("[agent/timeline] write failed:", err);
-    res.status(500).json({ error: "Failed to write the timeline." });
+    const msg = err instanceof Error && err.message.startsWith("No cinema frame")
+      ? err.message
+      : "Failed to write the timeline.";
+    res.status(msg === "Failed to write the timeline." ? 500 : 400).json({ error: msg });
   }
 });
 

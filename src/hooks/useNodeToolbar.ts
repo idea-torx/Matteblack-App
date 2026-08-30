@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { CanvasNode, UndoCommand } from "../types/canvas";
 import { enqueueDirty } from "../services/CanvasStore";
 import { saveNodeToLibraryOptimistic, sortNodesReadingOrder } from "../utils/canvasUtils";
@@ -36,23 +36,6 @@ export function useNodeToolbar() {
   const closeFullscreen = useCallback(() => {
     setFullscreen({ open: false, src: "", type: "image" });
   }, []);
-
-  // When the user exits browser fullscreen (Escape, F11, OS gesture), also
-  // close our React overlay so we don't leave the windowed cover state behind.
-  useEffect(() => {
-    if (!fullscreen.open) return;
-    const onChange = () => {
-      const docAny = document as Document & { webkitFullscreenElement?: Element };
-      const inFullscreen = !!(document.fullscreenElement || docAny.webkitFullscreenElement);
-      if (!inFullscreen) closeFullscreen();
-    };
-    document.addEventListener("fullscreenchange", onChange);
-    document.addEventListener("webkitfullscreenchange", onChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onChange);
-      document.removeEventListener("webkitfullscreenchange", onChange);
-    };
-  }, [fullscreen.open, closeFullscreen]);
 
   const downloadNode = useCallback(async (node: CanvasNode, projectName?: string, allNodes?: CanvasNode[]) => {
     const url = node.src || "";

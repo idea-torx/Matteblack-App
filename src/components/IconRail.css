@@ -61,7 +61,11 @@
 .icon-rail-btn--active::before {
   content: "";
   position: absolute;
-  left: -8px;
+  /* Flush to the rail's left edge, not floating 8px off the button. The button
+   * is 44px centred in the rail, so backing out half the leftover width lands
+   * the bar exactly on the edge — and it stays there if the rail's width
+   * changes (it is 64px floating, 76px docked). */
+  left: calc((var(--icon-rail-width) - 44px) / -2);
   top: 8px;
   bottom: 8px;
   width: 2px;
@@ -189,7 +193,11 @@ html.is-mac .icon-rail {
   left: 0;
   padding-top: 44px;
   border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  box-shadow: none;
+  /* The divider is a shadow, not a border. Under the global border-box a 1px
+   * right border eats 1px off the content box, so everything centred inside
+   * the rail — icons, the avatar — sat half a pixel left of the band's real
+   * centre, which is a full pixel on a retina display and reads as "the rail
+   * is off". A shadow paints outside the box and costs no width. */
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.08);
 }

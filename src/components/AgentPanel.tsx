@@ -1009,9 +1009,35 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
   }, [messages, modelKey, workspaceId, activeChatId, available, isGuest, streaming]);
 
   // Auto-scroll on new messages.
+  //
+  // Setting scrollTop once is not enough on a restored chat: the effect runs
+  // before the transcript has laid out — images, generation cards and code
+  // blocks all arrive later — so it pins to a scrollHeight that is about to
+  // triple, and the user lands at the first prompt. A ResizeObserver on the
+  // content keeps re-pinning as it grows, and stops the moment the user
+  // scrolls up, so reading back never fights it.
+  const stickToBottomRef = useRef(true);
   useEffect(() => {
     const el = messagesScrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const atBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const onScroll = () => { stickToBottomRef.current = atBottom(); };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [messages]);
+
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   // Lift the panel's "busy" state up so the canvas-area can paint an

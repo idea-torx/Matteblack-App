@@ -11,8 +11,6 @@ export type ZoomToolbarProps = {
   showMinimap: boolean;
   toolbarExpanded: boolean;
   presentMode?: boolean;
-  rightPanelHidden?: boolean;
-  canToggleRightPanel?: boolean;
   undoStack: MutableRefObject<UndoCommand[]>;
   redoStack: MutableRefObject<UndoCommand[]>;
   downloadableCount: number;
@@ -27,7 +25,8 @@ export type ZoomToolbarProps = {
   onUndo: () => void;
   onRedo: () => void;
   onTogglePresentMode?: () => void;
-  onToggleRightPanelHidden?: () => void;
+  gridView?: boolean;
+  onToggleGridView?: () => void;
   onBulkDownload: () => void;
 };
 
@@ -38,8 +37,6 @@ export function ZoomToolbar({
   gridSize,
   showMinimap,
   toolbarExpanded,
-  rightPanelHidden,
-  canToggleRightPanel,
   undoStack,
   redoStack,
   downloadableCount,
@@ -53,7 +50,8 @@ export function ZoomToolbar({
   onSetToolbarExpanded,
   onUndo,
   onRedo,
-  onToggleRightPanelHidden,
+  gridView,
+  onToggleGridView,
   onBulkDownload,
 }: ZoomToolbarProps) {
   /* Toggle a transient "pulse" class whenever the toolbar expands or
@@ -261,28 +259,24 @@ export function ZoomToolbar({
 
       {toolbarExpanded && <div className="freeform-canvas__toolbar-sep" />}
 
-      {canToggleRightPanel && onToggleRightPanelHidden && (
+      {onToggleGridView && (
         <>
           <button
             type="button"
-            className={`freeform-canvas__zoom-btn ${rightPanelHidden ? "freeform-canvas__zoom-btn--active" : ""}`}
-            onClick={onToggleRightPanelHidden}
-            title={rightPanelHidden ? "Exit fullscreen (show panels)" : "Fullscreen (hide right panel)"}
-            aria-label="Toggle fullscreen canvas"
+            className={`freeform-canvas__zoom-btn ${gridView ? "freeform-canvas__zoom-btn--active" : ""}`}
+            onClick={onToggleGridView}
+            aria-pressed={!!gridView}
+            title={gridView ? "Back to canvas" : "Grid view — every asset, newest first"}
+            aria-label="Toggle grid view"
           >
-            {rightPanelHidden ? (
+            {gridView ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                <path d="M3 7h7v10H3zM14 5h7v6h-7zM14 15h7v4h-7z" />
               </svg>
             ) : (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 8V5a2 2 0 0 1 2-2h3" />
-                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
               </svg>
             )}
           </button>

@@ -431,6 +431,22 @@ export function getActiveClipAtTime(
 }
 
 /**
+ * The video clip that starts next. The viewer preloads it into its standby
+ * element so crossing a clip boundary costs no load and no seek — that round
+ * trip is the visible gap between clips.
+ */
+export function getNextVideoClipAfterTime(state: TimelineState, time: number): TimelineClip | null {
+  let best: TimelineClip | null = null;
+  for (const track of state.tracks) {
+    if (track.type !== "video") continue;
+    for (const clip of track.clips) {
+      if (clip.startOffset > time && (!best || clip.startOffset < best.startOffset)) best = clip;
+    }
+  }
+  return best;
+}
+
+/**
  * The volume a clip actually plays at. Track mute wins over the clip's own
  * level and is NOT written into it, so unmuting is lossless.
  *

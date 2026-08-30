@@ -57,6 +57,19 @@ assert.ok((await fsp.stat(framePath)).size > 0, "extracted frame is empty");
 const [y, u, v] = await meanRgb(framePath);
 assert.ok(u > 140 && v < 120, `last frame should be the blue tail, got Y=${y} U=${u} V=${v}`);
 
+// Same again, but with the giveaway colour only in the final 0.25s. The 2s
+// blocks above pass even when extraction lands a second early — that was the
+// real bug (`-frames:v 1` took the first frame after `-sseof`, not the last).
+const flash = path.join(UPLOADS_DIR, "tailtest-flash.mp4");
+await run("ffmpeg", [
+  "-f", "lavfi", "-i", "color=c=black:s=320x240:d=5.75",
+  "-f", "lavfi", "-i", "color=c=white:s=320x240:d=0.25",
+  "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]",
+  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "24", "-y", flash,
+]);
+const [fy] = await meanRgb(localFile(await extractLastFrame("/uploads/tailtest-flash.mp4")));
+assert.ok(fy > 200, `last frame should be the 0.25s white flash, got Y=${fy}`);
+
 // --- tail clip is the end, and the length asked for --------------------------
 const tailUrl = await extractTailClip(url, 2);
 assert.match(tailUrl, /\.mp4$/, "tail should be filed as an mp4");

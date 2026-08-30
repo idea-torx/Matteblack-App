@@ -57,6 +57,7 @@ import { GitHubPanel } from "./components/GitHubPanel";
 const SHOW_LEGACY_AGENT = false;
 import { ProjectsPage, type Project, type ProjectsTab } from "./components/ProjectsPage";
 import { ProjectTabs } from "./components/ProjectTabs";
+import { AssetGrid } from "./components/AssetGrid";
 import { NodeCanvas } from "./components/NodeCanvas";
 import { NodesPanelDefault } from "./components/NodesPanelDefault";
 import { NodeInspectorPanel } from "./components/NodeInspectorPanel";
@@ -198,7 +199,9 @@ function App() {
     if (restoredWorkspaceIdRef.current === activeWorkspace.id) return;
     restoredWorkspaceIdRef.current = activeWorkspace.id;
     const stored = getStoredPageState(activeWorkspace.id);
-    setSelectedTool(stored.tool);
+    // Deliberately NOT restoring stored.tool: a restored tool trips the effect
+    // below that closes the agent, so whatever panel you last had open decided
+    // what the app booted into. The app opens on the agent, every time.
     setPageMode(stored.page);
   }, [activeWorkspace?.id]);
 
@@ -224,6 +227,10 @@ function App() {
   const [canvasLoading, setCanvasLoading] = useState(true);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [canvasNodes, setCanvasNodes] = useState<CanvasNode[]>([]);
+  // The grid is an overlay on the canvas card, not a route: the canvas stays
+  // mounted underneath so canvasNodes keeps updating and flipping back costs
+  // nothing.
+  const [gridView, setGridView] = useState(false);
   const [makeVideoMode, setMakeVideoMode] = useState(false);
   const [videoFrameIds, setVideoFrameIds] = useState<{ first: string | null; last: string | null }>({ first: null, last: null });
   const [, setGenerating] = useState(false);
@@ -1540,6 +1547,17 @@ function App() {
     return { type: "image" as const, count: 1 };
   }, [selectedImageIds, selectedNodeMeta]);
 
+  // Set only by the cinema node's export button. The export panel and the agent
+  // panel share the right slot, so without this the button selects the node and
+  // nothing visible happens. Cleared as soon as that node stops being the
+  // selection, which hands the slot back to the agent panel.
+  const [cinemaExportNodeId, setCinemaExportNodeId] = useState<string | null>(null);
+  useEffect(() => {
+    if (cinemaExportNodeId && !(selectedImageIds.length === 1 && selectedImageIds[0] === cinemaExportNodeId)) {
+      setCinemaExportNodeId(null);
+    }
+  }, [cinemaExportNodeId, selectedImageIds]);
+
   const selectedVideoInfo = useMemo<{ src: string; duration: number } | null>(() => {
     if (selectedImageIds.length !== 1) return null;
     const activeId = selectedImageIds[0];
@@ -1788,48 +1806,16 @@ function App() {
     canvasApiRef.current?.videoExport?.reset();
   }, []);
 
-  const selectedShapeInfo = useMemo(() => {
-    if (selectedImageIds.length !== 1) return null;
-    const meta = selectedNodeMeta.get(selectedImageIds[0]);
-    if (meta?.nodeType === "shape") return { id: selectedImageIds[0] };
-    return null;
-  }, [selectedImageIds, selectedNodeMeta]);
-
   const selectedCinemaTimelineState = useMemo(() => {
     if (selectionContext.type !== "cinema" || selectedImageIds.length !== 1) return null;
     const meta = selectedNodeMeta.get(selectedImageIds[0]);
     return meta?.timelineState ?? null;
   }, [selectionContext.type, selectedImageIds, selectedNodeMeta]);
 
-  const multiHasShapeOrFrame = useMemo(() => {
-    if (selectedImageIds.length < 2) return false;
-    for (const id of selectedImageIds) {
-      const meta = selectedNodeMeta.get(id);
-      if (meta?.nodeType === "shape" || meta?.nodeType === "frame" || meta?.nodeType === "text" || meta?.nodeType === "svg") return true;
-    }
-    return false;
-  }, [selectedImageIds, selectedNodeMeta]);
-
-  useEffect(() => {
-    // Selecting frames, shapes, text, or SVGs is a "design intent" — flip
-    // the right panel to the Design tool AND open the Layers rail panel
-    // on the left so the user sees both sides of the design surface at
-    // the same time. Other selections (image / video / multi-mixed) leave
-    // the rail untouched.
-    const isDesignSelection =
-      !!selectedFrameInfo ||
-      !!selectedShapeInfo ||
-      multiHasShapeOrFrame ||
-      selectionContext.type === "shape" ||
-      selectionContext.type === "text" ||
-      selectionContext.type === "svg";
-    if (isDesignSelection) {
-      setSelectedTool("design");
-      setRailView("layers");
-    } else if (selectionContext.type !== "none") {
-      setSelectedTool((prev) => prev === "design" ? "create" : prev);
-    }
-  }, [selectedFrameInfo, selectedShapeInfo, selectionContext.type, multiHasShapeOrFrame]);
+  // Selection deliberately does NOT change the tool or the rail panel. Picking
+  // a rectangle used to jump the right panel to Design and open Layers; picking
+  // an image jumped it back. The UI rearranging itself under a click on the
+  // canvas is disorienting — the panels change only when the user asks for it.
 
   const hasSelectedImage = selectedImageIds.length > 0;
   // AudioListCanvas only takes over when the audio tool was selected via
@@ -1841,7 +1827,11 @@ function App() {
   isCanvasMountedRef.current = isCanvasMounted;
   isFreeformCanvasViewRef.current = isFreeformCanvasView;
   const showLoadingOverlay = isFreeformCanvasView && canvasLoading;
-  const rightPanelOpen = !rightPanelHidden && !(selectedTool === "auditlog") && !agentOpen && (
+  // The agent holds the right slot unless the cinema export button has asked
+  // for it. Both gates below have to agree, or the agent hides and nothing
+  // takes its place — the slot has no width unless rightPanelOpen is true.
+  const agentHoldsRightSlot = agentOpen && cinemaExportNodeId === null;
+  const rightPanelOpen = !rightPanelHidden && !(selectedTool === "auditlog") && !agentHoldsRightSlot && (
     selectedTool === "nodes" || selectedTool === "sfx" || selectedTool === "voicechanger" ||
     selectedTool === "music" || selectedTool === "audio" || selectedTool === "tts" ||
     selectedTool === "make" || selectedTool === "create" || selectedTool === "upscale" ||
@@ -1947,7 +1937,7 @@ function App() {
   // Fullscreen ("hide right panel") also hides the agent panel so the
   // canvas can stretch to a true fullscreen layout from any state.
   // Toggling fullscreen back off restores whichever side was open before.
-  const showAgentPanel = agentOpen && !rightPanelHidden;
+  const showAgentPanel = agentHoldsRightSlot && !rightPanelHidden;
   const showGenDesignTabs = !presentMode && !isActiveProjectViewer && !showAgentPanel && (
     gifMakerOpen || svgMakerOpen ||
     selectedTool === "make" || selectedTool === "create" || selectedTool === "upscale" ||
@@ -2353,6 +2343,9 @@ function App() {
               onRename={(id, name) => projectHandlers.onRename?.(id, name)}
             />
           )}
+          {gridView && !presentMode && (
+            <AssetGrid nodes={canvasNodes} onClose={() => setGridView(false)} />
+          )}
           {railView === "home" && (
             <div
               // Covers the canvas only; the tab strip is a flow sibling above it,
@@ -2386,9 +2379,6 @@ function App() {
             </div>
           )}
           <div className="canvas-glow canvas-glow--sharp" aria-hidden="true" />
-          <div className="canvas-glow-blur" aria-hidden="true">
-            <div className="canvas-glow canvas-glow--soft" />
-          </div>
           {isActiveProjectViewer && activeOwnerLabel && (
             <div
               style={{
@@ -2467,6 +2457,7 @@ function App() {
                 projectCanvasId={effectiveCanvasProjectId}
                 canvasFlushRef={canvasFlushRef}
                 onToolSelect={(id) => handleToolSelect(id as ToolId)}
+                onRequestCinemaExport={setCinemaExportNodeId}
                 onLoadingChange={setCanvasLoading}
                 fitAllTrigger={fitAllTrigger}
                 firstFrameId={makeVideoMode ? videoFrameIds.first : null}
@@ -2495,6 +2486,8 @@ function App() {
                 onSvgEditStateChange={setSvgEditState}
                 projectName={projectName || undefined}
                 onNodesChange={setCanvasNodes}
+                gridView={gridView}
+                onToggleGridView={() => setGridView((v) => !v)}
                 dotPulseKey={dotPulseKey}
                 onCanvasApi={handleCanvasApi}
               />

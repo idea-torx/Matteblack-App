@@ -1,3 +1,14 @@
+/* The busy "glow ring" (canvas edge, agent composer, generating node) is a
+ * STATIC conic gradient. It used to rotate, and both
+ * ways of rotating it were too expensive: an oversized spinning child is a
+ * multi-hundred-megabyte retina texture the compositor evicts, and animating a
+ * registered <angle> repaints a full-size masked layer on the main thread every
+ * frame — with a blur(16px) bloom downstream of it on every generating node.
+ * It does not animate at all now: this app has ~100 backdrop-filter surfaces,
+ * and ANY running animation keeps Chromium compositing the whole window at
+ * 60fps (measured at ~21% GPU-process CPU, idle). The busy state is the ring
+ * fading in and staying put. */
+
 /* Theming contract: style components with the tokens below, not hardcoded
  * colors. Light theme is activated by `data-theme="light"` on <html>
  * (see src/theme.ts + the pre-paint script in index.html). Existing
@@ -110,8 +121,11 @@
   --bg-base-rgb: 240, 240, 243;
   --bg-base: #f0f0f3;
   --rail-bg: #f0f0f3;
-  --panel-bg: #f0f0f3;
-  --panel-bg-translucent: #f0f0f3;
+  /* A shade under --rail-bg, not the same value: the rail and the panels that
+   * slide out beside it are flush with no gap, so identical fills read as one
+   * undivided slab. */
+  --panel-bg: #e9e9ee;
+  --panel-bg-translucent: #e9e9ee;
   /* Raised surfaces sit a clear shade DARKER than the panel bg in
    * light theme so cards / inputs / dropdowns read as visible boxes
    * against the unified #F0F0F3 surface (instead of disappearing into
@@ -210,9 +224,10 @@ html.is-mac {
   /* The rail is docked to the window edge (IconRail.css), so the left panels
    * that sit beside it drop their gap too and stay flush against it. */
   --panel-float-gap: 0px;
-  /* Wider docked rail: it now has to hold the traffic lights, which the
-   * floating 64px version didn't. */
-  --icon-rail-width: 76px;
+  /* Wide enough to centre the icons on the traffic lights: Electron places them
+   * at x:12 (main.cjs), 14px buttons on a 20px pitch, so the middle one's centre
+   * is at 39px — and a 78px rail centres its 44px buttons on exactly that. */
+  --icon-rail-width: 78px;
   /* The whole left stack docks with the rail rather than floating beside it:
    * flush to the top and bottom window edges, square, and separated by the
    * right-hand strokes each panel already carries (--panel-float-border)

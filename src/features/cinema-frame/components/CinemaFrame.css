@@ -568,7 +568,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  backdrop-filter: blur(4px);
+  /* No backdrop-filter: the fill is already an opaque-enough black, and one
+   * blur surface per clip sat directly under the moving playhead, re-blurring
+   * on every frame of playback. */
 }
 
 .cinema-timeline__clip-vol-btn:hover {
@@ -737,7 +739,14 @@
   pointer-events: none;
   z-index: 10;
   box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
-  transform: translateX(-1px);
+  /* transform is owned by the Playhead component (position + the -1px
+   * centring offset folded in); don't set it here.
+   * Its own compositor layer. Without one, a transform on a top:0/bottom:0
+   * bar still repaints the union of its old and new rects every frame — a
+   * full-height strip across the timeline, taking every clip thumbnail and
+   * waveform canvas it crosses with it. Promoted, the move is compositor-only
+   * and repaints nothing. */
+  will-change: transform;
 }
 
 .cinema-timeline__playhead--ruler {

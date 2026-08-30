@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseStreamJsonLine, type OperatorEvent } from "./claudeOperator.ts";
+import { readFile } from "node:fs/promises";
+import { parseStreamJsonLine, OPERATOR_MCP_TOOLS, type OperatorEvent } from "./claudeOperator.ts";
 
 // Realistic `claude -p --output-format stream-json --verbose` event shapes.
 const FIXTURES: Record<string, Record<string, unknown>> = {
@@ -77,4 +78,29 @@ test("assistant with both text and tool_use → two events in order", () => {
   assert.equal(evts.length, 2);
   assert.equal(evts[0].type, "text");
   assert.equal(evts[1].type, "tool_use");
+});
+
+// --- allowlist drift ---------------------------------------------------------
+// render_html and get_html shipped as MCP tools but were never added to
+// OPERATOR_MCP_TOOLS, so every call came back unpermitted and no amount of
+// approving the prompt helped — the operator is only ever offered the tools in
+// that list. Read the names straight out of the MCP server's source (importing
+// it would start a stdio server) and hold the two lists together.
+test("every operator-allowlisted tool is a real MCP tool, and none are silently dropped", async () => {
+  const src = await readFile(new URL("../mcp/index.ts", import.meta.url), "utf8");
+  const served = new Set([...src.matchAll(/^ {4}name: "([a-z_]+)"/gm)].map((m) => m[1]));
+  assert.ok(served.size > 10, `expected to parse the MCP tool list, got ${served.size} names`);
+
+  const allowed = OPERATOR_MCP_TOOLS.map((t) => t.replace("mcp__falforge__", ""));
+  const unknown = allowed.filter((t) => !served.has(t));
+  assert.deepEqual(unknown, [], `allowlisted but not served by the MCP server: ${unknown.join(", ")}`);
+
+  // Local-filesystem tools are deliberately withheld from the operator.
+  const WITHHELD = new Set(["list_local_dir", "read_local_file"]);
+  const missing = [...served].filter((t) => !allowed.includes(t) && !WITHHELD.has(t));
+  assert.deepEqual(
+    missing, [],
+    `served by the MCP server but not offered to the operator: ${missing.join(", ")}. ` +
+      "Add them to OPERATOR_MCP_TOOLS, or to WITHHELD in this test if that is deliberate.",
+  );
 });

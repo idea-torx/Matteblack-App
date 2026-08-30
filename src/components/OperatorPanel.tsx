@@ -409,8 +409,10 @@ export function OperatorPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // A restored chat opens at its LAST message, not its first. The effect above
-  // isn't enough on its own: on mount the transcript is still laying out —
+  // A restored chat opens at its LAST message, not its first — on first load
+  // AND on every switch from the history list, which is why this keys off the
+  // active chat id rather than running once on mount.
+  // The effect above isn't enough on its own: the transcript is still laying out —
   // markdown, code blocks, thumbnails — so scrollHeight is a fraction of its
   // final value and the one jump lands near the top of a very long scroll.
   // Re-pin while the content is still growing, and stop the moment the user
@@ -430,7 +432,7 @@ export function OperatorPanel({
     // that it can't outlive the user's first interaction with the panel.
     const t = setTimeout(stop, 2000);
     return () => { clearTimeout(t); stop(); el.removeEventListener("wheel", stop); el.removeEventListener("pointerdown", stop); };
-  }, []);
+  }, [chats.activeId]);
 
   const patchAssistant = useCallback((fn: (m: ChatMessage) => ChatMessage) => {
     setMessages((prev) => {

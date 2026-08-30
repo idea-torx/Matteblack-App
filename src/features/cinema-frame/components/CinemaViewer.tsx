@@ -18,6 +18,8 @@ interface VideoFrameCallbackHandle extends HTMLVideoElement {
 
 type CinemaViewerProps = {
   activeClip: TimelineClip | null;
+  /** The clip after this one, preloaded into the standby element. */
+  nextClip?: TimelineClip | null;
   activeAudioClips: TimelineClip[];
   isPlaying: boolean;
   currentTimeRef: React.RefObject<number>;
@@ -46,6 +48,7 @@ function supportsRVFC(video: HTMLVideoElement): video is VideoFrameCallbackHandl
 
 export const CinemaViewer = memo(function CinemaViewer({
   activeClip,
+  nextClip = null,
   activeAudioClips,
   isPlaying,
   currentTimeRef,
@@ -53,7 +56,16 @@ export const CinemaViewer = memo(function CinemaViewer({
   volume,
   videoMuted = false,
 }: CinemaViewerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Two elements, not one. Swapping `src` on a single <video> costs a load and
+  // a seek at every clip boundary, and the element paints nothing until that
+  // round trip finishes — that blank is the gap between clips. The standby
+  // preloads the next clip and parks on the frame the boundary will ask for,
+  // so crossing it is a display toggle.
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
+  /** Whichever of the two is on screen. Everything else reads this. */
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const standbySrc = useRef<string | null>(null);
   const prevClipId = useRef<string | null>(null);
   const prevSrc = useRef<string | null>(null);
   const pendingSeek = useRef<number | null>(null);
@@ -152,9 +164,10 @@ export const CinemaViewer = memo(function CinemaViewer({
     }
   }, [applySeek, flushScrubPending]);
 
-  const handleCanPlay = useCallback(() => {
+  const handleCanPlay = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = videoRef.current;
-    if (video && pendingSeek.current !== null) {
+    // The standby element fires this too; it does its own parking seek.
+    if (video && e.currentTarget === video && pendingSeek.current !== null) {
       const target = pendingSeek.current;
       pendingSeek.current = null;
       if (Math.abs(video.currentTime - target) < 0.001) return;
@@ -163,11 +176,12 @@ export const CinemaViewer = memo(function CinemaViewer({
     }
   }, [markSeeking]);
 
-  const handleSeeked = useCallback(() => {
-    clearSeeking();
+  const handleSeeked = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
+    if (e.currentTarget === videoRef.current) clearSeeking();
   }, [clearSeeking]);
 
   useEffect(() => {
+    if (!videoRef.current) videoRef.current = videoARef.current;
     const video = videoRef.current;
     if (!video) return;
 
@@ -183,6 +197,40 @@ export const CinemaViewer = memo(function CinemaViewer({
     prevSeekVersion.current = seekVersion;
 
     if (srcChanged) {
+      const standby = video === videoARef.current ? videoBRef.current : videoARef.current;
+      // Primed = this exact clip, decoded, already sitting on the right frame.
+      // Promote it; a seek here would put the gap straight back.
+      if (
+        standby &&
+        standbySrc.current === activeClip.src &&
+        standby.readyState >= 2 &&
+        Math.abs(standby.currentTime - clipLocalTime) < 0.1
+      ) {
+        standbySrc.current = null;
+        videoRef.current = standby;
+        clearSeeking();
+        pendingSeek.current = null;
+        standby.style.display = "block";
+        video.style.display = "none";
+        // Mute before pausing. Chromium ramps the audio down over ~20ms when a
+        // media element pauses, and ramps up again when the next one starts —
+        // that V is the dip you hear at every cut. Muting is instant, so the
+        // ramp runs on silence.
+        video.muted = true;
+        video.pause();
+        // Level the incoming element here rather than leaving it to the volume
+        // effect below: it was primed muted, and an extra effect hop is another
+        // slice of silence at the exact moment the cut lands.
+        const clipLevel = linkedAudio ? linkedAudio.volume : activeClip.volume ?? 1;
+        const level = videoMuted ? 0 : Math.max(0, Math.min(1, volume * clipLevel));
+        standby.volume = level;
+        standby.muted = level === 0;
+        prevClipId.current = activeClip.id;
+        prevSrc.current = activeClip.src;
+        if (isPlaying) standby.play().catch(() => {});
+        return;
+      }
+
       pendingSeek.current = clipLocalTime;
       clearSeeking();
       video.src = activeClip.src;
@@ -223,6 +271,54 @@ export const CinemaViewer = memo(function CinemaViewer({
       }
     }
   }, [activeClip, isPlaying, seekVersion, applySeek, throttledScrubSeek, clearSeeking, currentTimeRef]);
+
+  // Visibility is imperative on purpose: promoting the standby swaps the two
+  // elements inside the effect above, and a React state round trip would land a
+  // frame later — which is the gap all of this exists to remove. This settles
+  // the pair on every clip change; the promotion sets them directly.
+  useEffect(() => {
+    const front = videoRef.current;
+    const visible = activeClip?.type === "video";
+    for (const el of [videoARef.current, videoBRef.current]) {
+      if (el) el.style.display = visible && el === front ? "block" : "none";
+    }
+  }, [activeClip]);
+
+  // Prime the standby with the next clip while this one is still playing.
+  useEffect(() => {
+    const front = videoRef.current;
+    const standby = front === videoARef.current ? videoBRef.current : videoARef.current;
+    if (!standby || !nextClip || nextClip.type !== "video" || !nextClip.src) return;
+    if (standbySrc.current === nextClip.src) return;
+
+    standbySrc.current = nextClip.src;
+    standby.muted = true;
+    standby.src = nextClip.src;
+    standby.load();
+    const seekTo = nextClip.trimStart;
+    let cancelled = false;
+    const onCanPlay = async () => {
+      standby.removeEventListener("canplay", onCanPlay);
+      // Warm it. The first play() on an element that has never played builds an
+      // audio renderer and an output stream — tens of milliseconds, spent at the
+      // cut, where they read as lag and a dropout. Doing it here, muted and
+      // hidden, makes the play() at the boundary a resume instead.
+      try {
+        await standby.play();
+      } catch {
+        /* autoplay refusal: the boundary play() is no worse off than before */
+      }
+      standby.pause();
+      if (cancelled) return;
+      // Park on the frame the boundary will ask for, so promotion is a toggle.
+      if (Math.abs(standby.currentTime - seekTo) > 0.001) standby.currentTime = seekTo;
+    };
+    standby.addEventListener("canplay", onCanPlay);
+    return () => {
+      cancelled = true;
+      standby.removeEventListener("canplay", onCanPlay);
+    };
+  }, [nextClip, activeClip]);
 
   useEffect(() => {
     if (!isPlaying || !activeClip || activeClip.type !== "video") {
@@ -468,7 +564,6 @@ export const CinemaViewer = memo(function CinemaViewer({
 
   const showEmpty = !activeClip;
   const showImage = activeClip?.type === "image";
-  const showVideo = activeClip?.type === "video";
 
   return (
     <div className="cinema-viewer" ref={containerRef} onPointerDown={(e) => e.stopPropagation()}>
@@ -497,15 +592,10 @@ export const CinemaViewer = memo(function CinemaViewer({
         />
       )}
 
-      <video
-        ref={videoRef}
-        className="cinema-viewer__media"
-        style={{ display: showVideo ? "block" : "none" }}
-        playsInline
-        preload="auto"
-        onCanPlay={handleCanPlay}
-        onSeeked={handleSeeked}
-      />
+      {/* display is owned by the effects above, not by React — the constant
+          style object is applied on mount and never re-applied. */}
+      <video ref={videoARef} className="cinema-viewer__media" style={{ display: "none" }} playsInline preload="auto" onCanPlay={handleCanPlay} onSeeked={handleSeeked} />
+      <video ref={videoBRef} className="cinema-viewer__media" style={{ display: "none" }} playsInline preload="auto" onCanPlay={handleCanPlay} onSeeked={handleSeeked} />
     </div>
   );
 });

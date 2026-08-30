@@ -12,13 +12,23 @@
    * bottom edge sits on the same line as .rpanel-top-tabs__divider (top: 50px)
    * instead of one pixel below it. */
   box-sizing: border-box;
+  /* The band is the canvas card's first child, so ITS top-right corner is the
+   * card's top-right corner — a square one here filled the card's 8px radius
+   * back in. Left stays square: the icon rail butts against it, and a curve
+   * there would open a notch. */
+  border-top-right-radius: 8px;
   margin-left: calc(var(--panel-float-gap) + var(--icon-rail-width));
   display: flex;
-  align-items: center;
+  /* Tabs sit ON the bottom edge, browser-style — their bottoms are the strip's
+   * bottom, so the active one can run into the canvas below it. */
+  align-items: flex-end;
   gap: 6px;
-  /* Snug to the rail: the first tab starts where the rail ends. */
-  padding: 0 12px 0 6px;
-  background: var(--panel-bg);
+  /* Snug to the rail: the first tab's left edge IS the rail's right edge, no
+   * gap at all — the strip's left margin already clears the rail. */
+  padding: 0 12px 0 0;
+  /* Same surface as the agent panel's tab strip across the top right, so the
+   * two read as one band of chrome rather than two shades of grey. */
+  background: var(--panel-bg-translucent);
   backdrop-filter: blur(40px) saturate(140%);
   -webkit-backdrop-filter: blur(40px) saturate(140%);
   border-bottom: 1px solid rgba(var(--tint-rgb), 0.08);
@@ -28,9 +38,15 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 2px;
+  /* overflow:hidden is what keeps tabs from spilling past the strip as more
+   * open — but it would also clip the active tab's 1px overhang onto the
+   * bottom rule. The padding/negative-margin pair grows the strip's own box
+   * down over that rule, so the overhang lands inside it. */
   overflow: hidden;
+  padding-bottom: 1px;
+  margin-bottom: -1px;
 }
 
 .project-tab {
@@ -40,36 +56,49 @@
   flex: 1 1 180px;
   max-width: 180px;
   min-width: 52px;
-  height: 32px;
+  height: 40px;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 10px;
-  border-radius: 8px;
-  /* Dark grey chip, dark grey stroke. White-alpha rather than a literal hex so
-   * it lands as a lighter grey on the light theme's panel instead of a hole. */
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  color: #9aa0a6;
+  /* Rounded at the top only, square at the bottom: a tab is a shape that runs
+   * INTO the canvas, not a chip floating above it. */
+  border-radius: 9px 9px 0 0;
+  /* The canvas colour, not a white-alpha wash. The old fill was tuned for the
+   * dark panel and rendered as near-white-on-near-white in light mode, which is
+   * what made the whole rail disappear. A token tracks both themes for free. */
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  /* No stroke along the bottom — that edge is shared with the canvas. The -1px
+   * pulls the tab over the strip's own bottom rule so the two become one
+   * surface, which is the entire browser-tab illusion. */
+  border-bottom: none;
+  margin-bottom: -1px;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+
+/* Background tabs are the same surface, just set back — dimming the whole tab
+ * keeps one fill to maintain instead of a second colour per theme. */
+.project-tab:not(.project-tab--active) {
+  opacity: 0.62;
 }
 
 /* The active tab stays as dark as the rest — with only one project open it is
  * always the active one, and a lit fill by default is what read as "brighter".
  * Selection is carried by the stroke and the text, hover by the fill. */
 .project-tab:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: #e5e5e5;
+  opacity: 0.85;
+  color: var(--text-primary);
 }
 
 .project-tab--active {
-  border-color: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .project-tab__name {
@@ -129,6 +158,7 @@
 /* Inside the strip, right after the last tab — not pinned to the far edge. */
 .project-tabs__new {
   flex-shrink: 0;
+  align-self: center;
   margin-left: 4px;
   width: 28px;
   height: 28px;
@@ -139,12 +169,13 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #9aa0a6;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
 
 .project-tabs__new:hover {
   background: rgba(var(--tint-rgb), 0.1);
-  color: #ffffff;
+  color: var(--text-primary);
 }
+

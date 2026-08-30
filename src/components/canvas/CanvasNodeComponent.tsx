@@ -51,6 +51,7 @@ export type CanvasNodeProps = {
   onDoubleClickSvg?: (nodeId: string) => void;
   isEditingPath?: boolean;
   onToggleLock?: (nodeId: string) => void;
+  onRequestCinemaExport?: (nodeId: string) => void;
   incomingDragPreview?: IncomingDragPreview;
   onTargetTrackChange?: (trackId: string | null, dropTime: number | null) => void;
   onCinemaMetaUpdate?: (nodeId: string, node: CanvasNode) => void;
@@ -91,6 +92,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
   onDoubleClickSvg,
   isEditingPath,
   onToggleLock,
+  onRequestCinemaExport,
   incomingDragPreview,
   onTargetTrackChange,
   onCinemaMetaUpdate,
@@ -159,7 +161,10 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
       { stopPropagation: () => {}, preventDefault: () => {} } as unknown as React.MouseEvent,
       node.id,
     );
-  }, [onNodeClick, node.id]);
+    // Selecting is not enough — the export panel shares the right slot with the
+    // agent panel, which wins whenever it is open. This is the explicit ask.
+    onRequestCinemaExport?.(node.id);
+  }, [onNodeClick, onRequestCinemaExport, node.id]);
 
   const [imgError, setImgError] = useState(false);
   const [recovering, setRecovering] = useState(false);

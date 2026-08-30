@@ -61,7 +61,6 @@ export function resolveClaudeBinary(): { path: string; found: boolean } {
  *  back as unpermitted. */
 const MCP_SERVER_KEY = "falforge";
 
-/** The Fal Forge MCP tools we let the operator call (nothing else). */
 /** Claude's own read-only file tools. Granted so an attached GitHub repo can be
  *  used as real context — the spawned claude runs with cwd pinned to REPOS_DIR,
  *  so this reaches the user's checked-out repos and nothing else. No Write, no
@@ -81,6 +80,11 @@ export const OPERATOR_MCP_TOOLS = [
   "get_skill",
   "save_skill",
   "list_repos",
+  // Programmatic HTML/CSS art. Left out of this list when they were added, so
+  // every render_html call came back unpermitted no matter what the user
+  // approved — the prompt never reaches a tool the operator was not granted.
+  "render_html",
+  "get_html",
   "get_timeline",
   "set_timeline",
   "save_cut",

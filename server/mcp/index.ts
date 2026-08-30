@@ -177,6 +177,7 @@ const EMBEDDED_TOOLS: Tool[] = [
         seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
         durationSeconds: { type: "integer", description: "Chunk length, 5-15s (default 5)." },
         tailSeconds: { type: "number", description: "seam='reference' only: seconds of tail to reference, 2-15 (default 2)." },
+        aspectRatio: { type: "string", enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], description: "The sequence's aspect ratio. Defaults to the source clip's shape; seam='reference' falls back to 16:9 without it, so pass it on every chunk of a non-16:9 sequence." },
       },
       required: ["sourceUrl", "prompt"],
     },
@@ -261,13 +262,13 @@ const READ_TOOLS: Tool[] = [
   {
     name: "get_timeline",
     description:
-      "Read the cut currently on the user's cinema timeline — the clips in play order with their durations. Call this before editing an existing sequence so you reorder/replace against what's actually there.",
+      "Read every cinema frame on the user's canvas — each one's clips in play order, with its nodeId. A canvas can hold several separate cuts. Call this before editing an existing sequence so you reorder/replace against what's actually there, and so you know which nodeId to extend.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "set_timeline",
     description:
-      "Lay the finished sequence on the user's cinema timeline: pass the FULL ordered clip list and the clips are placed end to end from t=0, with the music bed under them. This is the assembly step — after generating the shots for a long-form piece, call this so the user opens a real cut rather than loose clips on the canvas. Declarative: whatever you send becomes the sequence, so reorder, replace a bad shot, or drop one by sending the list again without it.",
+      "Lay a finished sequence on a cinema frame: pass the FULL ordered clip list and the clips are placed end to end from t=0, with the music bed under them. This is the assembly step — after generating the shots for a long-form piece, call this so the user opens a real cut rather than loose clips on the canvas. Declarative WITHIN ONE FRAME: whatever you send becomes that frame's sequence, so reorder, replace a bad shot, or drop one by sending the list again without it. It never overwrites a cut you did not target — with no `nodeId` it writes to an empty frame or adds a new one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -283,6 +284,16 @@ const READ_TOOLS: Tool[] = [
             },
             required: ["src"],
           },
+        },
+        nodeId: {
+          type: "string",
+          description:
+            "The cinema frame to write to, from get_timeline. Pass this to EXTEND or edit an existing cut — the frame's clip list is replaced by what you send, so include the clips already there plus the new ones. Omit it for a new piece.",
+        },
+        newNode: {
+          type: "boolean",
+          description:
+            "Force a brand new cinema frame even if an empty one exists. Only needed when the user explicitly asks for a separate cut.",
         },
         muteVideoAudio: {
           type: "boolean",
@@ -912,14 +923,28 @@ async function runGetTimeline(): Promise<CallToolResult> {
   if (!ep) return fail(NOT_RUNNING);
   try {
     const t = (await httpJson(ep, "GET", "/api/agent/timeline")) as {
-      clips: TimelineClipRow[]; music: { src: string; durationSeconds: number } | null; muteVideoAudio?: boolean;
+      timelines: {
+        nodeId: string; label: string; clips: TimelineClipRow[];
+        music: { src: string; durationSeconds: number } | null; muteVideoAudio?: boolean;
+      }[];
     };
-    if (!t.clips.length) return ok("The timeline is empty. Generate the shots, then call set_timeline with the ordered list.");
-    const total = t.clips.reduce((n, c) => n + (c.durationSeconds || 0), 0);
-    const lines = [`${t.clips.length} clips, ${total.toFixed(1)}s total:`];
-    t.clips.forEach((c, i) => lines.push(`${i + 1}. ${c.startsAt.toFixed(1)}s +${c.durationSeconds}s — ${c.label || "(unnamed)"} — ${c.src}`));
-    if (t.music) lines.push(`Music: ${t.music.src}`);
-    if (t.muteVideoAudio) lines.push("Video track is MUTED — only the music bed is audible.");
+    const frames = t.timelines ?? [];
+    if (!frames.length || frames.every((f) => !f.clips.length)) {
+      return ok(
+        frames.length
+          ? `An empty cinema frame is ready (nodeId: ${frames[0].nodeId}). Generate the shots, then call set_timeline with the ordered list.`
+          : "The canvas has no cinema frame yet. Generate the shots, then call set_timeline with the ordered list.",
+      );
+    }
+    const lines: string[] = [];
+    for (const f of frames) {
+      const total = f.clips.reduce((n, c) => n + (c.durationSeconds || 0), 0);
+      lines.push(`${f.label} (nodeId: ${f.nodeId}) — ${f.clips.length} clips, ${total.toFixed(1)}s:`);
+      f.clips.forEach((c, i) => lines.push(`  ${i + 1}. ${c.startsAt.toFixed(1)}s +${c.durationSeconds}s — ${c.label || "(unnamed)"} — ${c.src}`));
+      if (f.music) lines.push(`  Music: ${f.music.src}`);
+      if (f.muteVideoAudio) lines.push("  Video track is MUTED — only the music bed is audible.");
+    }
+    lines.push("Pass a nodeId to set_timeline to extend that cut; omit it to start a new one.");
     return ok(lines.join("\n"));
   } catch (err) {
     return errToFail(err);
@@ -934,12 +959,13 @@ async function runSetTimeline(args: Record<string, unknown>): Promise<CallToolRe
   try {
     const r = (await httpJson(
       ep, "POST", "/api/agent/timeline",
-      { clips, music: args.music ?? null, muteVideoAudio: args.muteVideoAudio === true },
+      { clips, music: args.music ?? null, muteVideoAudio: args.muteVideoAudio === true,
+        nodeId: typeof args.nodeId === "string" ? args.nodeId : undefined, newNode: args.newNode === true },
       60000,
-    )) as { clips: number; totalSeconds: number; muteVideoAudio: boolean };
+    )) as { clips: number; totalSeconds: number; muteVideoAudio: boolean; nodeId: string };
     return ok(
-      `Timeline set: ${r.clips} clips, ${r.totalSeconds.toFixed(1)}s${r.muteVideoAudio ? ", video audio muted" : ""}. ` +
-        "The user can play it in the cinema frame and export from there.",
+      `Timeline set on cinema frame ${r.nodeId}: ${r.clips} clips, ${r.totalSeconds.toFixed(1)}s${r.muteVideoAudio ? ", video audio muted" : ""}. ` +
+        "Pass that nodeId back to set_timeline to extend this same cut. The user can play it in the cinema frame and export from there.",
     );
   } catch (err) {
     return errToFail(err);
@@ -1177,7 +1203,7 @@ const INSTRUCTIONS = [
   "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply.",
-  "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list. The `bridge` skill has the continuity method; follow it.",
+  "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it.",
   "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
   "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
   "LOCAL FILES: `list_local_dir` and `read_local_file` read this machine directly by absolute path (or ~/...). When the user points at a brief, script, brand guide, copy deck or repo, open it and use what it actually says rather than asking them to paste it. Credentials files are refused by design — don't try to route around that.",

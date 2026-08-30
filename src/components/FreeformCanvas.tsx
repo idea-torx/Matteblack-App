@@ -8,6 +8,7 @@ import { enqueueDirty } from "../services/CanvasStore";
 import { SyncStatusIndicator } from "./canvas/SyncStatusIndicator";
 import { triggerLibrarySaveAnimation } from "../utils/flyToAnimation";
 import { useNodeToolbar } from "../hooks/useNodeToolbar";
+import { MediaModal } from "./MediaModal";
 import { useResizeHandles } from "../hooks/useResizeHandles";
 import { useRotateHandle } from "../hooks/useRotateHandle";
 import { useFrameClipboard } from "../hooks/useFrameClipboard";
@@ -101,9 +102,9 @@ export function FreeformCanvas({
   onConfirmPlacement,
   onLibrarySaved,
   presentMode,
+  gridView,
+  onToggleGridView,
   onTogglePresentMode,
-  rightPanelHidden,
-  onToggleRightPanelHidden,
   onCanvasApi,
   activeTool,
   designSubTool,
@@ -116,6 +117,7 @@ export function FreeformCanvas({
   onSvgEditStateChange,
   onSyncStatusChange,
   onOpenLibrary,
+  onRequestCinemaExport,
   projectName,
   onNodesChange,
   dotPulseKey,
@@ -297,6 +299,10 @@ export function FreeformCanvas({
   }, [nodes]);
 
   const nodesRef = useRef(nodes);
+  /** Nodes that have been on screen at least once; see visibleNodeIds. */
+  const mountedIds = useRef<Set<string>>(new Set());
+  // Switching canvases makes every retained id dead weight.
+  useEffect(() => { mountedIds.current.clear(); }, [canvasId]);
   nodesRef.current = nodes;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
@@ -729,50 +735,6 @@ export function FreeformCanvas({
     return () => el.removeEventListener("wheel", handleWheel);
   }, []);
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    let raf: number | null = null;
-    let pending = false;
-    let lastX = 0;
-    let lastY = 0;
-    let inside = false;
-    const apply = () => {
-      raf = null;
-      pending = false;
-      viewport.style.setProperty("--cursor-x", `${lastX}px`);
-      viewport.style.setProperty("--cursor-y", `${lastY}px`);
-    };
-    const handleMove = (e: PointerEvent) => {
-      if (e.pointerType !== "mouse") return;
-      const rect = viewport.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const within = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
-      if (within) {
-        lastX = x;
-        lastY = y;
-        if (!inside) {
-          inside = true;
-          viewport.style.setProperty("--cursor-x", `${lastX}px`);
-          viewport.style.setProperty("--cursor-y", `${lastY}px`);
-          viewport.style.setProperty("--grid-active", "1");
-        } else if (!pending) {
-          pending = true;
-          raf = requestAnimationFrame(apply);
-        }
-      } else if (inside) {
-        inside = false;
-        viewport.style.setProperty("--grid-active", "0");
-      }
-    };
-    window.addEventListener("pointermove", handleMove);
-    return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
-      window.removeEventListener("pointermove", handleMove);
-    };
-  }, []);
-
   const handleViewportPointerDown = useCallback((e: React.PointerEvent) => {
     if (contextMenuOpenRef.current) {
       setContextMenu(null);
@@ -860,10 +822,10 @@ export function FreeformCanvas({
         } else {
           onDeselectAllRef.current();
           setActiveGroupId(null);
-          const MAKE_TOOLS = ["upscale", "resize", "remove", "avatar", "design", "make"];
-          if (onToolSelectRef.current && activeTool && MAKE_TOOLS.includes(activeTool)) {
-            onToolSelectRef.current("create");
-          }
+          // Deselecting used to also swing the rail over to the Toolkit when a
+          // make-tool was active. A click that misses a node — which happens
+          // whenever a node is mid-remount at the viewport edge — then reads as
+          // "clicked my video, got sent to the Toolkit". Deselect deselects.
         }
       }
     }
@@ -2867,6 +2829,14 @@ export function FreeformCanvas({
       if (node.visible === false) continue;
       if (isNodeInViewport(node, panX, panY, zoom, viewportSize.w, viewportSize.h)) {
         ids.add(node.id);
+        // Sticky: once a node has been on screen it stays mounted. Unmounting
+        // destroys the <img>/<video>, and remounting paints one blank frame
+        // before the decode lands — that blank IS the flash while panning and
+        // the "elements printing in" while the agent adds nodes. Nothing about
+        // it is a paint cost we can tune away; the element simply has no pixels
+        // yet. isInViewport is still honest below, so VideoNode keeps dropping
+        // its src off-screen and what stays resident is decoded images.
+        mountedIds.current.add(node.id);
       }
     }
     return ids;
@@ -2909,7 +2879,6 @@ export function FreeformCanvas({
         return (
           <>
             <div className="freeform-canvas__grid freeform-canvas__grid--sm" style={gridStyle} />
-            <div className="freeform-canvas__grid freeform-canvas__grid--lg" style={gridStyle} />
             {dotPulseKey != null && (
               <div
                 key={dotPulseKey}
@@ -3072,7 +3041,7 @@ export function FreeformCanvas({
           if (node.visible === false) return null;
           if (node.node_type === "group") return null;
           const inViewport = visibleNodeIds.has(node.id);
-          if (!inViewport && !selectedIds.has(node.id)) return null;
+          if (!inViewport && !mountedIds.current.has(node.id) && !selectedIds.has(node.id)) return null;
           const isGroupMember = memberToGroupMap.has(node.id);
           const hideHandles = isGroupMember && !insideGroupId;
           return (
@@ -3112,6 +3081,7 @@ export function FreeformCanvas({
               onDoubleClickSvg={svgPathEdit.enterEditMode}
               isEditingPath={svgPathEdit.isEditingPath(node.id)}
               onToggleLock={toggleLockNode}
+              onRequestCinemaExport={onRequestCinemaExport}
               incomingDragPreview={cinemaGhost && cinemaGhost.cinemaNodeId === node.id ? (() => {
                 const dn = nodes.find((n) => n.id === cinemaGhost.draggedNodeId);
                 return {
@@ -3134,7 +3104,7 @@ export function FreeformCanvas({
           if (node.visible === false || node.node_type !== "frame") return null;
           if (!node.label && editingFrameLabel !== node.id) return null;
           const inViewport = visibleNodeIds.has(node.id);
-          if (!inViewport && !selectedIds.has(node.id)) return null;
+          if (!inViewport && !mountedIds.current.has(node.id) && !selectedIds.has(node.id)) return null;
           const isFrameSelected = selectedIds.has(node.id);
           return (
             <div
@@ -3401,8 +3371,6 @@ export function FreeformCanvas({
         showMinimap={showMinimap}
         toolbarExpanded={toolbarExpanded}
         presentMode={presentMode}
-        rightPanelHidden={!!rightPanelHidden}
-        canToggleRightPanel={!!onToggleRightPanelHidden}
         undoStack={undoStack}
         redoStack={redoStack}
         downloadableCount={downloadableNodes.length}
@@ -3417,7 +3385,8 @@ export function FreeformCanvas({
         onUndo={undo}
         onRedo={redo}
         onTogglePresentMode={onTogglePresentMode}
-        onToggleRightPanelHidden={onToggleRightPanelHidden}
+        gridView={gridView}
+        onToggleGridView={onToggleGridView}
         onBulkDownload={handleBulkDownload}
       />
 
@@ -4132,83 +4101,10 @@ export function FreeformCanvas({
           )}
         </div>
       )}
-      {fullscreen.open && (
-        <div
-          className="freeform-canvas__fullscreen-overlay"
-          ref={(el) => {
-            if (!el) return;
-            const docAny = document as Document & {
-              webkitFullscreenElement?: Element;
-              webkitExitFullscreen?: () => Promise<void> | void;
-            };
-            const elAny = el as HTMLElement & {
-              webkitRequestFullscreen?: () => Promise<void> | void;
-            };
-            const already = document.fullscreenElement === el || docAny.webkitFullscreenElement === el;
-            if (already) return;
-            const req = elAny.requestFullscreen?.bind(elAny) || elAny.webkitRequestFullscreen?.bind(elAny);
-            if (!req) return;
-            // Older Safari may return void instead of a Promise — normalize both.
-            try {
-              Promise.resolve(req()).catch(() => { /* permission denied — overlay still covers viewport */ });
-            } catch { /* sync throw — ignore */ }
-          }}
-          onClick={() => {
-            const docAny = document as Document & {
-              webkitFullscreenElement?: Element;
-              webkitExitFullscreen?: () => Promise<void> | void;
-            };
-            if (document.fullscreenElement || docAny.webkitFullscreenElement) {
-              const exit = document.exitFullscreen?.bind(document) || docAny.webkitExitFullscreen?.bind(docAny);
-              if (exit) {
-                try { Promise.resolve(exit()).catch(() => { /* ignore */ }); } catch { /* ignore */ }
-              }
-            }
-            closeFullscreen();
-          }}
-        >
-          <button
-            type="button"
-            className="freeform-canvas__fullscreen-close"
-            aria-label="Close fullscreen"
-            onClick={(e) => {
-              e.stopPropagation();
-              const docAny = document as Document & {
-                webkitFullscreenElement?: Element;
-                webkitExitFullscreen?: () => Promise<void> | void;
-              };
-              if (document.fullscreenElement || docAny.webkitFullscreenElement) {
-                const exit = document.exitFullscreen?.bind(document) || docAny.webkitExitFullscreen?.bind(docAny);
-                if (exit) {
-                  try { Promise.resolve(exit()).catch(() => { /* ignore */ }); } catch { /* ignore */ }
-                }
-              }
-              closeFullscreen();
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-          {fullscreen.type === "video" ? (
-            <video
-              className="freeform-canvas__fullscreen-media"
-              src={fullscreen.src}
-              controls
-              autoPlay
-              playsInline
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <img
-              className="freeform-canvas__fullscreen-media"
-              src={fullscreen.src}
-              alt="Fullscreen view"
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-        </div>
-      )}
+      <MediaModal
+        target={fullscreen.open ? { kind: fullscreen.type === "video" ? "video" : "image", src: fullscreen.src } : null}
+        onClose={closeFullscreen}
+      />
       <SyncStatusIndicator status={syncStatus} failedSeconds={syncFailedSeconds} onRetry={retrySyncNow} />
     </main>
   );

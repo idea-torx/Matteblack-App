@@ -104,15 +104,21 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
  * The clip's final frame, as a hosted PNG.
  *
  * Seeks from the end rather than to an absolute timestamp: the caller knows the
- * clip it generated, not its exact frame count, and `-sseof` lands on the last
- * decodable frame even when the container's duration is slightly off.
+ * clip it generated, not its exact frame count, and `-sseof` lands near the end
+ * even when the container's duration is slightly off.
+ *
+ * `-update 1` with NO `-frames:v` is the whole trick, and it is load-bearing.
+ * `-sseof -1` starts output one second before the end, so `-frames:v 1` stops
+ * at the FIRST frame of that second — a 25fps clip came back 24 frames early.
+ * Without it, ffmpeg decodes the last second and `-update` overwrites the same
+ * PNG each frame, so what survives is the last one.
  */
 export async function extractLastFrame(videoUrl: string): Promise<string> {
   await ensureFfmpeg();
   return withTempDir(async (dir) => {
     const src = await fetchToTemp(videoUrl, dir);
     const out = path.join(dir, "last.png");
-    await run("ffmpeg", ["-sseof", "-1", "-i", src, "-update", "1", "-frames:v", "1", "-y", out]);
+    await run("ffmpeg", ["-sseof", "-1", "-i", src, "-update", "1", "-y", out]);
     const data = await fsp.readFile(out).catch(() => {
       throw new VideoTailError("ffmpeg produced no frame from the end of that clip.");
     });
