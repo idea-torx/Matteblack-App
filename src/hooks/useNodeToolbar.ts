@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasNode, UndoCommand } from "../types/canvas";
 import { enqueueDirty } from "../services/CanvasStore";
 import { saveNodeToLibraryOptimistic, sortNodesReadingOrder } from "../utils/canvasUtils";
+import { invalidate } from "../services/AssetCache";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 type FullscreenState = {
   open: boolean;
@@ -16,6 +18,7 @@ type DeleteDeps = {
 };
 
 export function useNodeToolbar() {
+  const { activeWorkspace } = useWorkspace();
   const [fullscreen, setFullscreen] = useState<FullscreenState>({
     open: false,
     src: "",
@@ -106,6 +109,40 @@ export function useNodeToolbar() {
     });
   }, []);
 
+  // A node's label IS the prompt that made it, and /api/styles is already the
+  // prompt store the Styles library reads — so "save prompt" is one POST, not a
+  // new table. No optimistic insert: the styles list isn't on screen when you
+  // click this, so there's nothing to keep in sync, just a cache to drop.
+  const savePrompt = useCallback((node: CanvasNode): Promise<{ ok: boolean }> => {
+    const prompt = (node.label || "").trim();
+    if (!prompt) return Promise.resolve({ ok: false });
+    const key = `prompt:${node.id}`;
+    if (savingNodes.current.has(key)) return Promise.resolve({ ok: true });
+    savingNodes.current.add(key);
+    const body: Record<string, unknown> = {
+      // The name is what you scan in the library; the prompt is kept whole.
+      name: prompt.length > 48 ? `${prompt.slice(0, 48).trimEnd()}…` : prompt,
+      prompt,
+      image_url: node.src || null,
+    };
+    if (activeWorkspace?.type === "org" && activeWorkspace.id) {
+      body.scope = "org";
+      body.workspace_id = activeWorkspace.id;
+    }
+    return fetch("/api/styles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    })
+      .then((res) => {
+        if (res.ok) invalidate("styles");
+        return { ok: res.ok };
+      })
+      .catch(() => ({ ok: false }))
+      .finally(() => { savingNodes.current.delete(key); });
+  }, [activeWorkspace?.id, activeWorkspace?.type]);
+
   const deleteNode = useCallback((node: CanvasNode, deps: DeleteDeps) => {
     const { setNodes, pushUndo, canvasId } = deps;
     pushUndo({
@@ -126,6 +163,7 @@ export function useNodeToolbar() {
     closeFullscreen,
     downloadNode,
     saveToLibrary,
+    savePrompt,
     deleteNode,
   };
 }

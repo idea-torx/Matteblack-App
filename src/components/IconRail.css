@@ -28,37 +28,6 @@
   width: 100%;
 }
 
-.icon-rail-logo {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  padding: 0;
-  margin-bottom: 8px;
-  overflow: hidden;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.icon-rail-logo:hover {
-  background: var(--bg-hover);
-}
-
-.icon-rail-logo-img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-  display: block;
-  border-radius: 4px;
-}
-
-.icon-rail-logo-img--light { display: none; }
-[data-theme="light"] .icon-rail-logo-img--dark { display: none; }
-[data-theme="light"] .icon-rail-logo-img--light { display: block; }
-
 .icon-rail-btn {
   position: relative;
   width: 44px;
@@ -209,4 +178,18 @@
 }
 [data-theme="light"] .icon-rail-avatar-dot {
   border-color: var(--rail-bg);
+}
+
+/* macOS: the rail docks to the window edge and wraps the traffic lights in its
+ * own top padding, instead of floating below them. --panel-float-gap is 0 on
+ * mac (index.css) so the panels to its right stay flush against it. */
+html.is-mac .icon-rail {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  padding-top: 44px;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  box-shadow: none;
 }

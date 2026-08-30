@@ -24,6 +24,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { resolveLocalPath } from "../utils/localPath.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -93,7 +94,7 @@ function authHeaders(ep: Endpoint): Record<string, string> {
 
 async function httpJson(
   ep: Endpoint,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT",
   route: string,
   body?: unknown,
   timeoutMs = 15000,
@@ -165,6 +166,22 @@ const EMBEDDED_TOOLS: Tool[] = [
     },
   },
   {
+    name: "continue_video",
+    description:
+      "Continue an existing video clip with a new clip that picks up where it ended (MiniMax H3 Max). Call repeatedly, feeding each result URL back as the next sourceUrl, to build video past the 15s per-clip limit. Connect the running Fal Forge app for the full, tuned schema.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceUrl: { type: "string", description: "URL of the clip to continue from." },
+        prompt: { type: "string", description: "What happens in this chunk only." },
+        seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
+        durationSeconds: { type: "integer", description: "Chunk length, 5-15s (default 5)." },
+        tailSeconds: { type: "number", description: "seam='reference' only: seconds of tail to reference, 2-15 (default 2)." },
+      },
+      required: ["sourceUrl", "prompt"],
+    },
+  },
+  {
     name: "generate_music",
     description:
       "Generate music/audio from a prompt (and optional lyrics). Blocks until ready and returns the audio URL. Connect the running Fal Forge app for the full schema.",
@@ -230,6 +247,214 @@ const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "list_skills",
+    description:
+      "List the user's saved skills — reusable generation recipes they've written down (video scripts, house styles, prompt formulas). Call this FIRST when the user names a skill, says 'use my <x> skill', or asks for something you've made before: a skill carries their exact working prompts, so following one beats improvising.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_repos",
+    description:
+      "List the GitHub repositories the user attached, in their priority order, with the absolute path each is checked out at. Call this when the user refers to a repo (\"from my site repo\", \"match the brand in X\"), then read the files yourself with Read/Grep/Glob to get real context before writing prompts.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_timeline",
+    description:
+      "Read the cut currently on the user's cinema timeline — the clips in play order with their durations. Call this before editing an existing sequence so you reorder/replace against what's actually there.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "set_timeline",
+    description:
+      "Lay the finished sequence on the user's cinema timeline: pass the FULL ordered clip list and the clips are placed end to end from t=0, with the music bed under them. This is the assembly step — after generating the shots for a long-form piece, call this so the user opens a real cut rather than loose clips on the canvas. Declarative: whatever you send becomes the sequence, so reorder, replace a bad shot, or drop one by sending the list again without it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        clips: {
+          type: "array",
+          description: "The shots in play order.",
+          items: {
+            type: "object",
+            properties: {
+              src: { type: "string", description: "The generated clip's URL, from the generation result." },
+              durationSeconds: { type: "number", description: "The clip's length in seconds — the duration you generated it at." },
+              label: { type: "string", description: 'Short shot name, e.g. "Shot 3 — push in on the logo".' },
+            },
+            required: ["src"],
+          },
+        },
+        muteVideoAudio: {
+          type: "boolean",
+          description:
+            "Mute the video track, so only the music bed is heard. Generated clips carry their own audio (dialogue, room tone, effects) which fights a music bed laid under them. Pass true when the user asks for music over the picture, or for a silent cut; leave unset to keep the clips' own sound. Reversible — send the list again without it.",
+        },
+        music: {
+          type: "object",
+          description: "Optional music bed, laid at t=0 under the whole sequence.",
+          properties: {
+            src: { type: "string" },
+            durationSeconds: { type: "number" },
+            volume: { type: "number", description: "0-1, default 0.8." },
+          },
+        },
+      },
+      required: ["clips"],
+    },
+  },
+  {
+    name: "save_cut",
+    description:
+      "Record a finished sequence in the user's local cut history — one markdown manifest per cut, committed to a per-project git repo on their machine. Call this right after `set_timeline`, whenever a multi-shot piece is done. It saves the recipe, not the video: the look, the settings, and the exact prompt and clip URL for every shot, so the piece can be revisited, varied or rebuilt later. Write real prose in `description` — it is how the cut gets found again months later, so describe what it actually looks like rather than restating the title.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "The ongoing project this belongs to, kebab-case, e.g. 'acme-launch'. Reuse the SAME project across related cuts — that is what groups the history. Check `list_cuts` first." },
+        title: { type: "string", description: "This cut's name, e.g. 'Rooftop teaser'." },
+        description: { type: "string", description: "Two or three sentences on what the piece looks like and does. Written for a future search: name the subject, setting, mood and any distinctive visual." },
+        status: { type: "string", description: "'draft' (default), 'shipped', or 'abandoned'." },
+        model: { type: "string", description: "The model every shot was generated with." },
+        aspectRatio: { type: "string" },
+        resolution: { type: "string" },
+        look: { type: "string", description: "The bible's look line — stock, lens, grade, lighting." },
+        subjects: { type: "string", description: "The locked subject descriptions, verbatim." },
+        notes: { type: "string", description: "What worked, what to change next time." },
+        shots: {
+          type: "array",
+          description: "Every shot in play order — the same list you sent to set_timeline, plus the prompts.",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string" },
+              prompt: { type: "string", description: "The EXACT prompt used, not a paraphrase." },
+              bridge: { type: "string", description: "What carried over from the previous shot." },
+              reference: { type: "string", description: "Keyframe / reference URL this shot was generated from." },
+              src: { type: "string", description: "The finished clip URL." },
+              durationSeconds: { type: "number" },
+            },
+          },
+        },
+        music: {
+          type: "object",
+          properties: { prompt: { type: "string" }, src: { type: "string" } },
+        },
+      },
+      required: ["project", "title", "description", "shots"],
+    },
+  },
+  {
+    name: "list_cuts",
+    description:
+      "Read the user's cut history. With no arguments: the projects that have saved cuts. With `project`: that project's index, newest first, one line per cut. With `project` and `file`: the full manifest — every prompt, setting and clip URL. Call this BEFORE starting work that continues or resembles something the user has made before, so a follow-up matches the original instead of drifting. To rebuild a past cut, read its manifest and pass its clip URLs to `set_timeline` in order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Project slug, from the no-argument listing." },
+        file: { type: "string", description: "A manifest filename from the project index, e.g. '2026-08-29-rooftop-teaser.md'." },
+      },
+    },
+  },
+  {
+    name: "render_html",
+    description:
+      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, edit it, and call this again with the same `nodeId` — never redraw from memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        html: { type: "string", description: "The complete document, CSS inlined in a <style> block. Set the body/page size in CSS to match width/height exactly, with no margin, or the capture will have gutters." },
+        width: { type: "number", description: "Output width in pixels, e.g. 1080. Default 1080." },
+        height: { type: "number", description: "Output height in pixels, e.g. 1350 for 4:5. Default 1350." },
+        label: { type: "string", description: "Short name for the node, e.g. 'Quiz card 3'." },
+        nodeId: { type: "string", description: "Re-render an existing piece in place (from a previous render_html or get_html). Omit to place a new one." },
+      },
+      required: ["html"],
+    },
+  },
+  {
+    name: "get_html",
+    description:
+      "Read back the exact HTML/CSS a `render_html` piece was made from, so an edit starts from the real markup instead of a reconstruction. Call this before every revision to a piece you did not write in this conversation.",
+    inputSchema: {
+      type: "object",
+      properties: { nodeId: { type: "string", description: "The node id returned by render_html." } },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "get_skill",
+    description:
+      "Read one skill's full markdown by slug (from list_skills). Follow its instructions and reuse its prompts verbatim unless the user asks to vary them.",
+    inputSchema: {
+      type: "object",
+      properties: { slug: { type: "string", description: "The skill slug from list_skills." } },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "save_skill",
+    description:
+      "Save a skill back to the user's library as markdown (creates or overwrites by slug). Use it when the user says to save/remember a recipe, or when a generation run worked well and is worth repeating — write down the ACTUAL prompts and model/aspect/tier settings you used, not a paraphrase, so the run can be reproduced. Include a `---\nname: …\ndescription: …\n---` header.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Short kebab-case id, e.g. 'product-hero-loop'." },
+        body: { type: "string", description: "The full markdown document." },
+      },
+      required: ["slug", "body"],
+    },
+  },
+  {
+    name: "recall",
+    description:
+      "Read your private working memory about this user — corrections they've given you, defaults they prefer, approaches that didn't land. Call this at the START of any substantive piece of work, before you pick models, prompts or structure. This is YOUR memory, not a document the user wrote and not something they see in the app: apply it silently rather than reading it back to them.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "remember",
+    description:
+      "Write a note to your private working memory so future sessions start where this one ended. Use it whenever you learn something durable about how this user wants things done: a correction they made, a preference they stated, a model or setting they rejected, a workflow that worked. One fact per note. Re-use an existing slug to correct or replace a note rather than accumulating near-duplicates. Write it as a directive to your future self ('Default to 9:16 — user reframes 16:9 every time'), not as a diary entry. Do not announce that you are saving a memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Short kebab-case id, e.g. 'prefers-vertical-aspect'. Reuse to overwrite." },
+        note: { type: "string", description: "The fact, plus why it matters, in a sentence or two." },
+      },
+      required: ["slug", "note"],
+    },
+  },
+  {
+    name: "forget",
+    description: "Delete one note from your private working memory, by slug. Use it when a note has been proven wrong or the user's preference has changed.",
+    inputSchema: {
+      type: "object",
+      properties: { slug: { type: "string", description: "The note's slug, from recall." } },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "read_local_file",
+    description:
+      "Read a UTF-8 text file from this machine by absolute path (or ~/...). Use it for briefs, scripts, brand guidelines, copy decks, code and README files the user points you at — read what the source actually says instead of asking them to paste it. Binary files are refused; use get_asset for media.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path, or one starting with ~/." },
+        maxBytes: { type: "number", description: "Truncate after this many bytes (default 200000)." },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "list_local_dir",
+    description:
+      "List the entries of a directory on this machine by absolute path (or ~/...), so you can find the file you need before calling read_local_file. Returns names, whether each is a directory, and byte sizes.",
+    inputSchema: {
+      type: "object",
+      properties: { path: { type: "string", description: "Absolute path, or one starting with ~/." } },
+      required: ["path"],
+    },
+  },
+  {
     name: "estimate_cost",
     description:
       "What a generation would cost in USD — fal.ai's actual price, no markup, since the user pays fal directly with their own key. Omit `model` to price every model at once and recommend the cheapest that fits. Call this before an expensive generation (video especially: clips range from a few cents to several dollars) or whenever the user asks what something costs.",
@@ -278,7 +503,26 @@ function adaptForBridge(tool: Tool): Tool {
       "Reference image URL(s), http(s). Over this bridge, attach references by URL here (get URLs from list_canvas / get_asset) — NOT via referenceImageIds." +
       (isTransform ? " REQUIRED: the single source image to transform." : ""),
   };
-  return { ...tool, inputSchema: { ...schema, properties: props } as Tool["inputSchema"] };
+  // The in-app schema tells the model to STOP and ask the user which reference
+  // mode they meant whenever an image is attached to a video request. In the app
+  // that's right — the image is something the user dropped and the intent is
+  // ambiguous. Over this bridge the reference is the operator's own keyframe, so
+  // the same sentence turns every shot of a multi-clip sequence into a question
+  // and the run never finishes. Replace it with the rule that actually applies.
+  if (!isTransform && props.videoReferenceMode) {
+    props.videoReferenceMode = {
+      ...(props.videoReferenceMode as Record<string, unknown>),
+      description:
+        "How the referenceUrls are used in a video: 'first_frame' (one image starts the clip — the default for a keyframe you generated), 'first_last_frame' (two images, start and end, Veo 3.1 Lite only), 'references' (2-4 images blended). Over this bridge the references are YOURS, so pick the mode and generate — never stop to ask the user. If you omit it, first_frame is assumed for one URL and references for several.",
+    };
+  }
+  const bridgeNote = isTransform ? "" :
+    " Over this bridge you attach references by URL in `referenceUrls` and choose `videoReferenceMode` yourself — do not stop to ask the user which mode they meant. Building a sequence: keep model, aspect ratio, resolution and duration identical across every shot, generate in story order, then call `set_timeline` with the whole ordered list.";
+  return {
+    ...tool,
+    description: (tool.description ?? "") + bridgeNote,
+    inputSchema: { ...schema, properties: props } as Tool["inputSchema"],
+  };
 }
 
 /** Fetch the live tool schemas from the app; fall back to the embedded copy so
@@ -436,7 +680,32 @@ async function runTool(
     `Result: ${url}`,
   ];
   if (dispatch.canvasId) lines.push(`Placed on canvas: ${dispatch.canvasId}`);
-  lines.push("", "The result is on the Fal Forge canvas. (Thumbnails back to Claude arrive in a later phase.)");
+  // Terminal on purpose. This used to end with a note about thumbnails arriving
+  // "in a later phase", which read as "you cannot see it yet" and sent the agent
+  // off to get_asset / list_canvas to check its own work — so the turn kept
+  // running long after the image was already on the user's canvas.
+  //
+  // continue_video is the one exception: a chunk is a step in a sequence, not a
+  // finished piece, so the blanket "stop now" would end a long-form build after
+  // its first clip. It still gets the no-verifying rule — just not the stop.
+  if (name === "continue_video") {
+    lines.push(
+      "",
+      `This is one chunk of a longer sequence. To continue, call continue_video again with sourceUrl: ${url}`,
+      "Keep going until the sequence you and the user agreed on is complete. Then call set_timeline " +
+        "with every chunk in play order — a chain is a single continuous piece, and leaving it as loose " +
+        "cards on the canvas means the user has to assemble by hand what you already know the order of. " +
+        "Only after that, stop and say what you made. " +
+        "Do NOT call get_asset or list_canvas to check this chunk — it is already on the user's canvas.",
+    );
+  } else {
+    lines.push(
+      "",
+      "Done — the user can already see this on their canvas. Nothing further is required for this " +
+        "generation: do NOT call get_asset, list_canvas or any other tool to verify or look at it, and do " +
+        "not regenerate it unless the user asks. Say one short line about what you made and stop.",
+    );
+  }
   return ok(lines.join("\n"));
 }
 
@@ -597,6 +866,307 @@ async function runEstimateCost(args: Record<string, unknown>): Promise<CallToolR
   }
 }
 
+interface SkillRow { slug: string; title: string; description?: string; updatedAt?: string }
+
+async function runListSkills(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const data = (await httpJson(ep, "GET", "/api/skills")) as { skills?: SkillRow[] };
+    const skills = data.skills ?? [];
+    if (skills.length === 0) return ok("The skill library is empty. Save one with save_skill when a run is worth repeating.");
+    const lines = [`${skills.length} skill(s):`, ""];
+    for (const sk of skills) {
+      lines.push(`• ${sk.slug} — ${sk.title}${sk.description ? `: ${sk.description}` : ""}`);
+    }
+    lines.push("", "Call get_skill with a slug to read one in full before following it.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+type RepoRow = { nameWithOwner: string; description: string; dir: string; files?: number; syncedAt?: string; error?: string };
+
+async function runListRepos(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const { repos } = (await httpJson(ep, "GET", "/api/github/repos")) as { repos: RepoRow[] };
+    if (!repos.length) return ok("No repos attached. The user can attach one in the GitHub panel.");
+    const lines = ["Attached repos, highest priority first:"];
+    for (const r of repos) {
+      lines.push(`• ${r.nameWithOwner} — ${r.dir || "(not cloned)"}${r.files ? ` (${r.files} files)` : ""}${r.description ? ` — ${r.description}` : ""}${r.error ? ` [sync error: ${r.error}]` : ""}`);
+    }
+    lines.push("", "Read these with your own Read/Grep/Glob tools.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+type TimelineClipRow = { src: string; durationSeconds: number; startsAt: number; label: string };
+
+async function runGetTimeline(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const t = (await httpJson(ep, "GET", "/api/agent/timeline")) as {
+      clips: TimelineClipRow[]; music: { src: string; durationSeconds: number } | null; muteVideoAudio?: boolean;
+    };
+    if (!t.clips.length) return ok("The timeline is empty. Generate the shots, then call set_timeline with the ordered list.");
+    const total = t.clips.reduce((n, c) => n + (c.durationSeconds || 0), 0);
+    const lines = [`${t.clips.length} clips, ${total.toFixed(1)}s total:`];
+    t.clips.forEach((c, i) => lines.push(`${i + 1}. ${c.startsAt.toFixed(1)}s +${c.durationSeconds}s — ${c.label || "(unnamed)"} — ${c.src}`));
+    if (t.music) lines.push(`Music: ${t.music.src}`);
+    if (t.muteVideoAudio) lines.push("Video track is MUTED — only the music bed is audible.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runSetTimeline(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const clips = Array.isArray(args.clips) ? args.clips : [];
+  if (!clips.length) return fail("set_timeline requires a `clips` array in play order.");
+  try {
+    const r = (await httpJson(
+      ep, "POST", "/api/agent/timeline",
+      { clips, music: args.music ?? null, muteVideoAudio: args.muteVideoAudio === true },
+      60000,
+    )) as { clips: number; totalSeconds: number; muteVideoAudio: boolean };
+    return ok(
+      `Timeline set: ${r.clips} clips, ${r.totalSeconds.toFixed(1)}s${r.muteVideoAudio ? ", video audio muted" : ""}. ` +
+        "The user can play it in the cinema frame and export from there.",
+    );
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runSaveCut(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  if (!Array.isArray(args.shots) || args.shots.length === 0) return fail("save_cut requires a `shots` array in play order.");
+  if (typeof args.description !== "string" || !args.description.trim()) {
+    return fail("save_cut requires a `description` — a couple of sentences on what the piece looks like, so it can be found again.");
+  }
+  try {
+    const r = (await httpJson(ep, "POST", "/api/agent/cut", args, 60000)) as {
+      project: string; file: string; runtime: number; committed: boolean; gitError?: string; promptSaved?: boolean;
+    };
+    const where = `${r.project}/${r.file}`;
+    const filed = r.promptSaved ? " The look is now in the user's Prompts library too." : "";
+    return ok(
+      (r.committed
+        ? `Saved and committed to the ${r.project} cut history as ${where} (${Math.round(r.runtime)}s). Read it back any time with list_cuts.`
+        : `Saved to ${where}, but the git commit failed: ${r.gitError || "unknown error"}. The manifest is on disk either way.`) + filed,
+    );
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runListCuts(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const project = typeof args.project === "string" ? args.project : "";
+  const file = typeof args.file === "string" ? args.file : "";
+  const query = project
+    ? `?project=${encodeURIComponent(project)}${file ? `&file=${encodeURIComponent(file)}` : ""}`
+    : "";
+  try {
+    const r = (await httpJson(ep, "GET", `/api/agent/cuts${query}`)) as {
+      projects?: { project: string; cuts: number }[]; index?: string; body?: string;
+    };
+    if (r.body) return ok(r.body);
+    if (r.index) return ok(r.index);
+    const projects = r.projects ?? [];
+    if (!projects.length) return ok("No cuts saved yet. After you assemble a sequence with set_timeline, call save_cut to start the history.");
+    const lines = ["Projects with saved cuts:"];
+    for (const p of projects) lines.push(`\u2022 ${p.project} — ${p.cuts} cut(s)`);
+    lines.push("", "Call list_cuts with a project to see its index.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return fail(`Nothing saved under "${project}"${file ? `/${file}` : ""}. Call list_cuts with no arguments to see what exists.`);
+    return errToFail(err);
+  }
+}
+
+async function runRenderHtml(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  if (typeof args.html !== "string" || !args.html.trim()) return fail("render_html requires a complete `html` document.");
+  try {
+    const r = (await httpJson(ep, "POST", "/api/agent/render-html", {
+      html: args.html,
+      width: args.width,
+      height: args.height,
+      label: args.label,
+      nodeId: args.nodeId,
+    }, 60000)) as { nodeId: string; src: string; width: number; height: number; replaced: boolean };
+    return ok(
+      `${r.replaced ? "Re-rendered" : "Rendered"} ${r.width}x${r.height} and placed on the canvas.\nnodeId: ${r.nodeId}\nURL: ${r.src}\nPass that nodeId back to render_html to revise it, or the URL to transform_media / set_timeline.`,
+    );
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runGetHtml(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const nodeId = typeof args.nodeId === "string" ? args.nodeId : "";
+  if (!nodeId) return fail("get_html requires the `nodeId` render_html returned.");
+  try {
+    const r = (await httpJson(ep, "GET", `/api/agent/html/${encodeURIComponent(nodeId)}`)) as {
+      html: string; width: number | null; height: number | null;
+    };
+    return ok(`${r.width ?? "?"}x${r.height ?? "?"}\n\n${r.html}`);
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runGetSkill(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const slug = typeof args.slug === "string" ? args.slug : "";
+  if (!slug) return fail("get_skill requires a `slug`.");
+  try {
+    const sk = (await httpJson(ep, "GET", `/api/skills/${encodeURIComponent(slug)}`)) as SkillRow & { body?: string };
+    return ok(`# ${sk.title} (${sk.slug})\n\n${sk.body ?? ""}`);
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return fail(`No skill called "${slug}". Call list_skills to see what exists.`);
+    return errToFail(err);
+  }
+}
+
+async function runSaveSkill(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const slug = typeof args.slug === "string" ? args.slug : "";
+  const body = typeof args.body === "string" ? args.body : "";
+  if (!slug || !body) return fail("save_skill requires both `slug` and `body`.");
+  try {
+    const saved = (await httpJson(ep, "PUT", `/api/skills/${encodeURIComponent(slug)}`, { body })) as SkillRow;
+    return ok(`Saved skill "${saved.title}" as ${saved.slug}. It's in the user's Skills panel now.`);
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private agent memory + local files
+//
+// Both run entirely inside this bridge process — no HTTP hop, so they work
+// whether or not the desktop app happens to be open, and memory never travels
+// over an endpoint the app's UI could call.
+// ---------------------------------------------------------------------------
+
+const MEMORY_DIR = path.join(resolveDataDir(), "agent-memory");
+
+/** Filename-safe id, and the trust boundary: the result can never contain a
+ *  path separator or dots, so a slug cannot escape MEMORY_DIR. */
+function memorySlug(input: string): string {
+  return input.toLowerCase().replace(/\.md$/, "").replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "").slice(0, 64);
+}
+
+function runRecall(): CallToolResult {
+  let files: string[];
+  try {
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    files = fs.readdirSync(MEMORY_DIR).filter((f) => f.endsWith(".md"));
+  } catch (err) {
+    return fail(`Couldn't read memory: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (files.length === 0) {
+    return ok("No memory yet. As you learn how this user works, save it with `remember`.");
+  }
+  const notes = files
+    .map((f) => {
+      const full = path.join(MEMORY_DIR, f);
+      return { slug: f.slice(0, -3), body: fs.readFileSync(full, "utf8").trim(), at: fs.statSync(full).mtime.toISOString() };
+    })
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .filter((n) => n.body);
+  return ok(
+    "Your private notes on this user (newest first). Not visible to them anywhere in " +
+    "the app — apply them silently rather than reading them back.\n\n" +
+    notes.map((n) => `- (${n.slug}) ${n.body}`).join("\n"),
+  );
+}
+
+function runRemember(args: Record<string, unknown>): CallToolResult {
+  const slug = memorySlug(typeof args.slug === "string" ? args.slug : "");
+  const note = typeof args.note === "string" ? args.note.trim() : "";
+  if (!slug || !note) return fail("remember requires both `slug` and `note`.");
+  try {
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    fs.writeFileSync(path.join(MEMORY_DIR, `${slug}.md`), note, "utf8");
+  } catch (err) {
+    return fail(`Couldn't save memory: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return ok(`Noted as "${slug}".`);
+}
+
+function runForget(args: Record<string, unknown>): CallToolResult {
+  const slug = memorySlug(typeof args.slug === "string" ? args.slug : "");
+  if (!slug) return fail("forget requires a `slug`.");
+  const p = path.join(MEMORY_DIR, `${slug}.md`);
+  if (!fs.existsSync(p)) return fail(`No memory called "${slug}". Call recall to see what's there.`);
+  try { fs.unlinkSync(p); } catch (err) {
+    return fail(`Couldn't delete memory: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return ok(`Forgot "${slug}".`);
+}
+
+function runReadLocalFile(args: Record<string, unknown>): CallToolResult {
+  const r = resolveLocalPath(args.path);
+  if ("error" in r) return fail(r.error);
+  const maxBytes = typeof args.maxBytes === "number" && args.maxBytes > 0
+    ? Math.min(args.maxBytes, 2_000_000) : 200_000;
+  let stat: fs.Stats;
+  try { stat = fs.statSync(r.path); } catch {
+    return fail(`No such file: ${r.path}`);
+  }
+  if (stat.isDirectory()) return fail(`${r.path} is a directory — use list_local_dir.`);
+  let buf: Buffer;
+  try { buf = fs.readFileSync(r.path); } catch (err) {
+    return fail(`Couldn't read ${r.path}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // A NUL in the first block is the cheap, reliable binary tell.
+  if (buf.subarray(0, 4096).includes(0)) {
+    return fail(`${r.path} looks binary, not text. Use get_asset for media files.`);
+  }
+  const truncated = buf.length > maxBytes;
+  const text = buf.subarray(0, maxBytes).toString("utf8");
+  return ok(`${r.path} (${stat.size} bytes)${truncated ? `, truncated to ${maxBytes}` : ""}\n\n${text}`);
+}
+
+function runListLocalDir(args: Record<string, unknown>): CallToolResult {
+  const r = resolveLocalPath(args.path);
+  if ("error" in r) return fail(r.error);
+  let entries: fs.Dirent[];
+  try { entries = fs.readdirSync(r.path, { withFileTypes: true }); } catch (err) {
+    return fail(`Couldn't list ${r.path}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (entries.length === 0) return ok(`${r.path} is empty.`);
+  const lines = entries
+    .filter((e) => !e.name.startsWith("."))
+    .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
+    .map((e) => {
+      if (e.isDirectory()) return `  ${e.name}/`;
+      let size = "";
+      try { size = ` (${fs.statSync(path.join(r.path, e.name)).size} bytes)`; } catch { /* raced */ }
+      return `  ${e.name}${size}`;
+    });
+  return ok(`${r.path}\n${lines.join("\n")}`);
+}
+
 // ---------------------------------------------------------------------------
 // Server wiring
 // ---------------------------------------------------------------------------
@@ -604,9 +1174,16 @@ async function runEstimateCost(args: Record<string, unknown>): Promise<CallToolR
 const INSTRUCTIONS = [
   "Matteblack generates images, video, and music locally using the user's own fal.ai key; every result lands on the user's Fal Forge canvas (a separate window they keep open beside this chat).",
   "",
-  "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD).",
+  "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
-  "COST: the user pays fal.ai directly with their own key, so prices are real money, at cost, and vary hugely — a sound effect is under a cent, a 5s 1080p Seedance clip is over three dollars. Check `estimate_cost` before anything expensive (any video, or a large batch), state the figure, and get a yes before spending. Quote the number plainly ('about $3.40'); don't editorialise about it.",
+  "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply.",
+  "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list. The `bridge` skill has the continuity method; follow it.",
+  "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
+  "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
+  "LOCAL FILES: `list_local_dir` and `read_local_file` read this machine directly by absolute path (or ~/...). When the user points at a brief, script, brand guide, copy deck or repo, open it and use what it actually says rather than asking them to paste it. Credentials files are refused by design — don't try to route around that.",
+  "SKILLS: the user keeps reusable recipes — video scripts, house styles, prompt formulas — as markdown in their skill library. Check `list_skills` when they name a skill, ask for 'the usual', or want something you've built before, and follow the skill's prompts verbatim rather than improvising a fresh one. When a run turns out well or the user says to remember it, call `save_skill` with the ACTUAL prompts and settings you used so it reproduces exactly.",
+  "",
+  "COST: the user pays fal.ai directly with their own key, so prices are real money, at cost, and vary hugely — a sound effect is under a cent, a 5s 1080p Seedance clip is over three dollars. Check `estimate_cost` before anything expensive (any video, or a large batch), state the figure, and get a yes before spending. Quote the number plainly ('about $3.40'); don't editorialise about it. For a multi-shot piece, price and approve the WHOLE sequence once, up front — then generate every shot without asking again. Re-asking between shots strands a half-finished sequence, which is worse than the spend.",
   "",
   "BLOCKING & ORCHESTRATION: the generation tools run synchronously — each call waits for the job to finish and returns the result URL. Multi-step work is yours to drive: to make N variations, call `generate_media` N times; to iterate, generate then inspect with `get_asset` then generate again. There is no batching or status-line protocol to follow here — just call the tools.",
   "",
@@ -637,7 +1214,22 @@ async function main(): Promise<void> {
     if (name === "list_canvas") return runListCanvas(args);
     if (name === "get_asset") return runGetAsset(args);
     if (name === "estimate_cost") return runEstimateCost(args);
-    if (name !== "generate_media" && name !== "generate_music" && name !== "transform_media") {
+    if (name === "recall") return runRecall();
+    if (name === "remember") return runRemember(args);
+    if (name === "forget") return runForget(args);
+    if (name === "read_local_file") return runReadLocalFile(args);
+    if (name === "list_local_dir") return runListLocalDir(args);
+    if (name === "list_skills") return runListSkills();
+    if (name === "get_skill") return runGetSkill(args);
+    if (name === "list_repos") return runListRepos();
+    if (name === "get_timeline") return runGetTimeline();
+    if (name === "set_timeline") return runSetTimeline(args);
+    if (name === "render_html") return runRenderHtml(args);
+    if (name === "get_html") return runGetHtml(args);
+    if (name === "save_cut") return runSaveCut(args);
+    if (name === "list_cuts") return runListCuts(args);
+    if (name === "save_skill") return runSaveSkill(args);
+    if (name !== "generate_media" && name !== "generate_music" && name !== "transform_media" && name !== "continue_video") {
       return fail(`Unknown tool: ${name}`);
     }
     // If the client passed a progress token, stream progress during the block-and-

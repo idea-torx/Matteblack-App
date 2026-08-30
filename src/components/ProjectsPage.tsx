@@ -22,6 +22,29 @@ export type Project = {
 
 export type ProjectsTab = "mine" | "shared";
 
+type SortKey = "recent" | "name" | "owner";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  recent: "Recently updated",
+  name: "Name",
+  owner: "Workspace",
+};
+
+/** "Workspace" order = your own workspace's projects first, then each person
+ *  who shared with you, grouped. `projects` only ever holds the active
+ *  workspace, so owner is the only workspace-ish key a row actually carries. */
+function compareProjects(a: Project, b: Project, key: SortKey): number {
+  if (key === "name") return a.name.localeCompare(b.name);
+  if (key === "owner") {
+    const owner = (p: Project) =>
+      p.viewer_role === "viewer" ? (p.owner_display_name || p.owner_email || "~") : "";
+    const d = owner(a).localeCompare(owner(b));
+    if (d) return d;
+    return a.name.localeCompare(b.name);
+  }
+  return (b.updated_at || b.created_at || "").localeCompare(a.updated_at || a.created_at || "");
+}
+
 const CATEGORY_LABELS: Record<ProjectCategory, string> = {
   make: "Make Projects",
   nodes: "Node Workflows",
@@ -137,6 +160,12 @@ export function ProjectsPage({ category, projects, currentProject, onSelect, onC
   const [newName, setNewName] = useState("");
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [wsMenuOpen, setWsMenuOpen] = useState(false);
+  // Sticky because the list is the first thing you look at every session and
+  // re-picking the order every time is the annoying part.
+  const [sortBy, setSortBy] = useState<SortKey>(() => {
+    const v = localStorage.getItem("projectsSort");
+    return v === "name" || v === "owner" ? v : "recent";
+  });
   const { workspaces, activeWorkspace, setActiveWorkspace } = useWorkspace();
 
   const defaultName = category === "audio" ? "Untitled Audio Project" : category === "cinema" ? "Untitled Cinema Project" : "Untitled Project";
@@ -154,7 +183,7 @@ export function ProjectsPage({ category, projects, currentProject, onSelect, onC
   const sharedList = sharingEnabled ? (sharedProjects || []) : [];
   const ownedIds = new Set(projects.map((p) => p.id));
   const dedupedShared = sharedList.filter((p) => !ownedIds.has(p.id));
-  const visibleProjects: Project[] = [...projects, ...dedupedShared];
+  const visibleProjects: Project[] = [...projects, ...dedupedShared].sort((a, b) => compareProjects(a, b, sortBy));
   const isTeamWorkspace = activeWorkspace?.type === "org";
 
   return (
@@ -219,6 +248,16 @@ export function ProjectsPage({ category, projects, currentProject, onSelect, onC
                 </>
               )}
             </div>
+            <select
+              className="proj-sort"
+              value={sortBy}
+              onChange={(e) => { const v = e.target.value as SortKey; setSortBy(v); localStorage.setItem("projectsSort", v); }}
+              aria-label="Sort projects"
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                <option key={k} value={k}>{`Sort: ${SORT_LABELS[k]}`}</option>
+              ))}
+            </select>
             {isTeamWorkspace && onInviteTeammates && (
               <button type="button" className="proj-invite-btn" onClick={onInviteTeammates}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

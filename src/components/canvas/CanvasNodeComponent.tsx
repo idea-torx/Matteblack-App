@@ -38,6 +38,7 @@ export type CanvasNodeProps = {
   onRotatePointerDown: (e: React.PointerEvent, nodeId: string) => void;
   onDownloadNode: (node: CanvasNode) => Promise<void>;
   onSaveToLibrary: (node: CanvasNode) => Promise<{ ok: boolean }>;
+  onSavePrompt: (node: CanvasNode) => Promise<{ ok: boolean }>;
   onDeleteNode: (node: CanvasNode, deps: { setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>; pushUndo: (cmd: UndoCommand) => void; canvasId: string | null }) => void;
   onOpenFullscreen: (node: CanvasNode) => void;
   onToggleVideoPlay: (id: string) => void;
@@ -73,6 +74,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
   onRotatePointerDown: _onRotatePointerDown,
   onDownloadNode,
   onSaveToLibrary,
+  onSavePrompt,
   onDeleteNode,
   onOpenFullscreen,
   onToggleVideoPlay,
@@ -460,7 +462,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             <span className="freeform-canvas__node-missing-label">{node.label || "Missing image"}</span>
           </div>
         ) : (
-          <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} draggable={false} loading="lazy" style={contentClipStyle} onError={handleImgError} />
+          <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
       ) : node.src ? (
         imgError ? (
@@ -469,7 +471,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             <span className="freeform-canvas__node-missing-label">{node.label || "Missing image"}</span>
           </div>
         ) : (
-          <img className="freeform-canvas__node-img" src={node.src} alt={node.label} draggable={false} loading="lazy" style={contentClipStyle} onError={handleImgError} />
+          <img className="freeform-canvas__node-img" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
       ) : node.gradient ? (
         <div className="freeform-canvas__node-gradient" style={{ background: node.gradient, ...contentClipStyle }} />
@@ -541,6 +543,36 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
               <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
             </svg>
           </button>
+          {node.label && (
+            <button
+              type="button"
+              className="freeform-canvas__toolbar-btn"
+              title="Save prompt"
+              aria-label="Save prompt"
+              onClick={(e) => {
+                e.stopPropagation();
+                const btn = e.currentTarget;
+                if (btn.hasAttribute("disabled")) return;
+                btn.classList.add("freeform-canvas__toolbar-btn--saved");
+                btn.setAttribute("disabled", "true");
+                onSavePrompt(node).then((result) => {
+                  if (!result.ok) {
+                    btn.classList.remove("freeform-canvas__toolbar-btn--saved");
+                    btn.classList.add("freeform-canvas__toolbar-btn--error");
+                  }
+                  setTimeout(() => {
+                    btn.classList.remove("freeform-canvas__toolbar-btn--saved");
+                    btn.classList.remove("freeform-canvas__toolbar-btn--error");
+                    btn.removeAttribute("disabled");
+                  }, result.ok ? 1500 : 2000);
+                });
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+          )}
           {node.label && (
             <button
               type="button"

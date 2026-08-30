@@ -18,6 +18,7 @@ import {
   removeTrack,
   getTrackById,
   getActiveClipAtTime,
+  setTrackMuted,
   getEffectiveDuration,
   splitClipAtTime,
   type TimelineState,
@@ -76,7 +77,7 @@ export const CinemaFrame = memo(function CinemaFrame({
       lastPersistedRef.current = newTimeline;
       onUpdateRef.current(nodeIdRef.current, serializeTimelineToMetadata(nodeMetaRef.current, newTimeline));
       if (canvasIdRef.current) {
-        syncTimelineToServer(canvasIdRef.current, prevTimeline, newTimeline).catch(() => {});
+        syncTimelineToServer(canvasIdRef.current, node.id, prevTimeline, newTimeline).catch(() => {});
       }
     },
     []
@@ -84,7 +85,7 @@ export const CinemaFrame = memo(function CinemaFrame({
 
   useEffect(() => {
     if (timeline !== lastPersistedRef.current && canvasIdRef.current) {
-      syncTimelineToServer(canvasIdRef.current, lastPersistedRef.current, timeline).catch(() => {});
+      syncTimelineToServer(canvasIdRef.current, node.id, lastPersistedRef.current, timeline).catch(() => {});
       lastPersistedRef.current = timeline;
     }
   }, [timeline]);
@@ -296,6 +297,13 @@ export const CinemaFrame = memo(function CinemaFrame({
     [persistTimeline]
   );
 
+  const handleSetTrackMuted = useCallback(
+    (trackId: string, muted: boolean) => {
+      persistTimeline(setTrackMuted(timelineRef.current, trackId, muted));
+    },
+    [persistTimeline]
+  );
+
   const handleTitlebarDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -340,6 +348,9 @@ export const CinemaFrame = memo(function CinemaFrame({
         </span>
       </div>
       <CinemaViewer
+        videoMuted={timeline.tracks.some(
+          (t) => t.type === "video" && t.muted && t.clips.some((c) => c.id === playback.activeClip?.id),
+        )}
         activeClip={playback.activeClip}
         activeAudioClips={playback.activeAudioClips}
         isPlaying={playback.isPlaying}
@@ -380,6 +391,7 @@ export const CinemaFrame = memo(function CinemaFrame({
         onClipVolumeChange={handleClipVolumeChange}
         onAddTrack={handleAddTrack}
         onRemoveTrack={handleRemoveTrack}
+        onSetTrackMuted={handleSetTrackMuted}
         onZoomChange={handleZoomChange}
         zoomLevel={timeline.zoomLevel}
         incomingDragPreview={incomingDragPreview}

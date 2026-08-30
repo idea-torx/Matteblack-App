@@ -17,8 +17,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { REPOS_DIR, readStore as readRepoStore } from "../github/ghCli.js";
+import { operatorSystemPrompt } from "../skills/builtin.js";
+import { pinnedInstructions } from "../skills/skillStore.js";
+import { memoryInstructions } from "../skills/agentMemory.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
-import { getClaudeCodeToken, getClaudeCodePath } from "../config/userConfig.js";
+import { getClaudeCodePath } from "../config/userConfig.js";
 
 // ---------------------------------------------------------------------------
 // Locating the `claude` binary
@@ -50,15 +54,47 @@ export function resolveClaudeBinary(): { path: string; found: boolean } {
 // MCP config for the spawned claude
 // ---------------------------------------------------------------------------
 
-/** The matteblack MCP tools we let the operator call (nothing else). */
-export const OPERATOR_ALLOWED_TOOLS = [
+/** The key our MCP server is registered under in the --mcp-config we write.
+ *  claude namespaces every tool as mcp__<serverKey>__<tool>, so this single
+ *  constant has to drive the config key, the --allowedTools grant, and the
+ *  display-name stripping below. When they drifted apart, every tool call came
+ *  back as unpermitted. */
+const MCP_SERVER_KEY = "falforge";
+
+/** The Fal Forge MCP tools we let the operator call (nothing else). */
+/** Claude's own read-only file tools. Granted so an attached GitHub repo can be
+ *  used as real context — the spawned claude runs with cwd pinned to REPOS_DIR,
+ *  so this reaches the user's checked-out repos and nothing else. No Write, no
+ *  Edit, no Bash: the operator reads code, it does not change it. */
+const FILE_TOOLS = ["Read", "Grep", "Glob"];
+
+/** The Fal Forge MCP tools we let the operator call. */
+export const OPERATOR_MCP_TOOLS = [
   "generate_media",
+  "continue_video",
   "generate_music",
   "transform_media",
   "list_models",
   "list_canvas",
   "get_asset",
-].map((t) => `mcp__falforge__${t}`);
+  "list_skills",
+  "get_skill",
+  "save_skill",
+  "list_repos",
+  "get_timeline",
+  "set_timeline",
+  "save_cut",
+  "list_cuts",
+  "estimate_cost",
+  // Self-improvement: the memory block is injected into the prompt, but without
+  // these the operator could only ever read it — every correction it was given
+  // died with the session.
+  "recall",
+  "remember",
+  "forget",
+].map((t) => `mcp__${MCP_SERVER_KEY}__${t}`);
+
+export const OPERATOR_ALLOWED_TOOLS = [...OPERATOR_MCP_TOOLS, ...FILE_TOOLS];
 
 /** Path + command to run the bundled MCP server. Electron main passes these via
  *  env (MB_APP_EXEC / MB_MCP_SCRIPT); dev falls back to this process + cwd. */
@@ -78,28 +114,22 @@ function mcpServerSpec(): { command: string; args: string[]; env: Record<string,
 function writeMcpConfig(): string {
   ensureDataDir();
   const spec = mcpServerSpec();
-  const cfg = { mcpServers: { matteblack: { command: spec.command, args: spec.args, env: spec.env } } };
+  const cfg = { mcpServers: { [MCP_SERVER_KEY]: { command: spec.command, args: spec.args, env: spec.env } } };
   const p = path.join(DATA_DIR, "operator-mcp-config.json");
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2), "utf8");
   return p;
 }
 
-const OPERATOR_SYSTEM_PROMPT = [
-  "You are the generation operator inside the Matteblack desktop app — Claude, driving the app for the user.",
-  "You drive image/video/music generation for the user through the matteblack MCP tools:",
-  "generate_media, generate_music, transform_media, plus list_models / list_canvas / get_asset.",
-  "When the user asks to make, create, generate, edit, upscale, or remix visuals or audio, call the",
-  "appropriate tool. Results land on the user's canvas automatically. To build on existing work, call",
-  "list_canvas to get a url and pass it in referenceUrls. Keep replies short: say what you're generating,",
-  "then let the tool run. You do not have file or shell access — only the matteblack tools.",
-  "If the user attaches a reference image (you'll see a bracketed system note saying so), it is supplied",
-  "to the generation tools automatically — just call generate_media (or transform_media) right away; never",
-  "ask the user to put it on the canvas or for a URL.",
-].join(" ");
+/** The operator's standing instructions live in the editable `operator-system`
+ *  skill, so the user can change how the agent behaves from the Skills panel.
+ *  Read per run — an edit takes effect on the next message, no restart. */
 
 // ---------------------------------------------------------------------------
 // Event model + stream-json parsing
 // ---------------------------------------------------------------------------
+
+/** Strips the mcp__<serverKey>__ namespace off a tool name for display. */
+const TOOL_PREFIX_RE = new RegExp(`^mcp__${MCP_SERVER_KEY}__`);
 
 export type OperatorEvent =
   | { type: "session"; sessionId: string }
@@ -132,7 +162,7 @@ export function parseStreamJsonLine(obj: Record<string, unknown>): OperatorEvent
           out.push({
             type: "tool_use",
             id: typeof b.id === "string" ? b.id : "",
-            tool: b.name.replace(/^mcp__falforge__/, ""),
+            tool: b.name.replace(TOOL_PREFIX_RE, ""),
             input: b.input,
           });
         }
@@ -210,17 +240,25 @@ export interface RunOperatorOptions {
  * generation errors surface as events.
  */
 export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: string }> {
-  const token = getClaudeCodeToken();
-  if (!token) {
+  const bin = resolveClaudeBinary();
+  if (!bin.found) {
     return Promise.reject(
       new OperatorNotConfiguredError(
-        "Claude Code token not set. Run `claude setup-token` and add it in Settings to enable the Matte operator.",
+        "Claude Code isn't installed. Install it, run `claude` once to sign in to your subscription, then reopen this panel.",
       ),
     );
   }
 
-  const bin = resolveClaudeBinary();
   const mcpConfigPath = writeMcpConfig();
+
+  // Attached repos are checked out here; pin cwd so Read/Grep/Glob reach them
+  // and nothing else on the user's disk. Constant regardless of how many repos
+  // are attached, so claude's session store stays stable across turns.
+  fs.mkdirSync(REPOS_DIR, { recursive: true });
+  const repos = readRepoStore();
+  const repoNote = repos.length
+    ? ` The user has attached these repos, in priority order: ${repos.map((r) => `${r.nameWithOwner} (./${path.basename(r.dir || r.nameWithOwner)})`).join(", ")}.`
+    : " The user has not attached any repos yet.";
 
   const args = [
     "-p", opts.message,
@@ -229,7 +267,7 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
     "--mcp-config", mcpConfigPath,
     "--strict-mcp-config",
     "--allowedTools", OPERATOR_ALLOWED_TOOLS.join(","),
-    "--append-system-prompt", OPERATOR_SYSTEM_PROMPT,
+    "--append-system-prompt", operatorSystemPrompt() + repoNote + pinnedInstructions() + memoryInstructions(),
   ];
   if (opts.sessionId) args.push("--resume", opts.sessionId);
   if (opts.model) args.push("--model", opts.model);
@@ -238,21 +276,23 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
   // .cmd/.bat shims (npm global) need a shell; native .exe does not.
   const useShell = /\.(cmd|bat)$/i.test(bin.path);
 
-  // Build the child env from ours, then DELETE any ambient Anthropic vars so
-  // they can't override the subscription token / redirect the endpoint. (Managed
-  // Claude Code environments inject ANTHROPIC_BASE_URL / auth at launch; if
-  // inherited, the spawned claude would try the wrong auth and 401.)
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token };
+  // The spawned `claude` authenticates itself, off the same subscription login
+  // the user already has in their terminal — this app never handles, stores, or
+  // passes a credential. DELETE any ambient Anthropic vars so an API key in the
+  // environment can't silently take over and bill the user per-token instead.
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
   delete childEnv.ANTHROPIC_API_KEY;
   delete childEnv.ANTHROPIC_AUTH_TOKEN;
   delete childEnv.ANTHROPIC_BASE_URL;
   delete childEnv.ANTHROPIC_MODEL;
+  delete childEnv.CLAUDE_CODE_OAUTH_TOKEN;
 
   return new Promise((resolve, reject) => {
     let child;
     try {
       child = spawn(bin.path, args, {
         env: childEnv,
+        cwd: REPOS_DIR,
         // Close stdin (the prompt is passed via -p) so claude doesn't wait ~3s
         // for piped input; capture stdout/stderr.
         stdio: ["ignore", "pipe", "pipe"],
@@ -317,8 +357,8 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
   });
 }
 
-/** Whether the operator is usable (token present + binary locatable). */
-export function operatorStatus(): { hasToken: boolean; binaryFound: boolean; binaryPath: string } {
+/** Whether the operator is usable — i.e. whether the `claude` CLI is present. */
+export function operatorStatus(): { binaryFound: boolean; binaryPath: string } {
   const bin = resolveClaudeBinary();
-  return { hasToken: !!getClaudeCodeToken(), binaryFound: bin.found, binaryPath: bin.path };
+  return { binaryFound: bin.found, binaryPath: bin.path };
 }

@@ -11,7 +11,7 @@
 .brandiq-panel {
   position: absolute;
   left: calc(var(--panel-float-gap) + var(--icon-rail-width));
-  top: var(--panel-float-top);
+  top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
   right: var(--panel-float-gap);
   z-index: 16;

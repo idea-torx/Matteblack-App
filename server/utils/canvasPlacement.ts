@@ -1,17 +1,16 @@
 /**
- * Server-side canvas placement — a faithful port of the frontend algorithm
- * (src/utils/canvasPlacement.ts + the row-cursor cascade in src/App.tsx's
- * startGeneration). Operator (MCP) generations are dispatched server-side, so
- * they can't run the frontend placement; this reproduces it so agent-placed
- * nodes land exactly like a normal generation would:
+ * Server-side canvas placement — a faithful port of the frontend algorithm in
+ * src/utils/canvasPlacement.ts. Operator (MCP) generations are dispatched
+ * server-side, so they can't run the frontend placement; this reproduces it so
+ * agent-placed nodes land exactly like a normal generation would:
  *
- *   - first generation on an empty canvas → centered on the user's viewport,
- *   - subsequent generations → cascaded to the right of the last one (wrapping
- *     into rows), falling back to a viewport-centered empty-slot search when the
- *     cascade would collide with existing content,
+ *   - first node on an empty canvas → centered on the user's viewport,
+ *   - every one after it → to the right of whatever is furthest right, wrapping
+ *     into a new row under the content when the row gets too wide,
  *   - placeholder sized to the *requested* aspect ratio so the finished image
  *     drops in at true proportions without a resize.
  *
+ * The two copies are checked against each other in canvasPlacement.test.ts.
  * Kept dependency-free (plain rects) so it needs no DOM / CanvasNode types.
  */
 
@@ -19,19 +18,15 @@ export type Rect = { x: number; y: number; w: number; h: number };
 
 export type Viewport = { cx: number; cy: number; w: number; h: number };
 
-/** Anchor remembered between placements so the cascade marches predictably. */
-export type PlacementAnchor = {
-  canvasId: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  rowAnchorX: number;
-};
+export const GAP = 24;
 
-const GAP = 24;
+/** ponytail: fixed canvas-unit row width, deliberately not the viewport's —
+ *  see the note in the frontend copy. */
+function rowMaxWidth(w: number): number {
+  return Math.max(w * 6, 8192);
+}
 
-function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
+function overlaps(a: Rect, b: Rect, gap: number): boolean {
   return (
     a.x < b.x + b.w + gap &&
     a.x + a.w + gap > b.x &&
@@ -40,93 +35,72 @@ function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
   );
 }
 
-function fitsAt(x: number, y: number, w: number, h: number, occupied: Rect[], gap: number): boolean {
-  const test: Rect = { x, y, w, h };
+function anchorOf(occupied: Rect[]): Rect {
+  let best = occupied[0];
   for (const r of occupied) {
-    if (rectsOverlap(test, r, gap)) return false;
+    const d = (r.x + r.w) - (best.x + best.w);
+    if (d > 0 || (d === 0 && r.y > best.y)) best = r;
   }
-  return true;
+  return best;
 }
 
-/**
- * Find an empty slot near the viewport centre for a placeholder of `size`,
- * spiralling outward (preferring "below") when the centre is occupied. Mirrors
- * the frontend `findEmptySlots` for a single item.
- */
-export function findEmptySlot(viewport: Viewport, size: { w: number; h: number }, occupied: Rect[]): Rect {
-  const baseX = viewport.cx - size.w / 2;
-  const baseY = viewport.cy - size.h / 2;
-  const step = Math.max(80, Math.min(viewport.w, viewport.h) * 0.15);
-  const maxRings = 30;
-
-  if (fitsAt(baseX, baseY, size.w, size.h, occupied, GAP)) {
-    return { x: baseX, y: baseY, w: size.w, h: size.h };
-  }
-  for (let ring = 1; ring <= maxRings; ring++) {
-    const offsets = [
-      { dx: 0, dy: ring * step },
-      { dx: ring * step, dy: 0 },
-      { dx: -ring * step, dy: 0 },
-      { dx: 0, dy: -ring * step },
-      { dx: ring * step, dy: ring * step },
-      { dx: -ring * step, dy: ring * step },
-      { dx: ring * step, dy: -ring * step },
-      { dx: -ring * step, dy: -ring * step },
-    ];
-    for (const off of offsets) {
-      const x = baseX + off.dx;
-      const y = baseY + off.dy;
-      if (fitsAt(x, y, size.w, size.h, occupied, GAP)) return { x, y, w: size.w, h: size.h };
+function slideRight(x: number, y: number, w: number, h: number, occupied: Rect[]): number {
+  let cx = x;
+  for (let pass = 0; pass <= occupied.length; pass++) {
+    let moved = false;
+    for (const r of occupied) {
+      if (overlaps({ x: cx, y, w, h }, r, GAP)) {
+        cx = Math.max(cx, r.x + r.w + GAP);
+        moved = true;
+      }
     }
+    if (!moved) return cx;
   }
-
-  // Fallback: stack below the viewport, walking down until it clears.
-  let cy = viewport.cy + viewport.h * 0.6;
-  const cx = viewport.cx - size.w / 2;
-  let safety = 200;
-  while (safety-- > 0 && !fitsAt(cx, cy, size.w, size.h, occupied, GAP)) cy += step;
-  return { x: cx, y: cy, w: size.w, h: size.h };
+  return cx;
 }
 
-/**
- * Choose where the next placeholder goes. Tries the row-cursor cascade off the
- * remembered anchor first (fast, predictable "next to the last one"), then falls
- * back to the viewport-centred empty-slot search. Returns the chosen rect plus
- * the anchor to remember for the following call.
- */
+/** The rect-only core. Must stay identical to the frontend `layout`. */
+export function layout(viewport: Viewport, sizes: { w: number; h: number }[], occupied: Rect[]): Rect[] {
+  if (sizes.length === 0) return [];
+  const obstacles = occupied.slice();
+  const out: Rect[] = [];
+
+  let cursorX: number;
+  let cursorY: number;
+  let rowLeft: number;
+  if (obstacles.length === 0) {
+    cursorX = viewport.cx - sizes[0].w / 2;
+    cursorY = viewport.cy - sizes[0].h / 2;
+    rowLeft = cursorX;
+  } else {
+    const anchor = anchorOf(obstacles);
+    cursorX = anchor.x + anchor.w + GAP;
+    cursorY = anchor.y;
+    rowLeft = Math.min(...obstacles.map((r) => r.x));
+  }
+
+  for (const s of sizes) {
+    if (out.length > 0 && cursorX + s.w - rowLeft > rowMaxWidth(s.w)) {
+      const bottom = Math.max(...obstacles.map((r) => r.y + r.h), cursorY);
+      cursorX = rowLeft;
+      cursorY = bottom + GAP;
+    }
+    const x = slideRight(cursorX, cursorY, s.w, s.h, obstacles);
+    const rect = { x, y: cursorY, w: s.w, h: s.h };
+    out.push(rect);
+    obstacles.push(rect);
+    cursorX = x + s.w + GAP;
+  }
+  return out;
+}
+
+/** Where the next single placeholder goes. */
 export function placeNext(opts: {
-  canvasId: string;
   viewport: Viewport;
   occupied: Rect[];
-  anchor: PlacementAnchor | undefined;
   size: { w: number; h: number };
-}): { rect: Rect; nextAnchor: PlacementAnchor } {
-  const { canvasId, viewport, occupied, size } = opts;
-  const anchor = opts.anchor && opts.anchor.canvasId === canvasId ? opts.anchor : undefined;
-
-  let slot: Rect | null = null;
-  if (anchor) {
-    const maxRowWidth = Math.max(viewport.w * 0.85, size.w * 4);
-    let cx = anchor.x + anchor.w + GAP;
-    let cy = anchor.y;
-    // Wrap into a new row (aligned under the row's left edge) when we'd run past
-    // the viewport-derived row width.
-    if (cx + size.w - anchor.rowAnchorX > maxRowWidth) {
-      cx = anchor.rowAnchorX;
-      cy = anchor.y + anchor.h + GAP;
-    }
-    if (fitsAt(cx, cy, size.w, size.h, occupied, GAP)) {
-      slot = { x: cx, y: cy, w: size.w, h: size.h };
-    }
-  }
-
-  if (!slot) slot = findEmptySlot(viewport, size, occupied);
-
-  const rowAnchorX = anchor && slot.x >= anchor.rowAnchorX ? anchor.rowAnchorX : slot.x;
-  return {
-    rect: slot,
-    nextAnchor: { canvasId, x: slot.x, y: slot.y, w: slot.w, h: slot.h, rowAnchorX },
-  };
+}): Rect {
+  return layout(opts.viewport, [opts.size], opts.occupied)[0];
 }
 
 /**
@@ -163,7 +137,8 @@ function parseAspect(s: string): number {
   return 1;
 }
 
-/** Synthesize a reasonable viewport when the frontend hasn't reported one. */
+/** Synthesize a reasonable viewport when the frontend hasn't reported one.
+ *  Only ever consulted for the very first node on an empty canvas now. */
 export function fallbackViewport(occupied: Rect[], size: { w: number; h: number }): Viewport {
   if (occupied.length === 0) {
     return { cx: 0, cy: 0, w: Math.max(size.w * 3, 1536), h: Math.max(size.h * 3, 1536) };

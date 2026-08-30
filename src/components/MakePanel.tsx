@@ -768,14 +768,15 @@ function VideoCards({
   type VideoMode = "text-to-video" | "image-to-video" | "reference-to-video";
   const [videoMode, setVideoMode] = useState<VideoMode>("text-to-video");
   const [prompt, setPrompt] = useState("");
-  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.0">("kling-o3-pro");
+  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.0" | "h3-max">("kling-o3-pro");
   const [duration, setDuration] = useState<string>("5");
   const [generateAudio, setGenerateAudio] = useState(true);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
-  const [videoResolution, setVideoResolution] = useState<"480p" | "720p" | "1080p">("1080p");
+  const [videoResolution, setVideoResolution] = useState<"480p" | "720p" | "768p" | "1080p">("1080p");
 
   const SEEDANCE_DURATIONS = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"];
   const KLING_O3_DURATIONS = ["3", "5", "7", "9", "11", "13", "15"];
+  const H3_DURATIONS = ["5", "7", "9", "11", "13", "15"];
 
   // Seedance gate removed (2026-05); state retained as a write-only flag in
   // case the modal flow needs to come back. The setter is still used by
@@ -788,6 +789,7 @@ function VideoCards({
     "kling-o3-4k": "Kling O3 4K",
     "veo3.1-lite": "Veo 3.1 Lite",
     "seedance-2.0": "Seedance 2.0",
+    "h3-max": "MiniMax H3 Max",
   };
   const [firstFrame, setFirstFrame] = useState<{ id: string; url: string; name: string; aspectRatio?: string } | null>(null);
   const [lastFrame, setLastFrame] = useState<{ id: string; url: string; name: string; aspectRatio?: string } | null>(null);
@@ -808,6 +810,13 @@ function VideoCards({
       setDuration((d) => (["4", "6", "8"].includes(d) ? d : "6"));
     } else if (videoModel === "seedance-2.0") {
       setDuration((d) => (SEEDANCE_DURATIONS.includes(d) ? d : "5"));
+      setVideoResolution((r) => (r === "768p" ? "1080p" : r));
+    } else if (videoModel === "h3-max") {
+      // fal ships H3 Max as a text-to-video endpoint only, and its resolution
+      // tiers are 480P/768P rather than the shared 480/720/1080 ladder.
+      setDuration((d) => (H3_DURATIONS.includes(d) ? d : "5"));
+      setVideoResolution((r) => (r === "480p" ? r : "768p"));
+      setVideoMode("text-to-video");
     } else {
       // kling-o3-pro / kling-o3-4k: every integer 3–15 seconds, default 5.
       setDuration((d) => (KLING_O3_DURATIONS.includes(d) ? d : "5"));
@@ -815,6 +824,7 @@ function VideoCards({
   }, [videoModel]);
 
   useEffect(() => {
+    if (videoModel === "h3-max") return; // text-to-video only
     const count = imageRefs.length;
     if (count === 0) {
       if (videoMode === "image-to-video") setVideoMode("text-to-video");
@@ -930,7 +940,7 @@ function VideoCards({
     } else {
       modelKey = `${videoModel}-i2v`;
     }
-    onPricingChange?.(modelKey, duration, videoModel === "seedance-2.0" ? videoResolution : undefined);
+    onPricingChange?.(modelKey, duration, (videoModel === "seedance-2.0" || videoModel === "h3-max") ? videoResolution : undefined);
   }, [videoModel, duration, videoMode, firstFrame, lastFrame, videoResolution, onPricingChange]);
 
   useEffect(() => {
@@ -999,7 +1009,7 @@ function VideoCards({
         : videoMode === "image-to-video"
           ? (firstFrame?.aspectRatio || lastFrame?.aspectRatio)
           : undefined,
-      resolution: videoModel === "seedance-2.0" ? videoResolution : undefined,
+      resolution: (videoModel === "seedance-2.0" || videoModel === "h3-max") ? videoResolution : undefined,
       jobType: "video_gen",
       firstFrameUrl: videoMode === "image-to-video" ? firstFrame?.url : undefined,
       lastFrameUrl: videoMode === "image-to-video" ? lastFrame?.url : undefined,
@@ -1048,6 +1058,7 @@ function VideoCards({
 
   const videoModeOptions = (() => {
     const base: VideoMode[] = ["text-to-video", "image-to-video"];
+    if (videoModel === "h3-max") return ["text-to-video"] as VideoMode[];
     if (videoModel === "seedance-2.0" || videoModel.startsWith("kling-o3-")) base.push("reference-to-video");
     return base;
   })();
@@ -1056,6 +1067,7 @@ function VideoCards({
   const durationOptions = (() => {
     if (videoModel === "veo3.1-lite") return ["4", "6", "8"];
     if (videoModel === "seedance-2.0") return ["4", "6", "8", "10", "12", "15"];
+    if (videoModel === "h3-max") return H3_DURATIONS;
     // kling-o3-pro / kling-o3-4k: fal accepts every integer "3".."15", but
     // we surface 2-second steps in the panel to keep the segmented control
     // readable. The agent still passes through any integer 3-15.
@@ -1063,11 +1075,14 @@ function VideoCards({
   })();
   const durationIndex = durationOptions.indexOf(duration);
 
-  const videoResOptions = ["480p", "720p", "1080p"] as const;
-  const videoResIndex = videoResOptions.indexOf(videoResolution);
+  const videoResOptions = videoModel === "h3-max"
+    ? (["480p", "768p"] as const)
+    : (["480p", "720p", "1080p"] as const);
+  const videoResIndex = (videoResOptions as readonly string[]).indexOf(videoResolution);
 
   const videoModelIcon = (m: string) => {
     if (m.startsWith("kling-o3-")) return <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: -0.5 }}>{m === "kling-o3-4k" ? "4K" : "K"}</span>;
+    if (m === "h3-max") return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>;
     if (m === "veo3.1-lite") return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>;
     return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>;
   };
@@ -1076,6 +1091,7 @@ function VideoCards({
     if (m === "kling-o3-pro") return "Kling · quality";
     if (m === "kling-o3-4k") return "Kling · premium+";
     if (m === "veo3.1-lite") return "Google · quick";
+    if (m === "h3-max") return "MiniMax · fast";
     return "ByteDance · premium";
   };
 
@@ -1379,6 +1395,11 @@ function VideoCards({
               Seedance 2.0
               <span className="rpanel-tag">Premium</span>
             </button>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "h3-max" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("h3-max"); setVideoMode("text-to-video"); toggle("model"); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+              MiniMax H3 Max
+              <span className="rpanel-tag">Fast</span>
+            </button>
           </div>
         </div>
       )}
@@ -1413,10 +1434,10 @@ function VideoCards({
         </div>
       </div>
 
-      {videoModel === "seedance-2.0" && (
+      {(videoModel === "seedance-2.0" || videoModel === "h3-max") && (
         <div className="rpanel-flat-section">
           <span className="rpanel-flat-label">Resolution</span>
-          <div className="rpanel-seg-group rpanel-seg-group--full" data-count="3" data-active={videoResIndex}>
+          <div className="rpanel-seg-group rpanel-seg-group--full" data-count={videoResOptions.length} data-active={videoResIndex >= 0 ? videoResIndex : 0}>
             <span className="rpanel-slide-pill" />
             {videoResOptions.map((r) => (
               <button key={r} type="button" className={`rpanel-seg-btn ${videoResolution === r ? "rpanel-seg-btn--active" : ""}`} onClick={() => setVideoResolution(r)}>
@@ -1427,7 +1448,7 @@ function VideoCards({
         </div>
       )}
 
-      {(videoMode !== "reference-to-video" || videoModel.startsWith("kling-o3-")) && (
+      {videoModel !== "h3-max" && (videoMode !== "reference-to-video" || videoModel.startsWith("kling-o3-")) && (
         <div className="rpanel-flat-section" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <span className="rpanel-flat-label" style={{ margin: 0 }}>Audio</span>
           <button

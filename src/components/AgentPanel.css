@@ -19,6 +19,10 @@
   --text-primary: #18181b;
   --text-muted: #6b7280;
   --tint-rgb: 17, 24, 39;
+  /* The panel's own surface colour, exposed as a token so inverted controls
+   * (a pill filled with --text-primary) can use it as their text colour and
+   * stay legible when the dark override below flips both. */
+  --agent-surface: #F0F0F3;
 
   position: fixed;
   /* Floating card inside the right reserved area (--canvas-right-inset
@@ -40,7 +44,7 @@
   bottom: 12px;
   right: 12px;
   width: 336px;
-  background: #F0F0F3;
+  background: var(--agent-surface);
   border-radius: 18px;
   border: 1px solid rgba(15, 17, 21, 0.05);
   display: flex;
@@ -512,7 +516,7 @@
   border-radius: 999px;
   border: none;
   background: var(--text-primary);
-  color: #F0F0F3;
+  color: var(--agent-surface);
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -1211,6 +1215,25 @@
   to { transform: rotate(360deg); }
 }
 
+/* Perpetual animations are this app's single largest idle cost. Any animation
+ * still running keeps Chromium compositing the whole window at 60fps, and with
+ * ~100 backdrop-filter surfaces in the UI that measured (Electron, idle, no
+ * input) at ~21% GPU-process CPU on its own; the send-CTA bloom added ~16% in
+ * the renderer on top. With nothing animating, the same idle window sits at
+ * ~1%. So the decorative loops now run only while the composer is actually in
+ * use, and are a static gradient / plain grey chip at rest.
+ * ponytail: hand-listed states rather than a JS "is idle" flag — CSS already
+ * knows all three, and a flag would need threading through two panels. */
+.agent-panel__glow::before {
+  animation-play-state: paused;
+}
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow::before,
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow::before,
+.agent-panel__textarea-wrap--generating .agent-panel__glow::before {
+  animation-play-state: running;
+}
+
+
 .agent-panel__textarea {
   width: 100%;
   box-sizing: border-box;
@@ -1551,13 +1574,17 @@
   }
 }
 
+/* Grey, not red: stopping a turn is a normal thing to do — you interrupt to
+   redirect, not to undo damage. Red read as an error state on a control the
+   user hits several times a session. */
 .agent-panel__send--stop {
-  background: rgba(239, 68, 68, 0.85);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e5e5;
 }
 
 .agent-panel__send--stop:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 1);
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
   filter: none;
 }
 
@@ -2507,7 +2534,8 @@
   --text-primary: #e8e8ed;
   --text-muted: #9a9aa6;
   --tint-rgb: 255, 255, 255;
-  background: #131316;
+  --agent-surface: #131316;
+  background: var(--agent-surface);
   border-color: rgba(255, 255, 255, 0.06);
 }
 [data-theme="dark"] .agent-panel::before {
@@ -2933,4 +2961,132 @@
 
 .agent-panel__textarea-wrap:focus-within .agent-panel__placeholder-hint {
   opacity: 1;
+}
+
+/* Chat history — the thread picker under the header. */
+.agent-panel__new--on {
+  color: var(--accent, #c96442);
+}
+
+.operator-history {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  margin: 0 10px 6px;
+  border-radius: 10px;
+  background: rgba(15, 17, 21, 0.03);
+  flex-shrink: 0;
+}
+
+.operator-history__row {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+.operator-history__row:hover { background: rgba(15, 17, 21, 0.05); }
+.operator-history__row--active { background: rgba(15, 17, 21, 0.07); }
+
+.operator-history__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.operator-history__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #24272c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-history__meta {
+  font-size: 11px;
+  color: #7a7f88;
+}
+
+.operator-history__del {
+  width: 24px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  color: #9aa0a8;
+  cursor: pointer;
+}
+.operator-history__del:hover { color: #d24b3e; }
+
+/* Pinned instruction docs — chips above the composer. */
+.agent-panel__pins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 6px;
+}
+
+.agent-panel__pin {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 22px 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--tint-rgb), 0.22);
+  background: rgba(var(--tint-rgb), 0.10);
+  color: var(--text-primary, #e6e9ee);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-panel__pin--error {
+  padding-right: 8px;
+  border-color: rgba(255, 120, 120, 0.35);
+  background: rgba(255, 120, 120, 0.12);
+}
+
+.agent-panel__pin .agent-panel__ref-x {
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Second composer button, right of the (+). */
+.agent-panel__upload--doc { left: 43px; }
+
+/* Kept at the end of the file on purpose: the `animation:` shorthands above
+ * (including the dark-theme .agent-panel__send:disabled variant) would reset
+ * play-state back to running if these came first. See the note by
+ * @keyframes agent-glow-spin for why the idle loops are paused at all. */
+.agent-panel__send:disabled,
+.agent-panel__send:disabled::after {
+  animation-play-state: paused;
+}
+.agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
+.agent-panel__textarea-wrap:hover .agent-panel__send:disabled::after,
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled,
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled::after {
+  animation-play-state: running;
+}
+
+/* The dark-theme rule above re-declares `animation` at higher specificity, so
+ * it needs its own pause/run pair rather than inheriting the one above. */
+[data-theme="dark"] .agent-panel__send:disabled {
+  animation-play-state: paused;
+}
+[data-theme="dark"] .agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
+[data-theme="dark"] .agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled {
+  animation-play-state: running;
 }

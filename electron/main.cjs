@@ -16,6 +16,7 @@
 
 const { app, BrowserWindow, shell, utilityProcess, ipcMain, session, Menu } = require("electron");
 const path = require("node:path");
+const { renderHtmlToPng } = require("./htmlRender.cjs");
 
 // Brand the per-user data path: app.getPath("userData") derives from app.name,
 // which otherwise defaults to the npm package name ("interface-unified"). Set it
@@ -97,13 +98,66 @@ function resolveDataDir() {
   return path.join(app.getPath("userData"), "data");
 }
 
+/** Serve a render request from the server child (see server/utils/htmlRender.ts). */
+async function handleRenderHtml(child, msg) {
+  try {
+    const png = await renderHtmlToPng(msg.html, msg.width, msg.height);
+    child.postMessage({ type: "render-html-result", id: msg.id, png: png.toString("base64") });
+  } catch (err) {
+    child.postMessage({ type: "render-html-result", id: msg.id, error: String((err && err.message) || err) });
+  }
+}
+
+let lastServerRestart = 0;
+
+function fatalServerExit(code, detail) {
+  const { dialog } = require("electron");
+  dialog.showErrorBox(
+    "Fal Forge stopped",
+    `The background server exited (code ${code}) and could not be restarted.\n\n${detail}`,
+  );
+  app.quit();
+}
+
+/**
+ * Bring the server back after an unexpected exit and point the window at it.
+ *
+ * Canvas edits are flushed by CanvasSyncEngine every 3s, so the reload can cost
+ * the last few seconds of work — the same few seconds the old quit-immediately
+ * path lost, except now the app is still open afterwards.
+ */
+async function restartServerAndReload(code) {
+  const now = Date.now();
+  // One restart per minute: a server that dies again straight after coming up
+  // is broken rather than unlucky, and looping would just flash the window.
+  if (now - lastServerRestart < 60_000) {
+    fatalServerExit(code, "It stopped again immediately after restarting.");
+    return;
+  }
+  lastServerRestart = now;
+  console.error(`[electron] Server process exited unexpectedly (code ${code}); restarting.`);
+  try {
+    serverInfo = await startServer();
+    // Same pinned origin as before unless the port was taken; reload either way
+    // since the SPA is still talking to the dead process.
+    if (mainWindow) mainWindow.loadURL(`http://${serverInfo.host}:${serverInfo.port}/`);
+    console.log(`[electron] Server back on http://${serverInfo.host}:${serverInfo.port}`);
+  } catch (err) {
+    fatalServerExit(code, (err && err.message) || String(err));
+  }
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       LOCAL_MODE: "true",
       SERVER_HOST: "127.0.0.1",
-      PORT: "0", // ephemeral — OS picks a free port, reported back via stdout
+      // Pinned, not ephemeral. The renderer is served from this origin, and
+      // localStorage (chat history, model prefs) is keyed by origin — a new
+      // port each launch meant a blank slate every restart. The server falls
+      // back to an ephemeral port if this one is taken.
+      PORT: "39217",
       MATTEBLACK_DATA_DIR: resolveDataDir(),
       NODE_ENV: isDev ? "development" : "production",
       // Phase K operator: how to launch the bundled MCP server for the spawned
@@ -151,17 +205,22 @@ function startServer() {
       child.stderr.on("data", (chunk) => process.stderr.write(`[server:err] ${chunk}`));
     }
 
+    // The server child has no window of its own, so HTML/CSS renders are done
+    // up here where a Chromium already exists. See handleRenderHtml().
+    child.on("message", (msg) => {
+      if (msg && msg.type === "render-html") handleRenderHtml(child, msg);
+    });
+
     child.on("exit", (code) => {
       serverProcess = null;
       if (!settled) {
         settled = true;
         reject(new Error(`Server exited before becoming ready (code ${code})`));
       } else if (!app.isQuitting) {
-        // Crashed after a healthy start — for a single-user desktop app the
-        // safest response is to surface it and quit rather than silently run a
-        // window with no backend.
-        console.error(`[electron] Server process exited unexpectedly (code ${code}); quitting.`);
-        app.quit();
+        // Crashed after a healthy start. Quitting outright loses the window the
+        // user was working in for what is usually a transient fault, so bring
+        // the server back and reload into it; only give up if that fails.
+        restartServerAndReload(code);
       }
     });
 
@@ -207,12 +266,12 @@ function createWindow() {
     titleBarStyle: "hidden",
     titleBarOverlay: TITLEBAR_OVERLAY.dark,
     // macOS ignores titleBarOverlay and draws its own traffic lights top-LEFT,
-    // inside the content area. Centre them in the 32px drag strip.
-    // ponytail: x=16 is a guess — the left rail starts at the very top edge
-    // (App.css only insets the right-hand panels), so if the lights collide with
-    // it on a real Mac, nudge x here or inset the rail by ~78px on darwin.
+    // inside the content area. The renderer docks the 64px icon rail to that
+    // corner and reserves 44px of top padding for them (html.is-mac .icon-rail
+    // in IconRail.css); x=12 centres the ~52px light cluster in that 76px
+    // width, so it lines up with the 44px icon buttons below it.
     ...(process.platform === "darwin"
-      ? { trafficLightPosition: { x: 16, y: 9 } }
+      ? { trafficLightPosition: { x: 12, y: 14 } }
       : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -363,51 +422,88 @@ function writeClaudeDesktopConfig() {
   }
 }
 
+// Same candidate list as the server's resolveClaudeBinary (claudeOperator.ts):
+// GUI apps don't inherit the login shell's PATH, so `claude` alone often misses.
+function claudeBinary() {
+  const fs = require("node:fs");
+  const home = app.getPath("home");
+  const win = process.platform === "win32";
+  const candidates = [
+    path.join(home, ".local", "bin", win ? "claude.exe" : "claude"),
+    win ? path.join(process.env.APPDATA || "", "npm", "claude.cmd") : "/usr/local/bin/claude",
+    win ? path.join(process.env.LOCALAPPDATA || "", "Programs", "claude", "claude.exe") : "/opt/homebrew/bin/claude",
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch { /* ignore */ }
+  }
+  return null;
+}
+
+// Register the server with Claude Code ourselves instead of handing the user a
+// command to paste. `claude mcp add` only edits ~/.claude.json — it needs no
+// credential, and the user's existing subscription login does the auth.
+function installIntoClaudeCode() {
+  const { execFileSync } = require("node:child_process");
+  const bin = claudeBinary();
+  if (!bin) return { ok: false, error: "notfound" };
+  const c = mcpLaunchConfig();
+  const args = ["mcp", "add", "falforge", "--scope", "user"];
+  for (const [k, v] of Object.entries(c.env)) args.push("--env", `${k}=${v}`);
+  args.push("--", c.command, ...c.args);
+  try {
+    execFileSync(bin, ["mcp", "remove", "falforge", "--scope", "user"], { stdio: "ignore" });
+  } catch { /* wasn't installed */ }
+  try {
+    execFileSync(bin, args, { stdio: "pipe" });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e.stderr && e.stderr.toString()) || e.message };
+  }
+}
+
 async function connectToClaude() {
-  const { dialog, clipboard } = require("electron");
-  const cmd = claudeCodeCommand();
-  const detail = [
-    "Claude Code — run this in a terminal:",
-    "",
-    cmd,
-    "",
-    'Claude Desktop — add the "falforge" server to:',
-    claudeDesktopConfigPath(),
-    "",
-    "Keep the Fal Forge app open while you use the tools from Claude.",
-  ].join("\n");
+  const { dialog, shell } = require("electron");
+  if (!claudeBinary()) {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Connect to Claude",
+      message: "Install Claude Code first",
+      detail: "Fal Forge drives Claude through your existing subscription — no API key, no token.\n\nInstall Claude Code, run `claude` once to sign in, then come back and press Connect again.",
+      buttons: ["Open install page", "Close"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (response === 0) shell.openExternal("https://claude.com/code");
+    return { ok: false, reason: "not-installed" };
+  }
+
   const { response } = await dialog.showMessageBox(mainWindow, {
-    type: "info",
+    type: "question",
     title: "Connect to Claude",
-    message: "Drive Fal Forge from your Claude subscription",
-    detail,
-    buttons: ["Copy Claude Code command", "Write Claude Desktop config…", "Close"],
+    message: "Add Fal Forge to Claude?",
+    detail: "This registers the Fal Forge tools with Claude Code (and, optionally, Claude Desktop). It signs in with the Claude subscription you already use — nothing is copied or pasted.\n\nKeep Fal Forge open while you use the tools from Claude.",
+    buttons: ["Connect", "Also add to Claude Desktop", "Cancel"],
     defaultId: 0,
     cancelId: 2,
     noLink: true,
   });
-  if (response === 0) {
-    clipboard.writeText(cmd);
-    dialog.showMessageBox(mainWindow, { message: "Copied the `claude mcp add` command to your clipboard.", buttons: ["OK"] });
-  } else if (response === 1) {
-    const preview = JSON.stringify({ mcpServers: { falforge: desktopEntry() } }, null, 2);
-    const confirm = await dialog.showMessageBox(mainWindow, {
-      type: "warning",
-      title: "Write Claude Desktop config?",
-      message: 'Add the "falforge" MCP server to Claude Desktop?',
-      detail: `This merges the following into:\n${claudeDesktopConfigPath()}\n\n${preview}\n\nExisting servers are preserved. Restart Claude Desktop afterward.`,
-      buttons: ["Write config", "Cancel"],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-    });
-    if (confirm.response === 0) {
-      const r = writeClaudeDesktopConfig();
-      dialog.showMessageBox(mainWindow, r.ok
-        ? { message: `Wrote Fal Forge into:\n${r.path}\n\nRestart Claude Desktop to load it.`, buttons: ["OK"] }
-        : { type: "error", message: `Couldn't write config: ${r.error}\n${r.path}`, buttons: ["OK"] });
-    }
+  if (response === 2) return { ok: false, reason: "cancelled" };
+
+  const r = installIntoClaudeCode();
+  if (!r.ok) {
+    dialog.showMessageBox(mainWindow, { type: "error", message: `Couldn't register with Claude Code: ${r.error}`, buttons: ["OK"] });
+    return r;
   }
+  if (response === 1) {
+    const d = writeClaudeDesktopConfig();
+    dialog.showMessageBox(mainWindow, d.ok
+      ? { message: `Connected.\n\nClaude Code is ready now. Claude Desktop was written to:\n${d.path} — restart it to load the tools.`, buttons: ["OK"] }
+      : { type: "warning", message: `Claude Code is connected, but the Claude Desktop config couldn't be written: ${d.error}`, buttons: ["OK"] });
+  } else {
+    dialog.showMessageBox(mainWindow, { message: "Connected. Fal Forge tools are available in Claude Code.", buttons: ["OK"] });
+  }
+  return { ok: true };
 }
 
 // No application menu: the app owns its chrome (frameless window + native

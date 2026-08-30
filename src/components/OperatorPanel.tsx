@@ -4,8 +4,19 @@ import { ClaudePixel } from "./ClaudePixel";
 import { ThinkingPill } from "./ThinkingPill";
 import { renderMarkdown } from "../utils/markdown";
 import type { ReferenceImage } from "../types/canvas";
+import { desktopBridge } from "../desktop";
 import "./AgentPanel.css";
 import "./OperatorPanel.css";
+
+/** Slug from the doc's own title line — same rule the Skills panel uses, so a
+ *  re-uploaded file overwrites its earlier version instead of piling up. */
+function slugFrom(body: string, fallback: string): string {
+  const title = /^(?:name|title):\s*(.+)$/mi.exec(body)?.[1]
+    || /^#\s+(.+)$/m.exec(body)?.[1]
+    || fallback;
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64)
+    || "pinned-instructions";
+}
 
 /**
  * OperatorPanel (Phase K) — the Matte agent console. Reuses the AgentPanel visual
@@ -15,7 +26,7 @@ import "./OperatorPanel.css";
  * generations land on the canvas; the conversation streams here.
  */
 
-type OperatorStatus = { hasToken: boolean; binaryFound: boolean; binaryPath: string };
+type OperatorStatus = { binaryFound: boolean; binaryPath: string };
 
 const GEN_TOOLS = new Set(["generate_media", "generate_music", "transform_media"]);
 
@@ -45,6 +56,17 @@ const EFFORT_LEVELS = [
 /** Default to High: reasoning is free at the margin, generations are not. */
 const DEFAULT_EFFORT = 2;
 const EFFORT_STORAGE_KEY = "mb-operator-effort-v1";
+// Conversation persistence. The panel unmounts whenever the rail switches view,
+// which used to throw the whole thread away; claude's own session survives (we
+// pass --resume), so only this side was losing it. Capped so a long-running
+// install can't grow localStorage without bound.
+const CHAT_STORAGE_KEY = "mb-operator-chat-v1";
+const CHATS_STORAGE_KEY = "mb-operator-chats-v1";
+const CHAT_MAX_MESSAGES = 200;
+/** Keep a month of threads, not a career. Oldest fall off the end. */
+const CHAT_MAX_SESSIONS = 30;
+/** ponytail: fixed throttle — a serialise every few seconds is cheap next to losing the thread. */
+const CHAT_SAVE_THROTTLE_MS = 3000;
 
 /**
  * Ordered (Bayer) dither ramp for the effort track, matching Claude Code's own
@@ -151,6 +173,65 @@ type ChatMessage = {
   error?: string;
 };
 
+function loadChat(): { messages: ChatMessage[]; sessionId?: string } {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return { messages: [] };
+    const p = JSON.parse(raw) as { messages?: ChatMessage[]; sessionId?: string };
+    if (!Array.isArray(p.messages)) return { messages: [] };
+    // A turn interrupted by a reload would otherwise restore stuck on a
+    // spinner that nothing will ever resolve.
+    return { messages: p.messages.map((m) => ({ ...m, streaming: false })), sessionId: p.sessionId };
+  } catch { return { messages: [] }; }
+}
+
+/**
+ * Many threads, not one. Each carries claude's own `sessionId`, so picking an
+ * old conversation and typing resumes it on claude's side too rather than
+ * starting cold with a transcript pasted above it.
+ */
+type ChatSession = { id: string; title: string; sessionId?: string; messages: ChatMessage[]; updatedAt: number };
+type ChatStore = { activeId: string; sessions: ChatSession[] };
+
+function chatTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === "user")?.text.trim() || "";
+  return first ? first.slice(0, 60) : "New chat";
+}
+
+function newChatId(): string {
+  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function loadChats(): ChatStore {
+  try {
+    const raw = localStorage.getItem(CHATS_STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<ChatStore>;
+      if (Array.isArray(p.sessions)) {
+        const sessions = p.sessions.map((s) => ({
+          ...s,
+          // A turn interrupted by a reload would otherwise restore stuck on a
+          // spinner that nothing will ever resolve.
+          messages: (s.messages ?? []).map((m) => ({ ...m, streaming: false })),
+        }));
+        return { activeId: p.activeId || sessions[0]?.id || newChatId(), sessions };
+      }
+    }
+  } catch { /* corrupt store — fall through to the migration below */ }
+  // One-time migration off the single-thread store.
+  const old = loadChat();
+  const id = newChatId();
+  return old.messages.length
+    ? { activeId: id, sessions: [{ id, title: chatTitle(old.messages), sessionId: old.sessionId, messages: old.messages, updatedAt: Date.now() }] }
+    : { activeId: id, sessions: [] };
+}
+
+function saveChats(store: ChatStore) {
+  try {
+    localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(store));
+  } catch { /* quota / private mode — history is a convenience, not state */ }
+}
+
 type ServerEvent =
   | { type: "ping" }
   | { type: "session"; sessionId: string }
@@ -224,22 +305,32 @@ const nextId = () => `op-${Date.now()}-${msgSeq++}`;
 export function OperatorPanel({
   onClose,
   onBusyChange,
-  onOpenSettings,
   getCanvasContext,
   canvasReferenceImages,
+  seedPrompt,
 }: {
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
-  onOpenSettings?: (section?: string) => void;
   // Supplies the canvas the user has open + their current viewport (world
   // coords), captured at send time so operator generations land on-screen.
   getCanvasContext?: () => { canvasId?: string; viewport?: { cx: number; cy: number; w: number; h: number } };
   // The image(s) currently selected on the canvas — shown as removable chips in
   // the composer and sent as the generation reference (→ fal img2img).
   canvasReferenceImages?: ReferenceImage[];
+  /** Text dropped into the composer from elsewhere (e.g. the Skills panel).
+   *  Carries a nonce so sending the same text twice still re-seeds. */
+  seedPrompt?: { text: string; nonce: number } | null;
 }) {
   const [status, setStatus] = useState<OperatorStatus | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Both of these have to come from the SAME store read. Seeding `messages`
+  // from the legacy single-thread key (which nothing writes any more) meant the
+  // panel remounted empty, and the save effect then wrote that emptiness over
+  // the active session — reopening the agent deleted the thread it should have
+  // restored.
+  const initialChats = useRef<ChatStore>(loadChats()).current;
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    () => initialChats.sessions.find((s) => s.id === initialChats.activeId)?.messages ?? []
+  );
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [model, setModel] = useState<string>(() => {
@@ -264,11 +355,19 @@ export function OperatorPanel({
   // from the prop and are tracked separately (with a per-id dismiss set).
   const [uploads, setUploads] = useState<Attachment[]>([]);
   const [dismissedCanvasRefs, setDismissedCanvasRefs] = useState<Set<string>>(() => new Set());
-  const sessionIdRef = useRef<string | undefined>(undefined);
+  const [chats, setChats] = useState<ChatStore>(initialChats);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pins, setPins] = useState<{ slug: string; title: string }[]>([]);
+  const [pinError, setPinError] = useState("");
+  const chatIdRef = useRef<string>(chats.activeId);
+  const sessionIdRef = useRef<string | undefined>(
+    chats.sessions.find((s) => s.id === chats.activeId)?.sessionId,
+  );
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
   // In-flight upload promises (resolve to the hosted URL, or null on failure).
   // send() awaits these so a reference is never dropped just because its upload
   // hadn't finished when the user hit enter.
@@ -309,6 +408,29 @@ export function OperatorPanel({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // A restored chat opens at its LAST message, not its first. The effect above
+  // isn't enough on its own: on mount the transcript is still laying out —
+  // markdown, code blocks, thumbnails — so scrollHeight is a fraction of its
+  // final value and the one jump lands near the top of a very long scroll.
+  // Re-pin while the content is still growing, and stop the moment the user
+  // scrolls, so this can never fight them.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || el.scrollHeight <= el.clientHeight) return;
+    const pin = () => { el.scrollTop = el.scrollHeight; };
+    pin();
+    const ro = new ResizeObserver(pin);
+    ro.observe(el);
+    for (const child of Array.from(el.children)) ro.observe(child);
+    const stop = () => ro.disconnect();
+    el.addEventListener("wheel", stop, { passive: true });
+    el.addEventListener("pointerdown", stop);
+    // ponytail: 2s ceiling — long enough for images to settle, short enough
+    // that it can't outlive the user's first interaction with the panel.
+    const t = setTimeout(stop, 2000);
+    return () => { clearTimeout(t); stop(); el.removeEventListener("wheel", stop); el.removeEventListener("pointerdown", stop); };
+  }, []);
 
   const patchAssistant = useCallback((fn: (m: ChatMessage) => ChatMessage) => {
     setMessages((prev) => {
@@ -389,6 +511,61 @@ export function OperatorPanel({
     pendingUploadsRef.current.push(p);
   }, []);
 
+  /** Pinned instruction docs. They live in the one skill library (so they also
+   *  show up in the Skills panel) and the server inlines them into every run's
+   *  system prompt. */
+  const refreshPins = useCallback(async () => {
+    try {
+      const res = await fetch("/api/skills", { credentials: "include" });
+      const data = (await res.json()) as { skills?: { slug: string; title: string; pinned?: boolean }[] };
+      setPins((data.skills ?? []).filter((s) => s.pinned).map((s) => ({ slug: s.slug, title: s.title })));
+    } catch { /* panel still works without the list */ }
+  }, []);
+
+  useEffect(() => { void refreshPins(); }, [refreshPins]);
+
+  const handlePickDoc = useCallback(() => docInputRef.current?.click(), []);
+
+  const handleDocChosen = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    // ponytail: 200KB ceiling — the whole doc is inlined into every run's
+    // system prompt. Raise it only alongside the server-side cap.
+    if (file.size > 200 * 1024) { setPinError("That file is too big to pin (200KB max)."); return; }
+    setPinError("");
+    try {
+      const body = await file.text();
+      const slug = slugFrom(body, file.name.replace(/\.mdx?$/i, ""));
+      const put = await fetch(`/api/skills/${slug}`, {
+        method: "PUT", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (!put.ok) throw new Error(((await put.json()) as { error?: string }).error || "save failed");
+      const pin = await fetch(`/api/skills/${slug}/pin`, {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pinned: true }),
+      });
+      if (!pin.ok) throw new Error("pin failed");
+      await refreshPins();
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : String(err));
+    }
+  }, [refreshPins]);
+
+  const unpin = useCallback(async (slug: string) => {
+    setPins((prev) => prev.filter((p) => p.slug !== slug));
+    try {
+      await fetch(`/api/skills/${slug}/pin`, {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pinned: false }),
+      });
+    } finally { void refreshPins(); }
+  }, [refreshPins]);
+
   const removeAttachment = useCallback((att: Attachment) => {
     if (att.source === "upload") {
       setUploads((prev) => {
@@ -403,12 +580,43 @@ export function OperatorPanel({
 
   const send = useCallback(async () => {
     const message = input.trim();
-    if (!message || streaming) return;
+    if (!message) return;
+    // Interrupt, don't refuse. Aborting the fetch closes the SSE stream, and the
+    // route kills the `claude` child on close — so this is a real interrupt of
+    // the CLI, not just the UI letting go of it. The dying run's `finally` is
+    // guarded below so it can't switch off the run replacing it.
+    if (streaming) abortRef.current?.abort();
     setInput("");
+    // `/login` is the only command the panel answers itself: connecting is an
+    // OS dialog (subscription sign-in + MCP registration), not a prompt to
+    // forward to Claude — and it's the first thing an unconnected user types.
+    if (message.toLowerCase() === "/login") {
+      const bridge = desktopBridge();
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: "user", text: message, streaming: false, gens: [] },
+        {
+          id: nextId(),
+          role: "assistant",
+          text: bridge?.connectToClaude
+            ? "Opening the Claude connection dialog. It signs in with the Claude subscription you already have — no API key, no token."
+            : "`/login` only works in the desktop app. In the browser build, install Claude Code and run `claude` once in a terminal to sign in.",
+          streaming: false,
+          gens: [],
+        },
+      ]);
+      await bridge?.connectToClaude?.();
+      void refreshStatus();
+      return;
+    }
+    // Held so the finally can patch THIS run's bubble. patchAssistant targets the
+    // last assistant message, which after an interrupt is the new turn's — the
+    // dying run would otherwise switch off its replacement's thinking pill.
+    const assistantId = nextId();
     setMessages((prev) => [
       ...prev,
       { id: nextId(), role: "user", text: message, streaming: false, gens: [] },
-      { id: nextId(), role: "assistant", text: "", streaming: true, gens: [] },
+      { id: assistantId, role: "assistant", text: "", streaming: true, gens: [] },
     ]);
     setStreaming(true);
     const ac = new AbortController();
@@ -476,11 +684,15 @@ export function OperatorPanel({
         handleEvent({ type: "error", message: err instanceof Error ? err.message : String(err) });
       }
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
-      patchAssistant((m) => ({ ...m, streaming: false }));
+      // Only the run that still owns the controller may clear the busy state —
+      // an interrupted run finishes AFTER its replacement has already started.
+      setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, streaming: false } : m));
+      if (abortRef.current === ac) {
+        setStreaming(false);
+        abortRef.current = null;
+      }
     }
-  }, [input, streaming, model, effortIndex, handleEvent, patchAssistant, canvasChips, getCanvasContext]);
+  }, [input, streaming, refreshStatus, model, effortIndex, handleEvent, patchAssistant, canvasChips, getCanvasContext]);
 
   const changeModel = useCallback((value: string) => {
     setModel(value);
@@ -509,9 +721,60 @@ export function OperatorPanel({
     };
   }, [effortOpen]);
 
+  // Seed the composer from outside (Skills → "use with the agent"). Keyed on the
+  // nonce, not the text, so handing over the same skill twice still lands.
+  useEffect(() => {
+    if (!seedPrompt?.text) return;
+    setInput(seedPrompt.text);
+    textareaRef.current?.focus();
+  }, [seedPrompt?.nonce, seedPrompt?.text]);
+
+  // Persisted mid-stream, throttled. Saving only at turn boundaries meant a
+  // reload during a long agent run — exactly when the user is most likely to
+  // reload, because the canvas looks stale — dropped the whole thread, and an
+  // empty store also greys out the history button that would have restored it.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const commitChats = useCallback(() => {
+    setChats((prev) => {
+      const id = chatIdRef.current;
+      const msgs = messagesRef.current;
+      const rest = prev.sessions.filter((s) => s.id !== id);
+      const next: ChatStore = msgs.length
+        ? {
+            activeId: id,
+            sessions: [
+              { id, title: chatTitle(msgs), sessionId: sessionIdRef.current, messages: msgs.slice(-CHAT_MAX_MESSAGES), updatedAt: Date.now() },
+              ...rest,
+            ].slice(0, CHAT_MAX_SESSIONS)
+          }
+        // An empty draft must never erase what's stored: only switch the
+        // pointer. Deleting is an explicit user action (deleteChat).
+        : { activeId: id, sessions: prev.sessions };
+      saveChats(next);
+      return next;
+    });
+  }, []);
+
+  // Throttle, not debounce: a debounce whose timer resets on every token would
+  // never fire during a fast stream, which is the case that loses the thread.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+  useEffect(() => {
+    if (!streaming) {
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      commitChats();
+      return;
+    }
+    if (saveTimerRef.current) return;
+    saveTimerRef.current = setTimeout(() => { saveTimerRef.current = null; commitChats(); }, CHAT_SAVE_THROTTLE_MS);
+  }, [messages, streaming, commitChats]);
+
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
   const newChat = useCallback(() => {
     if (streaming) return;
+    setHistoryOpen(false);
+    chatIdRef.current = newChatId();
     setMessages([]);
     sessionIdRef.current = undefined;
     setUploads((prev) => {
@@ -521,11 +784,38 @@ export function OperatorPanel({
     setDismissedCanvasRefs(new Set());
   }, [streaming]);
 
+  /** Switch threads. The save effect has already stored the outgoing one.
+   *  A turn in flight is aborted rather than blocking the switch — a run that
+   *  never finishes used to lock the user out of their own history. */
+  const openChat = useCallback((id: string) => {
+    const s = chats.sessions.find((x) => x.id === id);
+    if (!s) return;
+    if (streaming) { commitChats(); abortRef.current?.abort(); }
+    setHistoryOpen(false);
+    chatIdRef.current = s.id;
+    sessionIdRef.current = s.sessionId;
+    setMessages(s.messages);
+    setChats((prev) => { const next = { ...prev, activeId: s.id }; saveChats(next); return next; });
+  }, [chats.sessions, streaming, commitChats]);
+
+  // Back / forward walk the thread list (newest first), so ← is "older".
+  const chatIndex = chats.sessions.findIndex((s) => s.id === chatIdRef.current);
+  const step = useCallback((delta: number) => {
+    const i = chats.sessions.findIndex((s) => s.id === chatIdRef.current);
+    const target = chats.sessions[(i < 0 ? -1 : i) + delta];
+    if (target) openChat(target.id);
+  }, [chats.sessions, openChat]);
+
+  const deleteChat = useCallback((id: string) => {
+    setChats((prev) => { const next = { ...prev, sessions: prev.sessions.filter((s) => s.id !== id) }; saveChats(next); return next; });
+    if (id === chatIdRef.current) newChat();
+  }, [newChat]);
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
-  const hasToken = status?.hasToken === true;
+  const ready = status?.binaryFound === true;
   const aliveLabel = streaming ? "Claude is thinking" : "Claude is online";
 
   return (
@@ -542,6 +832,42 @@ export function OperatorPanel({
           <span className="operator-brand__name">Claude</span>
         </div>
         <div className="agent-panel__header-actions">
+          <button
+            type="button"
+            className="agent-panel__new agent-panel__new--icon"
+            onClick={() => step(1)}
+            disabled={chatIndex < 0 || chatIndex >= chats.sessions.length - 1}
+            aria-label="Older chat"
+            title="Older chat"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="agent-panel__new agent-panel__new--icon"
+            onClick={() => step(-1)}
+            disabled={chatIndex <= 0}
+            aria-label="Newer chat"
+            title="Newer chat"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={`agent-panel__new agent-panel__new--icon${historyOpen ? " agent-panel__new--on" : ""}`}
+            onClick={() => setHistoryOpen((v) => !v)}
+            disabled={chats.sessions.length === 0}
+            aria-label="Chat history"
+            title="Chat history"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" />
+            </svg>
+          </button>
           <button
             type="button"
             className="agent-panel__new agent-panel__new--icon"
@@ -562,23 +888,34 @@ export function OperatorPanel({
         </div>
       </div>
 
-      {!hasToken ? (
+      {historyOpen && (
+        <div className="operator-history">
+          {chats.sessions.map((s) => (
+            <div key={s.id} className={`operator-history__row${s.id === chatIdRef.current ? " operator-history__row--active" : ""}`}>
+              <button type="button" className="operator-history__open" onClick={() => openChat(s.id)}>
+                <span className="operator-history__title">{s.title}</span>
+                <span className="operator-history__meta">{new Date(s.updatedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {s.messages.length} messages</span>
+              </button>
+              <button type="button" className="operator-history__del" onClick={() => deleteChat(s.id)} aria-label="Delete chat" title="Delete chat">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!ready ? (
         <div className="agent-panel__messages">
           <div className="agent-panel__hero">
-            <h1 className="agent-panel__hero-title">Connect your Claude</h1>
-            <p className="agent-panel__hero-sub">Matte runs on your Claude subscription through Claude Code.</p>
+            <h1 className="agent-panel__hero-title">Install Claude Code</h1>
+            <p className="agent-panel__hero-sub">Matte runs on your Claude subscription — no API key, no token to copy.</p>
             <ol className="operator-setup__steps">
-              <li>Run <code>claude setup-token</code> in a terminal.</li>
-              <li>Approve in the browser, then copy the token.</li>
-              <li>Paste it into <strong>Settings → Claude Code token</strong>.</li>
+              <li>Install <a href="https://claude.com/code" target="_blank" rel="noreferrer">Claude Code</a>.</li>
+              <li>Run <code>claude</code> once and sign in to your subscription.</li>
+              <li>Come back and type <code>/login</code> here.</li>
             </ol>
-            <button type="button" className="agent-panel__hero-signin" onClick={() => onOpenSettings?.("keys")}>
-              Open Settings
+            <button type="button" className="agent-panel__hero-signin" onClick={() => { void refreshStatus(); }}>
+              Check again
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
             </button>
-            {status && !status.binaryFound && (
-              <p className="operator-setup__warn">The <code>claude</code> CLI wasn't found — install Claude Code first.</p>
-            )}
           </div>
         </div>
       ) : (
@@ -647,7 +984,7 @@ export function OperatorPanel({
         </div>
       )}
 
-      {hasToken && (
+      {ready && (
         <div className="agent-panel__composer">
           {attachments.length > 0 && (
             <div className="agent-panel__refs">
@@ -669,17 +1006,30 @@ export function OperatorPanel({
               ))}
             </div>
           )}
+          {(pins.length > 0 || pinError) && (
+            <div className="agent-panel__pins">
+              {pinError && <span className="agent-panel__pin agent-panel__pin--error">{pinError}</span>}
+              {pins.map((p) => (
+                <span key={p.slug} className="agent-panel__pin" title={`${p.title} — applied to every message`}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="12" y1="17" x2="12" y2="22" /><path d="M9 2h6l-1 8 4 3v2H6v-2l4-3z" />
+                  </svg>
+                  {p.title}
+                  <button type="button" className="agent-panel__ref-x" aria-label={`Unpin ${p.title}`} onClick={() => void unpin(p.slug)}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className={`agent-panel__textarea-wrap${streaming ? " agent-panel__textarea-wrap--generating" : ""}`}>
             <div className="agent-panel__glow agent-panel__glow--sharp" aria-hidden="true" />
             <div className="agent-panel__glow-blur" aria-hidden="true"><div className="agent-panel__glow agent-panel__glow--soft" /></div>
             <textarea
               ref={textareaRef}
               className="agent-panel__textarea"
-              placeholder="Describe what you want to create.."
+              placeholder={ready ? "Describe what you want to create.." : "Type /login to connect Claude"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              disabled={streaming}
               rows={4}
             />
             {/* Attach-image (+) button, bottom-left inside the pill. */}
@@ -696,7 +1046,6 @@ export function OperatorPanel({
               type="button"
               className="agent-panel__upload"
               onClick={handlePickFile}
-              disabled={streaming}
               aria-label="Attach reference image"
               title="Attach reference image"
             >
@@ -704,9 +1053,31 @@ export function OperatorPanel({
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
+            {/* Pin an instructions .md — saved into the skill library and
+              * appended to the operator's system prompt on every run. */}
+            <input
+              ref={docInputRef}
+              type="file"
+              accept=".md,.markdown,.mdx,text/markdown"
+              className="agent-panel__file-input"
+              onChange={(e) => void handleDocChosen(e)}
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              className="agent-panel__upload agent-panel__upload--doc"
+              onClick={handlePickDoc}
+              aria-label="Pin instructions markdown"
+              title="Pin an instructions .md"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="12" y1="17" x2="12" y2="22" /><path d="M9 2h6l-1 8 4 3v2H6v-2l4-3z" />
+              </svg>
+            </button>
             {/* Send/stop lives INSIDE the pill (textarea-wrap is position:relative)
               * so it nestles into the rounded corner. */}
-            {streaming ? (
+            {streaming && !input.trim() ? (
               <button type="button" className="agent-panel__send agent-panel__send--stop" onClick={stop} aria-label="Stop" title="Stop">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
               </button>

@@ -15,13 +15,6 @@ export interface UserConfig {
   falKey?: string;
   /** Anthropic API key — optional, powers the AI agent + Brand IQ. */
   anthropicKey?: string;
-  /**
-   * Claude Code long-lived OAuth token (from `claude setup-token`). Lets the
-   * in-app Matte operator drive the user's Claude *subscription* headlessly —
-   * passed to the spawned `claude` process as CLAUDE_CODE_OAUTH_TOKEN. See
-   * server/operator/.
-   */
-  claudeCodeToken?: string;
   /** Optional override for the `claude` binary path (auto-detected otherwise). */
   claudeCodePath?: string;
 }
@@ -79,11 +72,6 @@ export function getFalKey(): string | undefined {
 /** Anthropic key: user config first, then ANTHROPIC_API_KEY env fallback. */
 export function getAnthropicKey(): string | undefined {
   return load().anthropicKey || process.env.ANTHROPIC_API_KEY || undefined;
-}
-
-/** Claude Code OAuth token: user config first, then CLAUDE_CODE_OAUTH_TOKEN env. */
-export function getClaudeCodeToken(): string | undefined {
-  return load().claudeCodeToken || process.env.CLAUDE_CODE_OAUTH_TOKEN || undefined;
 }
 
 /** Optional explicit `claude` binary path override from config. */

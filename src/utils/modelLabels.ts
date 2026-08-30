@@ -21,6 +21,7 @@ const MODEL_INFO: Record<string, ModelInfo> = {
   "veo3.1-lite-t2v": { displayName: "Veo 3.1 Lite", variation: "Text → Video" },
   "veo3.1-lite-i2v": { displayName: "Veo 3.1 Lite", variation: "Image → Video" },
   "veo3.1-lite-flf2v": { displayName: "Veo 3.1 Lite", variation: "First/Last Frame → Video" },
+  "h3-max-t2v": { displayName: "MiniMax H3 Max", variation: "Text → Video" },
   "seedance-2.0-t2v": { displayName: "Seedance 2.0", variation: "Text → Video" },
   "seedance-2.0-i2v": { displayName: "Seedance 2.0", variation: "Image → Video" },
   "seedance-2.0-r2v": { displayName: "Seedance 2.0", variation: "Reference → Video" },

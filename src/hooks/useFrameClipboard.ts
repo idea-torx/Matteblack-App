@@ -61,6 +61,41 @@ type ClipboardEntry = {
   children: CanvasNode[];
 };
 
+const STORE_KEY = "canvasClipboard";
+/** ponytail: 2MB cap — nodes are metadata + URLs, not pixels, so this is many
+ *  hundreds of them. Past it the copy just isn't persisted and stays in-memory. */
+const STORE_MAX = 2_000_000;
+
+function readStore(): ClipboardEntry[] {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Module-level, not per-mount: the canvas unmounts when you switch projects, so
+ * a useRef clipboard emptied itself exactly when you wanted to paste. Backed by
+ * localStorage so a copy also survives a reload. Safe across projects because
+ * assets are keyed by user, not project — a pasted node's asset_id still
+ * resolves in the project you land in.
+ */
+const clipboardStore: { current: ClipboardEntry[] } = { current: readStore() };
+
+function writeStore(entries: ClipboardEntry[]): void {
+  clipboardStore.current = entries;
+  try {
+    const json = JSON.stringify(entries);
+    if (json.length <= STORE_MAX) localStorage.setItem(STORE_KEY, json);
+    else localStorage.removeItem(STORE_KEY);
+  } catch {
+    /* quota or private mode — in-memory copy still works */
+  }
+}
+
 export function useFrameClipboard({
   nodes,
   selectedIds,
@@ -69,7 +104,7 @@ export function useFrameClipboard({
   onSelectMultiple,
   onDeselectAll,
 }: UseFrameClipboardParams) {
-  const clipboardRef = useRef<ClipboardEntry[]>([]);
+  const clipboardRef = clipboardStore;
   const pasteCountRef = useRef(0);
   const pendingSelectRef = useRef<string[] | null>(null);
 
@@ -110,7 +145,7 @@ export function useFrameClipboard({
       });
     }
 
-    clipboardRef.current = entries;
+    writeStore(entries);
     pasteCountRef.current = 0;
   }, []);
 

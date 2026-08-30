@@ -4,7 +4,7 @@ import { isDesktopApp, desktopBridge } from "../desktop";
 import "./SettingsPanel.css";
 
 type KeyStatus = { set: boolean; masked: string | null };
-type KeyId = "falKey" | "anthropicKey" | "claudeCodeToken";
+type KeyId = "falKey" | "anthropicKey";
 type SettingsResponse = Record<KeyId, KeyStatus>;
 
 function normalizeKeyStatus(v: unknown): KeyStatus {
@@ -23,7 +23,6 @@ function normalizeSettings(v: unknown): SettingsResponse {
   return {
     falKey: normalizeKeyStatus(o.falKey),
     anthropicKey: normalizeKeyStatus(o.anthropicKey),
-    claudeCodeToken: normalizeKeyStatus(o.claudeCodeToken),
   };
 }
 
@@ -46,14 +45,6 @@ const FIELDS: KeyFieldConfig[] = [
     placeholder: "Paste your fal.ai key",
   },
   {
-    id: "claudeCodeToken",
-    label: "Claude Code token",
-    helper: "Powers the Matte operator with your Claude subscription. Run `claude setup-token` in a terminal and paste the token.",
-    linkLabel: "How to get a token",
-    linkHref: "https://docs.claude.com/en/docs/claude-code/setup-token",
-    placeholder: "Paste your Claude Code token",
-  },
-  {
     id: "anthropicKey",
     label: "Anthropic API key",
     helper: "Optional — legacy per-token agent / Brand IQ. Leave blank if you don't use it.",
@@ -68,7 +59,6 @@ const EMPTY_REVEALED = Object.fromEntries(FIELDS.map((f) => [f.id, false])) as R
 const CLEAR_LABELS: Record<KeyId, string> = {
   falKey: "fal.ai key cleared",
   anthropicKey: "Anthropic key cleared",
-  claudeCodeToken: "Claude Code token cleared",
 };
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {

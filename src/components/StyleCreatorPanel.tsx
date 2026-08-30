@@ -153,7 +153,7 @@ export function StyleCreatorPanel({ onClose, onCreated }: StyleCreatorPanelProps
         onClose();
       } else {
         const errData = await res.json().catch(() => null);
-        setError(errData?.error?.message || "Failed to save style");
+        setError(errData?.error?.message || "Failed to save prompt");
       }
     } catch (e: any) {
       setError(e?.message || "Network error");
@@ -173,7 +173,7 @@ export function StyleCreatorPanel({ onClose, onCreated }: StyleCreatorPanelProps
       </button>
 
       <div className="rpanel-scroll">
-        <div className="gifmaker-title">New Style</div>
+        <div className="gifmaker-title">New Prompt</div>
 
         <div className="rpanel-card">
           <button type="button" className="rpanel-card-toggle" onClick={() => toggle("image")}>
@@ -235,7 +235,7 @@ export function StyleCreatorPanel({ onClose, onCreated }: StyleCreatorPanelProps
                 <label className="axiom-field-label">Prompt</label>
                 <textarea
                   className="axiom-field-textarea"
-                  placeholder="Style prompt that will be applied when dragging to canvas..."
+                  placeholder="The prompt text applied when dragging to canvas..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={4}
@@ -291,7 +291,7 @@ export function StyleCreatorPanel({ onClose, onCreated }: StyleCreatorPanelProps
       <div className="rpanel-footer">
         {error && <div style={{ color: "#ff6b6b", fontSize: 13, marginBottom: 8, textAlign: "center" }}>{error}</div>}
         <button type="button" className={`rpanel-action-btn ${!canSave ? "rpanel-action-btn--disabled" : ""}`} disabled={!canSave || saving} onClick={handleSave}>
-          {saving ? "Saving..." : "Save Style"}
+          {saving ? "Saving..." : "Save Prompt"}
         </button>
       </div>
     </aside>

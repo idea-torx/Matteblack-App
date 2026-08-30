@@ -23,6 +23,8 @@ type CinemaViewerProps = {
   currentTimeRef: React.RefObject<number>;
   seekVersion: number;
   volume: number;
+  /** The active clip's video track is muted — picture plays, its audio does not. */
+  videoMuted?: boolean;
 };
 
 type AudioSlot = {
@@ -49,6 +51,7 @@ export const CinemaViewer = memo(function CinemaViewer({
   currentTimeRef,
   seekVersion,
   volume,
+  videoMuted = false,
 }: CinemaViewerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const prevClipId = useRef<string | null>(null);
@@ -63,8 +66,19 @@ export const CinemaViewer = memo(function CinemaViewer({
   const audioSeekingMap = useRef<Map<string, boolean>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const audioDriftCheckRef = useRef<number | null>(null);
-  const activeAudioClipsRef = useRef(activeAudioClips);
-  activeAudioClipsRef.current = activeAudioClips;
+  // A video dropped on the timeline also gets a mirror clip on the audio track
+  // (same src) so its sound can be trimmed and levelled separately. That mirror
+  // must not be *played* separately — the video element is already producing it,
+  // and doing both is the same waveform twice, slightly out of phase.
+  const linkedAudio = activeClip
+    ? activeAudioClips.find((c) => c.id === activeClip.linkedClipId || c.linkedClipId === activeClip.id) ?? null
+    : null;
+  const independentAudioClips = linkedAudio
+    ? activeAudioClips.filter((c) => c.id !== linkedAudio.id)
+    : activeAudioClips;
+
+  const activeAudioClipsRef = useRef(independentAudioClips);
+  activeAudioClipsRef.current = independentAudioClips;
 
   const scrubPendingTimeRef = useRef<number | null>(null);
   const scrubFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,15 +289,24 @@ export const CinemaViewer = memo(function CinemaViewer({
     };
   }, [isPlaying, activeClip, applySeek, currentTimeRef]);
 
+  // Video clips carry their own audio; hard-muting them meant the only sound
+  // the frame could ever make came from clips on the audio track — and an
+  // agent-built timeline has none, so it was silent. The mirror clip's own
+  // volume steers the video element, which is what the user is adjusting.
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = true;
-    }
-  }, [activeClip]);
+    const v = videoRef.current;
+    if (!v) return;
+    const clipLevel = linkedAudio ? linkedAudio.volume : (activeClip?.volume ?? 1);
+    // Track mute overrides the clip's own level without overwriting it, so
+    // unmuting restores whatever mix the user had set.
+    const level = videoMuted ? 0 : Math.max(0, Math.min(1, volume * clipLevel));
+    v.volume = level;
+    v.muted = level === 0;
+  }, [activeClip, linkedAudio, volume, videoMuted]);
 
   useEffect(() => {
     const slots = audioSlotsRef.current;
-    const activeIds = new Set(activeAudioClips.map((c) => c.id));
+    const activeIds = new Set(independentAudioClips.map((c) => c.id));
 
     for (const slot of slots) {
       if (slot.clipId && !activeIds.has(slot.clipId)) {
@@ -294,7 +317,7 @@ export const CinemaViewer = memo(function CinemaViewer({
       }
     }
 
-    for (const clip of activeAudioClips) {
+    for (const clip of independentAudioClips) {
       let slot = slots.find((s) => s.clipId === clip.id);
       if (!slot) {
         slot = slots.find((s) => s.clipId === null);
@@ -368,7 +391,7 @@ export const CinemaViewer = memo(function CinemaViewer({
         }
       }
     }
-  }, [activeAudioClips, isPlaying, seekVersion, currentTimeRef]);
+  }, [independentAudioClips, isPlaying, seekVersion, currentTimeRef]);
 
   useEffect(() => {
     if (!isPlaying) {
@@ -478,7 +501,6 @@ export const CinemaViewer = memo(function CinemaViewer({
         ref={videoRef}
         className="cinema-viewer__media"
         style={{ display: showVideo ? "block" : "none" }}
-        muted
         playsInline
         preload="auto"
         onCanPlay={handleCanPlay}

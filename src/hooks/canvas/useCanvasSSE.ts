@@ -42,6 +42,11 @@ export function useCanvasSSE(
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasIdRef = useRef(canvasId);
   canvasIdRef.current = canvasId;
+  // Chromium reports the window hidden when it's occluded (the user is in
+  // another app while the agent generates), and we close the stream when that
+  // happens — so every update sent while it was shut is simply never seen.
+  // Any re-open therefore has to resync, not just resume listening.
+  const hasOpenedRef = useRef(false);
 
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   onRemoteUpdateRef.current = onRemoteUpdate;
@@ -81,6 +86,8 @@ export function useCanvasSSE(
       es.onopen = () => {
         openedRef.current = true;
         reconnectAttemptRef.current = 0;
+        if (hasOpenedRef.current) onRemoteUpdateRef.current();
+        hasOpenedRef.current = true;
       };
 
       es.onmessage = (event) => {

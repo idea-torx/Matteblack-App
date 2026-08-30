@@ -626,3 +626,27 @@
   background: var(--panel-bg);
   border-left: 1px solid var(--border-subtle);
 }
+
+/* Native select — same chip as the workspace trigger. A menu of three options
+ * doesn't need the custom popover the switcher has. */
+.proj-sort {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(var(--tint-rgb), 0.05);
+  border: 1px solid rgba(var(--tint-rgb), 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.proj-sort:hover {
+  background: rgba(var(--tint-rgb), 0.08);
+  border-color: rgba(var(--tint-rgb), 0.14);
+}
+
+.proj-sort option {
+  color: var(--text-primary);
+  background: var(--panel-bg-solid, #1a1a1f);
+}

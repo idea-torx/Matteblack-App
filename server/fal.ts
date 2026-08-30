@@ -326,6 +326,12 @@ export function isValidImageUrl(url: string): boolean {
     if (knownCdnDomains.some((d) => parsed.hostname.endsWith(d))) return true;
     const imageExtensions = /\.(png|jpg|jpeg|gif|webp|bmp|tiff|svg|avif)(\?.*)?$/i;
     if (imageExtensions.test(parsed.pathname)) return true;
+    // This guard gates every reference URL, not just images: r2v endpoints take
+    // video and audio references too. Without these, a .mp4 continuation tail on
+    // any host outside the CDN list above is dropped in silence — and a dropped
+    // reference doesn't fail the call, it just returns an unconditioned clip.
+    const avExtensions = /\.(mp4|mov|webm|m4v|mkv|mp3|wav|m4a|aac|ogg|flac)(\?.*)?$/i;
+    if (avExtensions.test(parsed.pathname)) return true;
     if (parsed.pathname.startsWith("/uploads/")) return true;
     return false;
   } catch {
@@ -469,12 +475,17 @@ async function makeReferencesFalReachable(params: Record<string, unknown>): Prom
       params[field] = await ensureFalReachableUrl(v);
     }
   }
-  if (Array.isArray(params.referenceImageUrls)) {
+  // Array-valued reference fields. referenceVideoUrls matters most in LOCAL_MODE:
+  // a chunk-chaining tail clip is written to local uploads, so without this the
+  // continuation reference would be a URL fal cannot fetch.
+  for (const field of ["referenceImageUrls", "referenceVideoUrls"] as const) {
+    const arr = params[field];
+    if (!Array.isArray(arr)) continue;
     const out: unknown[] = [];
-    for (const v of params.referenceImageUrls) {
+    for (const v of arr) {
       out.push(typeof v === "string" && v ? await ensureFalReachableUrl(v) : v);
     }
-    params.referenceImageUrls = out;
+    params[field] = out;
   }
 }
 
@@ -562,6 +573,16 @@ function pickGptImage2Size(res: string, aspectRatio: string | undefined): { widt
   }
   return { width: Math.round(longSide * ratio / 8) * 8, height: longSide };
 }
+
+/** H3 accepts a fixed aspect set; anything else (or nothing) falls back to 16:9. */
+const H3_ASPECTS = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const h3Duration = (v: unknown) => Math.min(15, Math.max(5, Math.round(Number(v) || 5)));
+const h3Resolution = (v: unknown) =>
+  String(v || "768p").toLowerCase().startsWith("480") ? "480P" : "768P";
+const h3Aspect = (v: unknown, fallback = "16:9") => {
+  const ar = String(v || "").trim();
+  return H3_ASPECTS.includes(ar) ? ar : fallback;
+};
 
 const MODEL_MAP: Record<string, ModelConfig> = {
   "nano-banana-2-t2i": {
@@ -893,6 +914,67 @@ const MODEL_MAP: Record<string, ModelConfig> = {
         }
       }
       input.generate_audio = params.generateAudio === true;
+      return input;
+    },
+  },
+  // MiniMax H3 Max. All three modes ship on fal: t2v, i2v (first/last keyframe)
+  // and r2v (subject/motion references). The r2v `<Video N>` input is what makes
+  // chunk-chained long-form work — see server/utils/videoTail.ts.
+  "h3-max-t2v": {
+    falModelId: "minimax/h3-max/text-to-video",
+    type: "video",
+    buildInput(params) {
+      return {
+        prompt: params.prompt || "",
+        duration: h3Duration(params.duration),
+        resolution: h3Resolution(params.resolution),
+        aspect_ratio: h3Aspect(params.aspect_ratio),
+        prompt_expansion_mode: "balanced",
+      };
+    },
+  },
+  "h3-max-i2v": {
+    falModelId: "minimax/h3-max/image-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: h3Duration(params.duration),
+        resolution: h3Resolution(params.resolution),
+        prompt_expansion_mode: "balanced",
+      };
+      // No aspect_ratio field on this endpoint: per fal, the output follows
+      // `image_url`. Passing one would be silently dropped.
+      const firstFrame = sanitizeUrl(params.firstFrameUrl);
+      if (firstFrame) input.image_url = firstFrame;
+      const lastFrame = sanitizeUrl(params.lastFrameUrl);
+      if (lastFrame) input.end_image_url = lastFrame;
+      return input;
+    },
+  },
+  "h3-max-r2v": {
+    falModelId: "minimax/h3-max/reference-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: h3Duration(params.duration),
+        resolution: h3Resolution(params.resolution),
+        // "adaptive" makes the clip follow its references, which is what a
+        // continuation wants; an explicit ratio still wins if one was asked for.
+        aspect_ratio: h3Aspect(params.aspect_ratio, "adaptive"),
+        prompt_expansion_mode: "balanced",
+      };
+      const imgs = (Array.isArray(params.referenceImageUrls) ? params.referenceImageUrls : [])
+        .map(sanitizeUrl).filter((u): u is string => !!u);
+      const vids = (Array.isArray(params.referenceVideoUrls) ? params.referenceVideoUrls : [])
+        .map(sanitizeUrl).filter((u): u is string => !!u);
+      // fal's caps: 9 images, 3 videos, 12 files total. Videos are the
+      // continuation signal, so they get the budget first when both are full.
+      const v = vids.slice(0, 3);
+      if (v.length) input.reference_video_urls = v;
+      const i = imgs.slice(0, Math.min(9, 12 - v.length));
+      if (i.length) input.reference_image_urls = i;
       return input;
     },
   },
@@ -1365,7 +1447,7 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"] 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
   text_to_image: ["nano-banana-2-t2i", "seedream-t2i", "gpt-image-2-t2i"],
   image_to_image: ["nano-banana-2", "seedream-edit", "gpt-image-2-edit"],
-  video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v"],
+  video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],
   upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],

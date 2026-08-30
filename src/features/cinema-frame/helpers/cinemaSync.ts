@@ -1,10 +1,13 @@
 import type { TimelineState, TimelineTrack, TimelineClip } from "./timelineState";
 
-interface DbTrack {
+export interface DbTrack {
   id: string;
   canvas_id: string;
+  /** Owning cinema node. '' on rows written before multi-node support. */
+  node_id?: string;
   track_type: "video" | "audio";
   sort_order: number;
+  muted?: boolean;
 }
 
 interface DbClip {
@@ -51,6 +54,7 @@ export function assembleTimelineFromDb(
   const tracks: TimelineTrack[] = dbTracks.map((dt) => ({
     id: dt.id,
     type: dt.track_type,
+    muted: dt.muted === true,
     clips: (clipsByTrack.get(dt.id) || []).sort((a, b) => a.startOffset - b.startOffset),
   }));
 
@@ -72,7 +76,7 @@ export function diffTimeline(
   prev: TimelineState,
   next: TimelineState
 ): {
-  tracks: { id: string; track_type: string; sort_order: number }[];
+  tracks: { id: string; track_type: string; sort_order: number; muted: boolean }[];
   clips: {
     id: string;
     track_id: string;
@@ -103,6 +107,7 @@ export function diffTimeline(
     id: t.id,
     track_type: t.type,
     sort_order: i,
+    muted: t.muted === true,
   }));
 
   const clips = next.tracks.flatMap((t) =>
@@ -132,31 +137,35 @@ const _syncLatest = new Map<string, TimelineState>();
 
 export async function syncTimelineToServer(
   canvasId: string,
+  nodeId: string,
   prev: TimelineState,
   next: TimelineState
 ): Promise<void> {
-  const existingTimer = _syncDebounceTimers.get(canvasId);
+  // Debounce per cinema node, not per canvas — with several frames open, one
+  // canvas key meant the last edited frame's state overwrote the others'.
+  const key = `${canvasId}:${nodeId}`;
+  const existingTimer = _syncDebounceTimers.get(key);
   if (existingTimer) {
     clearTimeout(existingTimer);
   } else {
-    _syncBaselines.set(canvasId, prev);
+    _syncBaselines.set(key, prev);
   }
-  _syncLatest.set(canvasId, next);
+  _syncLatest.set(key, next);
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(async () => {
-      _syncDebounceTimers.delete(canvasId);
-      const baseline = _syncBaselines.get(canvasId) || prev;
-      const latest = _syncLatest.get(canvasId) || next;
-      _syncBaselines.delete(canvasId);
-      _syncLatest.delete(canvasId);
+      _syncDebounceTimers.delete(key);
+      const baseline = _syncBaselines.get(key) || prev;
+      const latest = _syncLatest.get(key) || next;
+      _syncBaselines.delete(key);
+      _syncLatest.delete(key);
       try {
         const diff = diffTimeline(baseline, latest);
         const res = await fetch(`/api/canvas/${canvasId}/cinema/sync`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify(diff),
+          body: JSON.stringify({ ...diff, nodeId }),
         });
         if (!res.ok) {
           console.error("[cinemaSync] sync failed:", res.status);
@@ -167,19 +176,20 @@ export async function syncTimelineToServer(
         reject(err);
       }
     }, 500);
-    _syncDebounceTimers.set(canvasId, timer);
+    _syncDebounceTimers.set(key, timer);
   });
 }
 
 // Cancel any pending debounced cinema/sync flush for this canvas. Called when
 // the cinema frame is deleted so a queued sync doesn't race the delete and
 // resurrect tracks/clips on the server (which the next load would re-attach).
-export function cancelTimelineSync(canvasId: string): void {
-  const t = _syncDebounceTimers.get(canvasId);
+export function cancelTimelineSync(canvasId: string, nodeId: string): void {
+  const key = `${canvasId}:${nodeId}`;
+  const t = _syncDebounceTimers.get(key);
   if (t) clearTimeout(t);
-  _syncDebounceTimers.delete(canvasId);
-  _syncBaselines.delete(canvasId);
-  _syncLatest.delete(canvasId);
+  _syncDebounceTimers.delete(key);
+  _syncBaselines.delete(key);
+  _syncLatest.delete(key);
 }
 
 export async function loadTimelineFromServer(

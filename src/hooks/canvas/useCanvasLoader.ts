@@ -20,7 +20,7 @@ import {
 } from "../../services/CanvasStore";
 import { CanvasSyncEngine, getCanvasSessionId } from "../../services/CanvasSyncEngine";
 import { useCanvasSSE } from "./useCanvasSSE";
-import { assembleTimelineFromDb } from "../../features/cinema-frame/helpers/cinemaSync";
+import { assembleTimelineFromDb, type DbTrack } from "../../features/cinema-frame/helpers/cinemaSync";
 import { getContainedNodes } from "../../utils/canvasUtils";
 import type { BatchUpdate } from "../../utils/canvasUtils";
 import { useSyncStatus } from "../../components/canvas/SyncStatusIndicator";
@@ -465,9 +465,26 @@ export function useCanvasLoader({
           }
 
           if (Array.isArray(data.cinemaTracks) && data.cinemaTracks.length > 0) {
-            const dbTimeline = assembleTimelineFromDb(data.cinemaTracks, data.cinemaClips || []);
+            // Tracks are tagged with the cinema node that owns them, so each
+            // frame gets its own timeline instead of every frame showing the
+            // canvas's single one.
+            const tracksByNode = new Map<string, DbTrack[]>();
+            for (const t of data.cinemaTracks as DbTrack[]) {
+              const key = t.node_id || "";
+              const list = tracksByNode.get(key) || [];
+              list.push(t);
+              tracksByNode.set(key, list);
+            }
+            const clips = data.cinemaClips || [];
             loadedNodes = loadedNodes.map((n: CanvasNode) => {
               if (n.node_type !== "cinema") return n;
+              const own = tracksByNode.get(n.id);
+              if (!own || own.length === 0) return n;
+              const ownIds = new Set(own.map((t) => t.id));
+              const dbTimeline = assembleTimelineFromDb(
+                own,
+                clips.filter((c: { track_id: string }) => ownIds.has(c.track_id))
+              );
               const meta = (n.metadata || {}) as Record<string, unknown>;
               return { ...n, metadata: { ...meta, timelineState: dbTimeline } };
             });

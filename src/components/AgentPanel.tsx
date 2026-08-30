@@ -5,7 +5,7 @@ import { renderMarkdown } from "../utils/markdown";
 import { QuantumThinking } from "./QuantumThinking";
 import { ThinkingPill } from "./ThinkingPill";
 import { useGenerationSound } from "../hooks/useGenerationSound";
-import { findEmptySlots, placeholderSize } from "../utils/canvasPlacement";
+import { findEmptySlots, layout, placeholderSize } from "../utils/canvasPlacement";
 import {
   type Brand as MentionBrand,
   type BrandSuggestion,
@@ -103,19 +103,6 @@ type AgentPanelProps = {
    * inline chat chip. Optional — when missing, the toggle stays in "In chat".
    */
   canvasApi?: import("../types/canvas").CanvasApi | null;
-  /**
-   * Read the most recent placeholder rect placed on the active canvas (by
-   * either this panel or the right-panel `startGeneration`). Lets the agent
-   * continue the row across turn boundaries instead of restarting at the
-   * viewport center each time.
-   */
-  getLastGenRect?: () => { x: number; y: number; w: number; h: number; rowAnchorX: number } | null;
-  /**
-   * Write back the most recent placeholder rect after the agent drops one.
-   * The right-panel `startGeneration` reads the same anchor so successive
-   * generations chain together regardless of which surface initiated them.
-   */
-  setLastGenRect?: (rect: { x: number; y: number; w: number; h: number; rowAnchorX: number } | null) => void;
   /**
    * Lifts the panel's "busy" signal up to the shell so the canvas-area can
    * paint its animated edge gradient when the agent is thinking, streaming,
@@ -585,8 +572,6 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
   onSaveToLibrary,
   mobileMode = false,
   canvasApi,
-  getLastGenRect,
-  setLastGenRect,
   onBusyChange,
   onMusicGenerationStarted,
 }, ref) {
@@ -1955,7 +1940,13 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
   }, [canvasId, resolveLiveNodeId]);
 
   const sendChat = useCallback(async (overrideMessages?: Message[]) => {
-    if (streaming) return;
+    // Interrupt, don't refuse. A turn can run for minutes (a video job blocks the
+    // whole tool call), and having to hit Stop, wait, then send is the same two
+    // steps every time. Aborting here fires the in-flight run's own catch, which
+    // marks that message cancelled — so the transcript still shows where it was
+    // cut off. The `finally` below only clears state if it still owns
+    // abortRef, otherwise the dying run would switch off the run replacing it.
+    if (streaming) abortRef.current?.abort();
     if (available === false) return;
 
     const baseMessages = overrideMessages ?? messages;
@@ -2035,19 +2026,12 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
     const requestOutputMode: AgentOutputMode = effectiveOutputMode;
     const requestCanvasApi = canvasApi || null;
 
-    // Turn-scoped placement reservation. Multiple tool_use events in a single
-    // turn produce a neat row (wrapping into more rows when full) anchored at
-    // the first placeholder's slot — instead of each placeholder running
-    // findEmptySlots independently and scattering across the canvas. The
-    // first tool_use uses findEmptySlots to pick the anchor; subsequent ones
-    // walk the cursor right, wrapping when the row exceeds maxRowWidth.
-    const gap = 24;
-    let turnAnchorX: number | null = null;
-    let turnAnchorY: number | null = null;
-    let turnCursorX = 0;
-    let turnRowY = 0;
-    let turnRowMaxH = 0;
-    let turnMaxRowWidth = 0;
+    // Rects placed during this turn. The live canvas already reports its own
+    // new nodes, but the server-POST path reads a node list fetched once per
+    // turn, so without this two tool_use events in one turn would be handed the
+    // same slot. Placement itself needs no other turn state — it anchors off
+    // the canvas, not off a remembered cursor.
+    const turnPlaced: { x: number; y: number; w: number; h: number }[] = [];
     // Cached existing-node bounds for the no-canvas (server-POST) fallback
     // path. We fetch the canvas's current node list once per turn so smart
     // placement can avoid overlapping persisted nodes even when no live
@@ -2312,101 +2296,10 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                 const occupiedRects = existingNodes
                   .filter((n) => n.node_type !== "frame" && n.node_type !== "group")
                   .map((n) => ({ x: n.x, y: n.y, w: n.width, h: n.height }));
-                const collides = (x: number, y: number, w: number, h: number) => {
-                  for (const r of occupiedRects) {
-                    if (
-                      x < r.x + r.w + gap &&
-                      x + w + gap > r.x &&
-                      y < r.y + r.h + gap &&
-                      y + h + gap > r.y
-                    ) return true;
-                  }
-                  return false;
-                };
-                if (turnAnchorX === null || turnAnchorY === null) {
-                  // First placeholder of this turn. Try to continue the row
-                  // from the last placeholder dropped (by either the agent
-                  // *or* the right panel) so successive turns don't restart
-                  // at the viewport center and stack diagonally below each
-                  // other. Falls back to findEmptySlots if no prior anchor
-                  // exists or the right-of-anchor slot is occupied.
-                  const sharedAnchor = getLastGenRect?.() || null;
-                  let resumed = false;
-                  if (sharedAnchor) {
-                    const sharedMaxRowWidth = Math.max(placementViewport.w * 0.85, size.w * 4);
-                    let tryX = sharedAnchor.x + sharedAnchor.w + gap;
-                    let tryY = sharedAnchor.y;
-                    // Wrap to a new row if continuing right would overflow
-                    // the row's max width — mirrors the right-panel logic so
-                    // a near-full row doesn't push the next placement off
-                    // into empty space.
-                    if (tryX + size.w - sharedAnchor.rowAnchorX > sharedMaxRowWidth) {
-                      tryX = sharedAnchor.rowAnchorX;
-                      tryY = sharedAnchor.y + Math.max(sharedAnchor.h, size.h) + gap;
-                    }
-                    if (!collides(tryX, tryY, size.w, size.h)) {
-                      turnAnchorX = sharedAnchor.rowAnchorX;
-                      turnAnchorY = tryY;
-                      turnRowY = tryY;
-                      turnRowMaxH = Math.max(sharedAnchor.h, size.h);
-                      turnMaxRowWidth = sharedMaxRowWidth;
-                      placeX = tryX;
-                      placeY = tryY;
-                      turnCursorX = tryX + size.w + gap;
-                      occupiedRects.push({ x: placeX, y: placeY, w: size.w, h: size.h });
-                      resumed = true;
-                    }
-                  }
-                  if (!resumed) {
-                    const slots = findEmptySlots(placementViewport, [size], existingNodes);
-                    const slot = slots[0];
-                    turnAnchorX = slot.x;
-                    turnAnchorY = slot.y;
-                    turnRowY = slot.y;
-                    turnRowMaxH = slot.h;
-                    turnMaxRowWidth = Math.max(placementViewport.w * 0.85, slot.w * 2 + gap);
-                    placeX = slot.x;
-                    placeY = slot.y;
-                    turnCursorX = slot.x + slot.w + gap;
-                    occupiedRects.push({ x: slot.x, y: slot.y, w: slot.w, h: slot.h });
-                  }
-                } else {
-                  // Subsequent placeholders: continue the row, wrap when full.
-                  if (turnCursorX + size.w > turnAnchorX + turnMaxRowWidth) {
-                    turnRowY += turnRowMaxH + gap;
-                    turnCursorX = turnAnchorX;
-                    turnRowMaxH = size.h;
-                  } else {
-                    turnRowMaxH = Math.max(turnRowMaxH, size.h);
-                  }
-                  placeX = turnCursorX;
-                  placeY = turnRowY;
-                  // Collision-safe: if the row cursor would overlap an
-                  // existing node, push the cursor down past it (and reset
-                  // the row anchor) until we find clear space.
-                  let safety = 30;
-                  while (collides(placeX, placeY, size.w, size.h) && safety-- > 0) {
-                    placeY += turnRowMaxH + gap;
-                    turnRowY = placeY;
-                    turnCursorX = turnAnchorX;
-                    placeX = turnAnchorX;
-                    turnRowMaxH = size.h;
-                  }
-                  turnCursorX = placeX + size.w + gap;
-                  occupiedRects.push({ x: placeX, y: placeY, w: size.w, h: size.h });
-                }
-                // Persist this placement as the new shared row anchor so the
-                // next agent turn (or the right-panel `startGeneration`) can
-                // continue walking the same row instead of restarting.
-                if (turnAnchorX !== null) {
-                  setLastGenRect?.({
-                    x: placeX,
-                    y: placeY,
-                    w: size.w,
-                    h: size.h,
-                    rowAnchorX: turnAnchorX,
-                  });
-                }
+                const slot = layout(placementViewport, [size], occupiedRects.concat(turnPlaced))[0];
+                placeX = slot.x;
+                placeY = slot.y;
+                turnPlaced.push(slot);
                 const nodeMetadata: Record<string, unknown> = {
                   source: "agent",
                   status: toolErr ? "failed" : "pending",
@@ -2526,8 +2419,12 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
         setErrorBanner(msg);
       }
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
+      // Only the run that still owns the controller may clear the busy state —
+      // an interrupted run finishes AFTER its replacement has already started.
+      if (abortRef.current === controller) {
+        setStreaming(false);
+        abortRef.current = null;
+      }
     }
   }, [activeRefs, agentExtraRefs, available, canvasId, input, messages, modelKey, streaming, workspaceId, effectiveOutputMode, canvasApi, activeChatId, brandPin, brandDisabled, brands, products, productPins]);
 
@@ -3550,7 +3447,6 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
               window.setTimeout(() => setMention(null), 120);
             }}
             onKeyDown={handleKeyDown}
-            disabled={streaming}
             rows={4}
           />
           {!input && (
@@ -3637,7 +3533,6 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
             type="button"
             className="agent-panel__upload"
             onClick={handlePickFile}
-            disabled={streaming}
             aria-label="Attach reference image"
             title="Attach reference image"
           >
@@ -3646,7 +3541,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
-          {streaming ? (
+          {streaming && !input.trim() ? (
             <button
               type="button"
               className="agent-panel__send agent-panel__send--stop"

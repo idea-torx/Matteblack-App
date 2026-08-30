@@ -30,6 +30,21 @@ html:not(.is-desktop) .app-titlebar {
   display: none;
 }
 
+/* macOS: the traffic lights are top-LEFT, so the drag strip goes there too —
+ * over the empty canvas above the (now inset) icon rail and left toolbar, both
+ * of which start at --panel-float-top. Sized to end exactly where they begin,
+ * so it steals no clicks from them. Height is set explicitly rather than from
+ * --titlebar-h, which is 0 on mac precisely so the right-hand panels no longer
+ * reserve space they don't need. */
+html.is-mac .app-titlebar {
+  left: 0;
+  right: auto;
+  /* Only the rail's own light-band — anything wider would swallow clicks on
+   * the zoom pill that now sits beside it. */
+  width: var(--icon-rail-width);
+  height: 40px;
+}
+
 /* Anything interactive placed inside the strip must opt out of dragging. */
 .app-titlebar__no-drag {
   -webkit-app-region: no-drag;
@@ -159,8 +174,6 @@ html:not(.is-desktop) .app-titlebar {
 
 .canvas-area--card {
   margin-right: var(--canvas-right-inset, 0px);
-  border-top-right-radius: 36px;
-  border-bottom-right-radius: 36px;
   box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
   transition: margin-right 240ms cubic-bezier(0.4, 0, 0.2, 1),
               box-shadow 360ms ease;
@@ -187,8 +200,6 @@ html:not(.is-desktop) .app-titlebar {
  * without touching the canvas width. */
 
 .canvas-area--card .freeform-canvas {
-  border-top-right-radius: 36px;
-  border-bottom-right-radius: 36px;
 }
 
 
@@ -204,7 +215,6 @@ html:not(.is-desktop) .app-titlebar {
   pointer-events: none;
   opacity: 0;
   transition: opacity 420ms ease;
-  will-change: opacity;
   padding: 3px;
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
@@ -237,6 +247,20 @@ html:not(.is-desktop) .app-titlebar {
     #3B82F6 100%
   );
   animation: canvas-glow-spin 4s linear infinite;
+}
+
+/* Two 4000x4000 conic gradients sit here permanently at opacity 0, waiting for
+ * the busy state. `opacity: 0` hides them but does NOT stop the rotation:
+ * Chromium keeps recompositing both layers at 60fps forever, which is why the
+ * GPU helper idled at ~50% CPU / 455MB with nothing on screen. Spin them only
+ * while they are actually visible. (`will-change: opacity` was dropped above
+ * for the same reason — it pinned the 4000px raster in GPU memory at all
+ * times; the 420ms fade still promotes on its own.) */
+.canvas-glow::before {
+  animation-play-state: paused;
+}
+.canvas-area--agent-busy .canvas-glow::before {
+  animation-play-state: running;
 }
 
 .canvas-glow-blur {
@@ -359,7 +383,7 @@ html:not(.is-desktop) .app-titlebar {
  * Projects, Layers, Settings), square the IconRail's right edge so the
  * rail and the adjacent panel read as one cohesive nested floating
  * menu. */
-.app-body:has(> .sidebar, > .qs-panel, > .proj-side-panel, > .settings-panel, > .brandiq-panel) .icon-rail {
+.app-body:has(> .sidebar, > .qs-panel, > .proj-side-panel, > .settings-panel) .icon-rail {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
