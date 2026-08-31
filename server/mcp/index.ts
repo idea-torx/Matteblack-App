@@ -368,11 +368,23 @@ const READ_TOOLS: Tool[] = [
   {
     name: "render_html",
     description:
-      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. To put real imagery in the page — a generated character as a sticker, a photo as a background, a logo from the user's repo — pass `images` and reference each one as `asset:NAME` in your CSS or markup; the pixels are attached server-side and never enter this conversation. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, edit it, and call this again with the same `nodeId` — never redraw from memory.",
+      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. To put real imagery in the page — a generated character as a sticker, a photo as a background, a logo from the user's repo — pass `images` and reference each one as `asset:NAME` in your CSS or markup; the pixels are attached server-side and never enter this conversation. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, then call this again with the same `nodeId` and an `edits` list of exact find/replace pairs — that is far faster than re-sending the whole document, and it never drifts from what is on the canvas. Send `html` again only when the change is structural. Never redraw from memory.",
     inputSchema: {
       type: "object",
       properties: {
-        html: { type: "string", description: "The complete document, CSS inlined in a <style> block. Set the body/page size in CSS to match width/height exactly, with no margin, or the capture will have gutters." },
+        html: { type: "string", description: "The complete document, CSS inlined in a <style> block. Set the body/page size in CSS to match width/height exactly, with no margin, or the capture will have gutters. Omit when passing `edits`." },
+        edits: {
+          type: "array",
+          description: "Revise the stored markup of `nodeId` in place instead of re-sending it. Each `find` must appear EXACTLY once in the document (copy it verbatim from get_html; add surrounding text to disambiguate) or the whole call is rejected without rendering. Width, height and images are inherited from the node unless you pass them.",
+          items: {
+            type: "object",
+            properties: {
+              find: { type: "string", description: "Exact text to replace, copied from get_html." },
+              replace: { type: "string", description: "What to put in its place." },
+            },
+            required: ["find", "replace"],
+          },
+        },
         width: { type: "number", description: "Output width in pixels, e.g. 1080. Default 1080." },
         height: { type: "number", description: "Output height in pixels, e.g. 1350 for 4:5. Default 1350." },
         label: { type: "string", description: "Short name for the node, e.g. 'Quiz card 3'." },
@@ -383,13 +395,13 @@ const READ_TOOLS: Tool[] = [
           additionalProperties: { type: "string" },
         },
       },
-      required: ["html"],
+      required: [],
     },
   },
   {
     name: "get_html",
     description:
-      "Read back the exact HTML/CSS a `render_html` piece was made from, so an edit starts from the real markup instead of a reconstruction. Call this before every revision to a piece you did not write in this conversation.",
+      "Read back the exact HTML/CSS a `render_html` piece was made from, so an edit starts from the real markup instead of a reconstruction. Call this before every revision to a piece you did not write in this conversation, then revise it with render_html's `edits`.",
     inputSchema: {
       type: "object",
       properties: { nodeId: { type: "string", description: "The node id returned by render_html." } },
@@ -1041,10 +1053,15 @@ async function runListCuts(args: Record<string, unknown>): Promise<CallToolResul
 async function runRenderHtml(args: Record<string, unknown>): Promise<CallToolResult> {
   const ep = readEndpoint();
   if (!ep) return fail(NOT_RUNNING);
-  if (typeof args.html !== "string" || !args.html.trim()) return fail("render_html requires a complete `html` document.");
+  const hasEdits = Array.isArray(args.edits) && args.edits.length > 0;
+  if (!hasEdits && (typeof args.html !== "string" || !args.html.trim())) {
+    return fail("render_html requires a complete `html` document, or `edits` plus the `nodeId` to apply them to.");
+  }
+  if (hasEdits && typeof args.nodeId !== "string") return fail("`edits` revises an existing piece — pass its `nodeId` too.");
   try {
     const r = (await httpJson(ep, "POST", "/api/agent/render-html", {
       html: args.html,
+      edits: hasEdits ? args.edits : undefined,
       width: args.width,
       height: args.height,
       label: args.label,
@@ -1055,7 +1072,7 @@ async function runRenderHtml(args: Record<string, unknown>): Promise<CallToolRes
       ? `\nCouldn't read: ${(r.problems?.length ? r.problems : r.missing).join("; ")} — those asset: references rendered blank.`
       : "";
     return ok(
-      `${r.replaced ? "Re-rendered" : "Rendered"} ${r.width}x${r.height} and placed on the canvas.\nnodeId: ${r.nodeId}\nURL: ${r.src}${missing}\nPass that nodeId back to render_html to revise it, or the URL to transform_media / set_timeline.`,
+      `${r.replaced ? "Re-rendered" : "Rendered"} ${r.width}x${r.height} and placed on the canvas.\nnodeId: ${r.nodeId}\nURL: ${r.src}${missing}\nPass that nodeId back to render_html with \`edits\` to revise it, or the URL to transform_media / set_timeline.`,
     );
   } catch (err) {
     return errToFail(err);

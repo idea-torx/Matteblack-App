@@ -96,7 +96,7 @@ router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
 router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) => {
   const body = (req.body || {}) as {
     message?: unknown; sessionId?: unknown; model?: unknown; effort?: unknown; canvasId?: unknown; viewport?: unknown;
-    referenceUrls?: unknown; referenceAspectRatio?: unknown;
+    referenceUrls?: unknown; referenceAspectRatio?: unknown; selectedNodeIds?: unknown;
   };
   let message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message) {
@@ -126,6 +126,35 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   const viewport = parseViewport(body.viewport);
   if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio });
 
+  let selectionNote = "";
+  // The canvas selection, by node id. Selecting a rendered piece is how the user
+  // says "this one" — without the id the agent can only guess from list_canvas,
+  // and for an HTML render it can't revise in place at all.
+  const selectedNodeIds: string[] = Array.isArray(body.selectedNodeIds)
+    // uuid-shaped only: the selection can also hold synthetic ids (axiom slices,
+    // in-flight generations), and one of those makes the whole query throw.
+    ? body.selectedNodeIds.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)).slice(0, 4)
+    : [];
+  if (canvasId && selectedNodeIds.length > 0) {
+    try {
+      const sel = await pool.query(
+        `SELECT id, label, node_type, metadata->>'kind' AS kind FROM canvas_nodes
+          WHERE id = ANY($1::uuid[]) AND canvas_id = $2`,
+        [selectedNodeIds, canvasId],
+      );
+      const rows = sel.rows as { id: string; label: string | null; node_type: string; kind: string | null }[];
+      if (rows.length > 0) {
+        const lines = rows.map((r) => `- ${r.id} — ${r.node_type}${r.label ? ` "${String(r.label).slice(0, 60)}"` : ""}${r.kind === "html" ? " (rendered from HTML)" : ""}`);
+        let note = `\n\n[System note: the user has ${rows.length === 1 ? "this canvas node" : "these canvas nodes"} selected right now — when they say "this", "it", or "the ad", they mean ${rows.length === 1 ? "this one" : "these"}:\n${lines.join("\n")}`;
+        if (rows.some((r) => r.kind === "html")) {
+          note += `\nFor an HTML-rendered node: call get_html with that nodeId to read its markup, edit the markup, then call render_html with the SAME nodeId to replace it in place. Do not re-render it as a new node, and do not regenerate it with generate_media.`;
+        }
+        note += `]`;
+        selectionNote = note;
+      }
+    } catch { /* selection is a hint; a bad id must not fail the turn */ }
+  }
+
   // Tell Claude an image is attached AND that it's supplied to the tools
   // automatically — otherwise Claude assumes it can only reference images that
   // are already on the canvas (it has no URL of its own to pass) and asks the
@@ -152,6 +181,10 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     note += `]`;
     message += note;
   }
+  // Last, so it outranks the attachment note above: that note pushes toward
+  // generate_media, which is the wrong move for a piece the user selected to
+  // revise.
+  message += selectionNote;
 
   // SSE headers.
   res.status(200);

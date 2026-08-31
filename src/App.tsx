@@ -2199,7 +2199,9 @@ function App() {
                 const vp = canvasApiProxy?.getViewport?.();
                 if (vp && Number.isFinite(vp.cx)) viewport = { cx: vp.cx, cy: vp.cy, w: vp.w, h: vp.h };
               } catch { /* canvas not live yet */ }
-              return { canvasId: canvasIdRef.current || undefined, viewport };
+              // The selection travels too: a node the user has clicked is the
+              // node they mean, and the agent has no other way to learn its id.
+              return { canvasId: canvasIdRef.current || undefined, viewport, selectedNodeIds: selectedImageIds };
             }}
             canvasReferenceImages={canvasReferenceImages}
             seedPrompt={agentSeed}

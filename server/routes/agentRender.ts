@@ -156,14 +156,57 @@ export async function inlineAssets(
   return { html: out, missing, problems };
 }
 
+type StoredHtml = { html: string; width: number | null; height: number | null; images: Record<string, string> };
+
+/** The markup a rendered node was made from, as stored beside its PNG. */
+async function loadNodeHtml(canvasId: string, nodeId: string): Promise<StoredHtml | { error: string }> {
+  const found = await pool.query(`SELECT metadata FROM canvas_nodes WHERE id = $1 AND canvas_id = $2`, [nodeId, canvasId]);
+  const meta = found.rows[0]?.metadata as { html_url?: string; pixel_width?: number; pixel_height?: number; images?: Record<string, string> } | undefined;
+  if (!meta?.html_url) return { error: "That node wasn't rendered from HTML." };
+  const ref = parseFileUrl(meta.html_url);
+  if (!ref) return { error: "The source markup is no longer on disk." };
+  const { Body } = await getFileStream(ref.bucket, ref.path);
+  if (!Body) return { error: "The source markup is no longer on disk." };
+  const chunks: Buffer[] = [];
+  for await (const chunk of Body) chunks.push(Buffer.from(chunk));
+  return {
+    html: Buffer.concat(chunks).toString("utf8"),
+    width: meta.pixel_width ?? null,
+    height: meta.pixel_height ?? null,
+    images: meta.images ?? {},
+  };
+}
+
+/** Apply the agent's find/replace edits to stored markup.
+ *  Each `find` must appear exactly once — an ambiguous or stale edit is a wrong
+ *  render, and a wrong render costs a whole round trip to notice. */
+export function applyEdits(html: string, edits: { find: string; replace: string }[]): string | { error: string } {
+  let out = html;
+  for (const e of edits) {
+    if (typeof e?.find !== "string" || !e.find || typeof e?.replace !== "string") {
+      return { error: "Each edit needs a non-empty `find` string and a `replace` string." };
+    }
+    const n = out.split(e.find).length - 1;
+    if (n === 0) return { error: `edit not applied — no match for ${JSON.stringify(e.find.slice(0, 80))}. Call get_html and copy the text exactly.` };
+    if (n > 1) return { error: `edit not applied — ${n} matches for ${JSON.stringify(e.find.slice(0, 80))}. Include more surrounding text to make it unique.` };
+    out = out.split(e.find).join(e.replace);
+  }
+  return out;
+}
+
 /** Render markup to a PNG on the canvas. With `nodeId`, re-renders that node. */
 router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
-  const body = (req.body ?? {}) as { html?: unknown; width?: unknown; height?: unknown; label?: unknown; nodeId?: unknown; images?: unknown };
-  if (typeof body.html !== "string" || !body.html.trim()) {
+  const body = (req.body ?? {}) as { html?: unknown; width?: unknown; height?: unknown; label?: unknown; nodeId?: unknown; images?: unknown; edits?: unknown };
+  const edits = Array.isArray(body.edits) ? (body.edits as { find: string; replace: string }[]) : null;
+  if (edits && typeof body.nodeId !== "string") {
+    res.status(400).json({ error: "`edits` revises an existing piece — pass the `nodeId` too." });
+    return;
+  }
+  if (!edits && (typeof body.html !== "string" || !body.html.trim())) {
     res.status(400).json({ error: "Expected an `html` string — a complete document." });
     return;
   }
-  if (Buffer.byteLength(body.html, "utf8") > MAX_HTML_BYTES) {
+  if (typeof body.html === "string" && Buffer.byteLength(body.html, "utf8") > MAX_HTML_BYTES) {
     res.status(413).json({ error: `That document is over ${MAX_HTML_BYTES / 1000}KB. Inline less, or split it into separate pieces.` });
     return;
   }
@@ -174,24 +217,47 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
   const canvasId = activeCanvas(req);
   if (!canvasId) { res.status(400).json({ error: "No canvas is open — ask the user to open the canvas first." }); return; }
   const userId = req.userId ?? "";
-  const width = Math.max(1, Math.min(4096, Math.round(Number(body.width)) || 1080));
-  const height = Math.max(1, Math.min(4096, Math.round(Number(body.height)) || 1350));
   const label = (typeof body.label === "string" && body.label.trim() ? body.label : "HTML art").slice(0, 80);
   const nodeId = typeof body.nodeId === "string" ? body.nodeId : null;
+  const clamp = (n: number, fallback: number) => Math.max(1, Math.min(4096, Math.round(n) || fallback));
 
   try {
+    // With `edits`, the document is the stored one with the agent's patches
+    // applied — a two-word change costs two short strings instead of re-emitting
+    // the whole page, which is the slow half of every revision.
+    let source = typeof body.html === "string" ? body.html : "";
+    let images = body.images;
+    let baseW: number | null = null;
+    let baseH: number | null = null;
+    if (edits) {
+      const stored = await loadNodeHtml(canvasId, nodeId as string);
+      if ("error" in stored) { res.status(404).json({ error: stored.error }); return; }
+      const applied = applyEdits(stored.html, edits);
+      if (typeof applied !== "string") { res.status(400).json({ error: applied.error }); return; }
+      source = applied;
+      if (images === undefined) images = stored.images;
+      baseW = stored.width;
+      baseH = stored.height;
+      if (Buffer.byteLength(source, "utf8") > MAX_HTML_BYTES) {
+        res.status(413).json({ error: `That edit takes the document over ${MAX_HTML_BYTES / 1000}KB.` });
+        return;
+      }
+    }
+    const width = clamp(Number(body.width), baseW || 1080);
+    const height = clamp(Number(body.height), baseH || 1350);
+
     // Attach the pixels here, not in the agent's context: it wrote `asset:name`.
-    const { html: markup, missing, problems } = await inlineAssets(body.html, body.images);
+    const { html: markup, missing, problems } = await inlineAssets(source, images);
     const png = await renderHtmlToPng(markup, width, height);
     const stem = uuidv4();
     const src = await saveFile(`users/${userId}/html`, `${stem}.png`, png);
     // The markup lives next to the PNG rather than in the node's jsonb: canvas
     // sync ships every node's metadata on every load, and art pages are KBs.
-    const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(body.html, "utf8"));
+    const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(source, "utf8"));
     // The markup is stored with its `asset:` placeholders intact, so the map of
     // names to paths has to travel with it or a later edit re-renders blank.
     // It is a handful of short strings, unlike the markup itself.
-    const imageMap = body.images && typeof body.images === "object" && !Array.isArray(body.images) ? body.images : {};
+    const imageMap = images && typeof images === "object" && !Array.isArray(images) ? images : {};
     const metadata = { source: "agent", kind: "html", html_url: htmlUrl, pixel_width: width, pixel_height: height, images: imageMap };
 
     if (nodeId) {
@@ -228,24 +294,9 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
   const canvasId = activeCanvas(req);
   if (!canvasId) { res.status(400).json({ error: "No canvas is open." }); return; }
   try {
-    const found = await pool.query(
-      `SELECT metadata FROM canvas_nodes WHERE id = $1 AND canvas_id = $2`,
-      [req.params.nodeId, canvasId],
-    );
-    const meta = found.rows[0]?.metadata as { html_url?: string; pixel_width?: number; pixel_height?: number; images?: Record<string, string> } | undefined;
-    if (!meta?.html_url) { res.status(404).json({ error: "That node wasn't rendered from HTML." }); return; }
-    const ref = parseFileUrl(meta.html_url);
-    if (!ref) { res.status(404).json({ error: "The source markup is no longer on disk." }); return; }
-    const { Body } = await getFileStream(ref.bucket, ref.path);
-    if (!Body) { res.status(404).json({ error: "The source markup is no longer on disk." }); return; }
-    const chunks: Buffer[] = [];
-    for await (const chunk of Body) chunks.push(Buffer.from(chunk));
-    res.json({
-      html: Buffer.concat(chunks).toString("utf8"),
-      width: meta.pixel_width ?? null,
-      height: meta.pixel_height ?? null,
-      images: meta.images ?? {},
-    });
+    const stored = await loadNodeHtml(canvasId, req.params.nodeId);
+    if ("error" in stored) { res.status(404).json(stored); return; }
+    res.json(stored);
   } catch (err) {
     console.error("[agent/html] read failed:", err);
     res.status(500).json({ error: "Failed to read the source markup." });
