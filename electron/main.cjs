@@ -282,6 +282,14 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+
+  // macOS hides the traffic lights on blur when titleBarStyle is "hidden" —
+  // they come back on focus, but a background window looks like it has no
+  // controls at all. Forcing visibility on blur restores the normal behaviour
+  // (dimmed, still there).
+  if (process.platform === "darwin") {
+    mainWindow.on("blur", () => mainWindow?.setWindowButtonVisibility(true));
+  }
   installDevShortcuts(mainWindow);
 
   // Open target=_blank / external links in the user's real browser, never in

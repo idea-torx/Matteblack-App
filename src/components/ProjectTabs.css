@@ -32,6 +32,16 @@
   backdrop-filter: blur(40px) saturate(140%);
   -webkit-backdrop-filter: blur(40px) saturate(140%);
   border-bottom: 1px solid rgba(var(--tint-rgb), 0.08);
+  /* The band runs across the whole top of the window, so it doubles as the
+   * drag strip — every interactive child opts out below. */
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.project-tab,
+.project-tabs__new {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .project-tabs__strip {
