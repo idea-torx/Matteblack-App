@@ -67,6 +67,12 @@ const MCP_SERVER_KEY = "falforge";
  *  Edit, no Bash: the operator reads code, it does not change it. */
 const FILE_TOOLS = ["Read", "Grep", "Glob"];
 
+/** The web, read-only. A link the user pastes is context — a brand page, a
+ *  product listing, a reference article — and without these the operator has to
+ *  ask the user to paste the contents in by hand. Fetching is a read: it cannot
+ *  write anything here, and the pixels it informs are still made by our tools. */
+const WEB_TOOLS = ["WebFetch", "WebSearch"];
+
 /** The Fal Forge MCP tools we let the operator call. */
 export const OPERATOR_MCP_TOOLS = [
   "generate_media",
@@ -98,7 +104,7 @@ export const OPERATOR_MCP_TOOLS = [
   "forget",
 ].map((t) => `mcp__${MCP_SERVER_KEY}__${t}`);
 
-export const OPERATOR_ALLOWED_TOOLS = [...OPERATOR_MCP_TOOLS, ...FILE_TOOLS];
+export const OPERATOR_ALLOWED_TOOLS = [...OPERATOR_MCP_TOOLS, ...FILE_TOOLS, ...WEB_TOOLS];
 
 /** Path + command to run the bundled MCP server. Electron main passes these via
  *  env (MB_APP_EXEC / MB_MCP_SCRIPT); dev falls back to this process + cwd. */
