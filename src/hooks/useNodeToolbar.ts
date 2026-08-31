@@ -9,6 +9,8 @@ type FullscreenState = {
   open: boolean;
   src: string;
   type: "image" | "video" | "svg";
+  // Kept so the preview can offer the same actions as the node's mini-menu.
+  node?: CanvasNode;
 };
 
 type DeleteDeps = {
@@ -30,7 +32,7 @@ export function useNodeToolbar() {
     if (!src) return;
     const type: FullscreenState["type"] =
       node.node_type === "video" ? "video" : node.node_type === "svg" ? "svg" : "image";
-    setFullscreen({ open: true, src, type });
+    setFullscreen({ open: true, src, type, node });
   }, []);
 
   const closeFullscreen = useCallback(() => {

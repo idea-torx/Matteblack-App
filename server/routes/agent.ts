@@ -29,7 +29,7 @@ import redisClient from "../services/redisClient.js";
 import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 import { extractLastFrame, extractTailClip, VideoTailError, MIN_TAIL_SECONDS } from "../utils/videoTail.js";
-import { getOperatorContext } from "../services/operatorCanvasContext.js";
+import { getOperatorContext, noteOperatorJob } from "../services/operatorCanvasContext.js";
 
 const router = Router();
 
@@ -2601,7 +2601,7 @@ async function resolveOrCreateCanvasForUser(
 // Honors an explicit `model` override from Claude when it parses to a
 // whitelisted entry whose kind matches; otherwise falls back to tier-based
 // resolution. Resulting body always includes the resolved model id.
-function buildGenerateBody(
+export function buildGenerateBody(
   tool: AgentToolUse,
   referenceUrls: string[],
   canvasId: string,
@@ -2953,6 +2953,9 @@ async function dispatchAgentGeneration(
     }
     const j = (await r.json()) as { job_id?: string };
     if (!j.job_id) return { ok: false, status: 502, error: "Missing job id from generation" };
+    // Every agent-initiated job passes through here, so this is the one place
+    // that can hand the operator's stop button something to cancel.
+    if (req.userId) noteOperatorJob(req.userId, j.job_id);
     return { ok: true, jobId: j.job_id };
   } catch (err) {
     return {

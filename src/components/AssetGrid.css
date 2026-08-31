@@ -62,6 +62,9 @@
   --asset-row: 4px;
   grid-template-columns: repeat(auto-fill, var(--asset-col));
   grid-auto-rows: var(--asset-row);
+  /* Backfills the holes a two-column landscape tile leaves when it can't start
+   * in the current row. Without it the grid is more gap than picture. */
+  grid-auto-flow: row dense;
   justify-content: center;
   gap: 2px;
   align-content: start;
@@ -74,9 +77,49 @@
   min-width: 0;
 }
 
-.asset-grid__scale input {
-  width: 120px;
-  accent-color: var(--text-secondary);
+/* Hand-drawn rather than accent-color: the native control renders the track at
+ * the accent's full saturation, which is louder than anything else in this bar.
+ * A thin tinted groove with a soft thumb sits at the same weight as the text. */
+.asset-grid__scale input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 132px;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.asset-grid__scale input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(var(--tint-rgb), 0.12);
+}
+
+.asset-grid__scale input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  /* (track 3px - thumb 11px) / 2 — centres the thumb on the groove. */
+  margin-top: -4px;
+  border-radius: 50%;
+  background: rgba(var(--tint-rgb), 0.42);
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.asset-grid__scale:hover input[type="range"]::-webkit-slider-thumb {
+  background: rgba(var(--tint-rgb), 0.65);
+}
+
+.asset-grid__scale input[type="range"]:active::-webkit-slider-thumb {
+  background: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.asset-grid__scale input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 999px;
 }
 
 .asset-grid__count {
@@ -139,26 +182,10 @@
   transition: opacity 0.12s ease;
 }
 
-.asset-grid__label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 18px 8px 6px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
-  color: #fff;
-  font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-/* Chrome off until asked for: with tight spacing the badges and labels tile
- * into a wall of grey boxes and you stop seeing the work. */
-.asset-grid__tile:hover .asset-grid__badge,
-.asset-grid__tile:hover .asset-grid__label {
+/* Chrome off until asked for: with tight spacing the badges tile into a wall of
+ * grey boxes and you stop seeing the work. No caption on hover at all — the
+ * label is a whole shot prompt, and a paragraph of it over the picture is worse
+ * than no caption. Click through to the modal to read it. */
+.asset-grid__tile:hover .asset-grid__badge {
   opacity: 1;
 }

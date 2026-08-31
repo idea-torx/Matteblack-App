@@ -32,11 +32,29 @@
   font-size: 12px;
 }
 
-.media-modal__title {
+.media-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+}
+
+/* The cover is always dark, so the canvas toolbar's light-theme override must
+ * not follow the buttons in here — hence the extra .media-modal to outweigh it. */
+.media-modal .media-modal__actions .freeform-canvas__toolbar-btn {
+  width: 30px;
+  height: 30px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.media-modal .media-modal__actions .freeform-canvas__toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.media-modal .media-modal__actions .freeform-canvas__toolbar-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .media-modal__close {

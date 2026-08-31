@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
 import { ThinkingPill } from "./ThinkingPill";
 import { renderMarkdown } from "../utils/markdown";
 import type { ReferenceImage } from "../types/canvas";
 import { desktopBridge } from "../desktop";
+import { useAuth } from "../contexts/AuthContext";
 import "./AgentPanel.css";
 import "./OperatorPanel.css";
 
@@ -290,14 +291,71 @@ function referenceToUrl(ref: ReferenceImage): string | null {
   return absolutizeUrl(g);
 }
 
-const HERO_CARDS: { icon: ReactNode; label: string; desc: string; prompt: string }[] = [
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></svg>, label: "Short film", desc: "Multi-shot scenes", prompt: "Create a short film with multiple scenes" },
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>, label: "UGC Avatar", desc: "Selfie-style portraits", prompt: "Create a UGC-style avatar portrait" },
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>, label: "Photoshoot", desc: "Photoreal", prompt: "Create a photoreal photoshoot" },
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>, label: "Concerto", desc: "Generate music", prompt: "Generate music" },
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>, label: "Product mockup", desc: "3D-style renders", prompt: "Create a product mockup" },
-  { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>, label: "Social campaign", desc: "Multi-format posts", prompt: "Create a social media campaign" },
-];
+
+/** Local midnight for a timestamp, as a day key. */
+function dayKey(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/**
+ * Three months of activity, laid out the way GitHub's is: one column per week,
+ * Sunday at the top, newest week on the right. Pared back to the grid, the
+ * month ticks, and a legend — no weekday labels, no headline count.
+ *
+ * "Local history" is the chat store: one thread touched on a day is one square.
+ * ponytail: a session carries a single updatedAt, so a thread worked on across
+ * three days only lights the last one. Store per-message timestamps if that
+ * ever matters more than the shape of the quarter.
+ */
+/** A full year, wider than the panel — the card scrolls, pinned to today. */
+const GRID_WEEKS = 53;
+
+type Cell = { key: string; count: number; label: string } | null;
+
+function activityGrid(sessions: { updatedAt: number }[]): { cells: Cell[]; months: string[] } {
+  const counts = new Map<string, number>();
+  for (const s of sessions) counts.set(dayKey(s.updatedAt), (counts.get(dayKey(s.updatedAt)) || 0) + 1);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // Back to the Sunday that opens the oldest week shown, so every column is a
+  // whole Sun-Sat week and a row means the same weekday all the way across.
+  const start = new Date(today);
+  start.setDate(start.getDate() - today.getDay() - (GRID_WEEKS - 1) * 7);
+
+  const cells: Cell[] = [];
+  const months: string[] = [];
+  // A tick sits above the first week that opens in a new month — but a name is
+  // three columns wide, so one that would land on top of the previous tick is
+  // dropped rather than drawn over it.
+  let lastTick = -3;
+  for (let w = 0; w < GRID_WEEKS; w++) {
+    const first = new Date(start);
+    first.setDate(start.getDate() + w * 7);
+    const prev = new Date(start);
+    prev.setDate(start.getDate() + (w - 1) * 7);
+    const newMonth = w > 0 && first.getMonth() !== prev.getMonth();
+    if (newMonth && w - lastTick >= 3) {
+      months.push(first.toLocaleDateString(undefined, { month: "short" }));
+      lastTick = w;
+    } else {
+      months.push("");
+    }
+
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + w * 7 + d);
+      // Days that haven't happened yet hold their slot but stay blank.
+      if (day.getTime() > today.getTime()) { cells.push(null); continue; }
+      const k = dayKey(day.getTime());
+      const count = counts.get(k) || 0;
+      const when = day.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      cells.push({ key: k, count, label: `${count || "No"} session${count === 1 ? "" : "s"} on ${when}` });
+    }
+  }
+  return { cells, months };
+}
 
 let msgSeq = 0;
 const nextId = () => `op-${Date.now()}-${msgSeq++}`;
@@ -800,6 +858,23 @@ export function OperatorPanel({
     setChats((prev) => { const next = { ...prev, activeId: s.id }; saveChats(next); return next; });
   }, [chats.sessions, streaming, commitChats]);
 
+  const { user } = useAuth();
+  const firstName = (user?.displayName || "").trim().split(/\s+/)[0] || "";
+
+  // The thread the empty state offers to reopen: the most recently touched one
+  // that actually has something in it, and never the blank one being looked at.
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const activity = useMemo(() => activityGrid(chats.sessions), [chats.sessions]);
+
+  // Own tooltip rather than the native title attribute: title waits about a
+  // second before it shows and is easy to miss on an 11px square.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  const lastChat = chats.sessions
+    .filter((s) => s.id !== chats.activeId && s.messages.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+
   // Back / forward walk the thread list (newest first), so ← is "older".
   const chatIndex = chats.sessions.findIndex((s) => s.id === chatIdRef.current);
   const step = useCallback((delta: number) => {
@@ -923,23 +998,54 @@ export function OperatorPanel({
       ) : (
         <div className="agent-panel__messages" ref={scrollRef}>
           {messages.length === 0 ? (
-            <div className="agent-panel__hero">
-              <h1 className="agent-panel__hero-title">Let's make something amazing together.</h1>
-              <p className="agent-panel__hero-sub">Pick a starting point — or describe it yourself.</p>
-              <div className="agent-panel__hero-grid">
-                {HERO_CARDS.map((card) => (
-                  <button
-                    key={card.label}
-                    type="button"
-                    className="agent-panel__hero-card"
-                    onClick={() => { setInput(card.prompt); textareaRef.current?.focus(); }}
-                  >
-                    <span className="agent-panel__hero-card-icon">{card.icon}</span>
-                    <span className="agent-panel__hero-card-label">{card.label}</span>
-                    <span className="agent-panel__hero-card-desc">{card.desc}</span>
-                  </button>
-                ))}
+            <div className="agent-panel__hero operator-hero">
+              <h1 className="agent-panel__hero-title">
+                Welcome back{firstName ? `, ${firstName}` : ""}.
+              </h1>
+              <p className="agent-panel__hero-sub">Your recent work here.</p>
+
+              <div className="operator-streak-card" ref={cardRef}>
+                <div className="operator-streak__scroll">
+                  <div className="operator-streak__inner">
+                <div className="operator-streak__months">
+                  {activity.months.map((m, i) => <span key={i}>{m}</span>)}
+                </div>
+                <div className="operator-streak" onMouseLeave={() => setTip(null)}>
+                  {activity.cells.map((c, i) => (
+                    <span
+                      key={c ? c.key : `x${i}`}
+                      className={`operator-streak__cell${c ? "" : " operator-streak__cell--empty"}`}
+                      // 0-3, so one busy day doesn't wash the rest of the quarter out.
+                      data-level={c ? Math.min(c.count, 3) : 0}
+                      onMouseEnter={(e) => {
+                        if (!c) return setTip(null);
+                        const cell = e.currentTarget.getBoundingClientRect();
+                        const card = cardRef.current!.getBoundingClientRect();
+                        setTip({ text: c.label, x: cell.left - card.left + cell.width / 2, y: cell.top - card.top });
+                      }}
+                    />
+                  ))}
+                </div>
+                  </div>
+                </div>
+                {/* Outside the scroller: it clips overflow, and the tip has to
+                    sit above the top row. Coordinates come off live rects, so
+                    scrolling the year keeps it on its square. */}
+                {tip && (
+                  <div className="operator-streak__tip" style={{ left: tip.x, top: tip.y }}>{tip.text}</div>
+                )}
+                <div className="operator-streak__legend">
+                  <span>Less</span>
+                  {[0, 1, 2, 3].map((l) => <i key={l} className="operator-streak__cell" data-level={l} />)}
+                  <span>More</span>
+                </div>
               </div>
+
+              {lastChat && (
+                <button type="button" className="operator-resume" onClick={() => openChat(lastChat.id)}>
+                  {lastChat.title}
+                </button>
+              )}
             </div>
           ) : (
             messages.map((m) => {

@@ -39,7 +39,11 @@ dist-server/
 
 # Electron packaging output
 /release/
-/build/
+# buildResources — packaging output is generated, but the app icon is a source
+# asset electron-builder.yml points at, so it has to be in the repo.
+/build/*
+!/build/icon.icns
+!/build/icon.png
 
 # Generated MCP bundle (built by npm run build:mcp)
 dist-mcp/

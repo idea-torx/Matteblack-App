@@ -4102,7 +4102,21 @@ export function FreeformCanvas({
         </div>
       )}
       <MediaModal
-        target={fullscreen.open ? { kind: fullscreen.type === "video" ? "video" : "image", src: fullscreen.src } : null}
+        target={fullscreen.open ? {
+          kind: fullscreen.type === "video" ? "video" : "image",
+          src: fullscreen.src,
+          node: fullscreen.node,
+          actions: {
+            onDownload: downloadNode,
+            onSaveToLibrary: handleToolbarSave,
+            onSavePrompt: savePrompt,
+            onReusePrompt: (n) => {
+              navigator.clipboard.writeText(n.label).catch(() => {});
+              onDropPrompt?.(n.label, n.job_id);
+            },
+            onDelete: (n) => { deleteNode(n, { setNodes, pushUndo, canvasId }); closeFullscreen(); },
+          },
+        } : null}
         onClose={closeFullscreen}
       />
       <SyncStatusIndicator status={syncStatus} failedSeconds={syncFailedSeconds} onRetry={retrySyncNow} />
