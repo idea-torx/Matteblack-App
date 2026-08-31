@@ -24,6 +24,8 @@ const MODEL_INFO: Record<string, ModelInfo> = {
   "veo3.1-lite-i2v": { displayName: "Veo 3.1 Lite", variation: "Image → Video" },
   "veo3.1-lite-flf2v": { displayName: "Veo 3.1 Lite", variation: "First/Last Frame → Video" },
   "h3-max-t2v": { displayName: "MiniMax H3 Max", variation: "Text → Video" },
+  "gemini-omni-t2v": { displayName: "Gemini Omni Flash 1.1", variation: "Text → Video" },
+  "gemini-omni-i2v": { displayName: "Gemini Omni Flash 1.1", variation: "Image → Video" },
   "seedance-2.5-t2v": { displayName: "Seedance 2.5", variation: "Text → Video" },
   "seedance-2.5-i2v": { displayName: "Seedance 2.5", variation: "Image → Video" },
   "seedance-2.5-r2v": { displayName: "Seedance 2.5", variation: "Reference → Video" },

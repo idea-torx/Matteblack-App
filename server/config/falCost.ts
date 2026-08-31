@@ -318,6 +318,23 @@ export const FAL_COST_RULES: Record<string, Rule> = {
   //    720p (1280x720):  21600 tok/s -> $0.302/s  (page says $0.3034/s)
   // Marked "approx" because the true frame size depends on aspect ratio; we
   // use the nominal 16:9 dimensions for the tier.
+  // Gemini Omni Flash 1.1: flat per-second by resolution.
+  ...(["t2v", "i2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
+    acc[`gemini-omni-${v}`] = {
+      endpoint: `google/gemini-omni-flash/v1.1/${v === "t2v" ? "text-to-video" : "image-to-video"}`,
+      unitPrice: 0.10,
+      unit: "seconds",
+      cost: (p) => {
+        const secs = n(p, "duration", 8);
+        const res = (p.resolution ?? "720p").toLowerCase();
+        const rate: Record<string, number> = { "360p": 0.03, "720p": 0.10, "1080p": 0.15, "4k": 0.30 };
+        const r = rate[res] ?? rate["720p"];
+        return { usd: r * secs, accuracy: "exact", basis: `$${r}/s x ${secs}s (${res})` };
+      },
+    };
+    return acc;
+  }, {}),
+
   // Seedance 2.5: same token formula, $0.0214 per 1000 tokens at every tier.
   ...(["t2v", "i2v", "r2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
     const ep =

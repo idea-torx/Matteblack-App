@@ -18,6 +18,7 @@ export type ModelPricingConfig = {
 };
 
 const RESOLUTION_MULTIPLIERS = { "0.5k": 0.75, "1k": 1.0, "2k": 1.5, "4k": 2.0 };
+const GEMINI_OMNI_RESOLUTION_MULTIPLIERS = { "360p": 0.2, "720p": 0.667, "1080p": 1.0, "4k": 2.0 };
 const SEEDANCE_RESOLUTION_MULTIPLIERS = { "480p": 0.20, "720p": 0.45, "1080p": 1.0 };
 
 export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
@@ -76,6 +77,9 @@ export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
   { model_key: "veo3.1-lite-flf2v", base_cost: 6, resolution_multipliers: null, duration_multipliers: { "per_second": 1 }, feature_surcharges: { "generate_audio": 4 } },
   // H3 Max: 12 credits/s at 768P ($0.08/s fal), 480P scaled to fal's own ratio.
   { model_key: "h3-max-t2v", base_cost: 12, resolution_multipliers: { "480p": 0.625, "768p": 1.0 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  // Gemini Omni Flash 1.1: $0.15/s at 1080p, scaled by the resolution ladder.
+  { model_key: "gemini-omni-t2v", base_cost: 20, resolution_multipliers: GEMINI_OMNI_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "gemini-omni-i2v", base_cost: 20, resolution_multipliers: GEMINI_OMNI_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   // Seedance 2.5 is $0.0214/1k tokens against 2.0's $0.014 — 1.53x, so 139 cr/s.
   { model_key: "seedance-2.5-t2v", base_cost: 139, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "seedance-2.5-i2v", base_cost: 139, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },

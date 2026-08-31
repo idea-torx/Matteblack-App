@@ -775,12 +775,13 @@ function VideoCards({
   type VideoMode = "text-to-video" | "image-to-video" | "reference-to-video";
   const [videoMode, setVideoMode] = useState<VideoMode>("text-to-video");
   const [prompt, setPrompt] = useState("");
-  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.5" | "seedance-2.0" | "h3-max">("kling-o3-pro");
+  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.5" | "seedance-2.0" | "gemini-omni" | "h3-max">("kling-o3-pro");
   const [duration, setDuration] = useState<string>("5");
   const [generateAudio, setGenerateAudio] = useState(true);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
-  const [videoResolution, setVideoResolution] = useState<"480p" | "720p" | "768p" | "1080p">("1080p");
+  const [videoResolution, setVideoResolution] = useState<"360p" | "480p" | "720p" | "768p" | "1080p" | "4k">("1080p");
 
+  const GEMINI_OMNI_DURATIONS = ["3", "4", "6", "8", "10"];
   const SEEDANCE_25_DURATIONS = ["4", "6", "8", "10", "15", "20", "25", "30"];
   const SEEDANCE_DURATIONS = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"];
   const KLING_O3_DURATIONS = ["3", "5", "7", "9", "11", "13", "15"];
@@ -796,6 +797,7 @@ function VideoCards({
     "kling-o3-pro": "Kling O3 Pro",
     "kling-o3-4k": "Kling O3 4K",
     "veo3.1-lite": "Veo 3.1 Lite",
+    "gemini-omni": "Gemini Omni Flash 1.1",
     "seedance-2.5": "Seedance 2.5",
     "seedance-2.0": "Seedance 2.0",
     "h3-max": "MiniMax H3 Max",
@@ -817,6 +819,10 @@ function VideoCards({
   useEffect(() => {
     if (videoModel === "veo3.1-lite") {
       setDuration((d) => (["4", "6", "8"].includes(d) ? d : "6"));
+    } else if (videoModel === "gemini-omni") {
+      setDuration((d) => (GEMINI_OMNI_DURATIONS.includes(d) ? d : "8"));
+      setVideoResolution((r) => (["360p", "720p", "1080p", "4k"].includes(r) ? r : "720p"));
+      if (videoMode === "reference-to-video") setVideoMode("text-to-video");
     } else if (videoModel === "seedance-2.5") {
       setDuration((d) => (SEEDANCE_25_DURATIONS.includes(d) ? d : "10"));
       setVideoResolution((r) => (r === "768p" ? "1080p" : r));
@@ -952,7 +958,7 @@ function VideoCards({
     } else {
       modelKey = `${videoModel}-i2v`;
     }
-    onPricingChange?.(modelKey, duration, (videoModel.startsWith("seedance-") || videoModel === "h3-max") ? videoResolution : undefined);
+    onPricingChange?.(modelKey, duration, (videoModel.startsWith("seedance-") || videoModel === "h3-max" || videoModel === "gemini-omni") ? videoResolution : undefined);
   }, [videoModel, duration, videoMode, firstFrame, lastFrame, videoResolution, onPricingChange]);
 
   useEffect(() => {
@@ -1021,7 +1027,7 @@ function VideoCards({
         : videoMode === "image-to-video"
           ? (firstFrame?.aspectRatio || lastFrame?.aspectRatio)
           : undefined,
-      resolution: (videoModel.startsWith("seedance-") || videoModel === "h3-max") ? videoResolution : undefined,
+      resolution: (videoModel.startsWith("seedance-") || videoModel === "h3-max" || videoModel === "gemini-omni") ? videoResolution : undefined,
       jobType: "video_gen",
       firstFrameUrl: videoMode === "image-to-video" ? firstFrame?.url : undefined,
       lastFrameUrl: videoMode === "image-to-video" ? lastFrame?.url : undefined,
@@ -1078,6 +1084,7 @@ function VideoCards({
 
   const durationOptions = (() => {
     if (videoModel === "veo3.1-lite") return ["4", "6", "8"];
+    if (videoModel === "gemini-omni") return GEMINI_OMNI_DURATIONS;
     if (videoModel === "seedance-2.5") return SEEDANCE_25_DURATIONS;
     if (videoModel === "seedance-2.0") return ["4", "6", "8", "10", "12", "15"];
     if (videoModel === "h3-max") return H3_DURATIONS;
@@ -1090,11 +1097,14 @@ function VideoCards({
 
   const videoResOptions = videoModel === "h3-max"
     ? (["480p", "768p"] as const)
-    : (["480p", "720p", "1080p"] as const);
+    : videoModel === "gemini-omni"
+      ? (["360p", "720p", "1080p", "4k"] as const)
+      : (["480p", "720p", "1080p"] as const);
   const videoResIndex = (videoResOptions as readonly string[]).indexOf(videoResolution);
 
   const videoModelIcon = (m: string) => {
     if (m.startsWith("kling-o3-")) return <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: -0.5 }}>{m === "kling-o3-4k" ? "4K" : "K"}</span>;
+    if (m === "gemini-omni") return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.4 5.2 4.4 9.2 9.6 9.6v.8C16.4 12.8 12.4 16.8 12 22h-.8C10.8 16.8 6.8 12.8 1.6 12.4v-.8C6.8 11.2 10.8 7.2 11.2 2h.8z" /></svg>;
     if (m === "h3-max") return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>;
     if (m === "veo3.1-lite") return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>;
     return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>;
@@ -1413,6 +1423,11 @@ function VideoCards({
               Seedance 2.0
               <span className="rpanel-tag">Premium</span>
             </button>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "gemini-omni" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("gemini-omni"); if (videoMode === "reference-to-video") setVideoMode("text-to-video"); toggle("model"); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.4 5.2 4.4 9.2 9.6 9.6v.8C16.4 12.8 12.4 16.8 12 22h-.8C10.8 16.8 6.8 12.8 1.6 12.4v-.8C6.8 11.2 10.8 7.2 11.2 2h.8z" /></svg>
+              Gemini Omni Flash
+              <span className="rpanel-tag">Premium</span>
+            </button>
             <button type="button" className={`rpanel-list-btn ${videoModel === "h3-max" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("h3-max"); setVideoMode("text-to-video"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
               MiniMax H3 Max
@@ -1452,7 +1467,7 @@ function VideoCards({
         </div>
       </div>
 
-      {(videoModel.startsWith("seedance-") || videoModel === "h3-max") && (
+      {(videoModel.startsWith("seedance-") || videoModel === "h3-max" || videoModel === "gemini-omni") && (
         <div className="rpanel-flat-section">
           <span className="rpanel-flat-label">Resolution</span>
           <div className="rpanel-seg-group rpanel-seg-group--full" data-count={videoResOptions.length} data-active={videoResIndex >= 0 ? videoResIndex : 0}>
