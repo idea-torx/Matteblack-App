@@ -1060,11 +1060,11 @@ export function OperatorPanel({
                       {isUser ? (
                         m.text
                       ) : m.streaming && !hasText ? (
-                        <ThinkingPill className="agent-panel__thinking" size={20} />
+                        <ThinkingPill className="agent-panel__thinking" />
                       ) : (
                         <>
                           <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
-                          {m.streaming && <ThinkingPill size={18} className="agent-panel__thinking agent-panel__thinking--inline" />}
+                          {m.streaming && <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" />}
                         </>
                       )}
                     </div>

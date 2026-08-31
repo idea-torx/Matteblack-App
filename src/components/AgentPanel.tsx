@@ -2951,7 +2951,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                     {isUser ? (
                       m.text
                     ) : m.streaming && !m.text ? (
-                      <ThinkingPill className="agent-panel__thinking" size={20} />
+                      <ThinkingPill className="agent-panel__thinking" />
                     ) : (
                       <>
                         <div
@@ -2959,10 +2959,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                           dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
                         />
                         {m.streaming && (
-                          <ThinkingPill
-                            size={18}
-                            className="agent-panel__thinking agent-panel__thinking--inline"
-                          />
+                          <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" />
                         )}
                       </>
                     )}

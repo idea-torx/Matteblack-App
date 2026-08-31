@@ -6,8 +6,36 @@
   line-height: 1;
 }
 
-.thinking-pill__emblem {
+/* Pixel-grid loader: 3x3 of 4px cells, each pulsing on its own delay so a
+ * chevron wavefront drives across the grid. Delays live in the component —
+ * they are arithmetic on the cell index, not nine hand-written rules. */
+.thinking-pill__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 1.5px;
   flex-shrink: 0;
+}
+
+.thinking-pill__cell {
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--text-primary);
+  opacity: 0.15;
+  animation: thinking-pill-pixel 650ms ease-in-out infinite;
+}
+
+@keyframes thinking-pill-pixel {
+  0%, 100% { opacity: 0.15; }
+  30% { opacity: 1; }
+}
+
+/* Mono tabular figures so the tenths digit doesn't jog the label. */
+.thinking-pill__elapsed {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
 /* Shimmer-clipped-to-text: a moving blue gradient band sweeps across a
@@ -40,6 +68,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Grid freezes dim; the timer still ticks — it is information, not motion. */
+  .thinking-pill__cell { animation: none; }
   .thinking-pill__text {
     animation: none;
     background: none;
