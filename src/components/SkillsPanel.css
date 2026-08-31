@@ -260,18 +260,20 @@
   font-weight: 600;
   color: #444444;
   background: none;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 7px;
   cursor: pointer;
-  transition: color 0.12s, background 0.12s;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 .skills-card-action:hover {
+  border-color: rgba(0, 0, 0, 0.24);
   color: #111111;
   background: rgba(0, 0, 0, 0.06);
 }
 .skills-card-action--inject:hover {
   color: var(--accent);
   background: var(--accent-dim);
+  border-color: var(--accent);
 }
 
 .skills-sort {
