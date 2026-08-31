@@ -14,6 +14,11 @@ import "./SkillsPanel.css";
  */
 type SkillMeta = {
   slug: string; title: string; description: string; updatedAt: string; bytes: number;
+  /** Section this files under — from `label:` in the frontmatter, else read off
+   *  the skill's own words by the server. System skills override it. */
+  label?: string;
+  /** First lines of the body, shown on the card face. */
+  preview?: string;
   /** Ships with the app (e.g. the operator's own system prompt). Editable like
    *  any other skill, but resettable to the shipped text. */
   system?: boolean;
@@ -53,6 +58,15 @@ function relativeDate(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Sections, in the order they read. Anything the server labels with something
+ *  else lands in "Creative" — the panel never hides a skill it can't place. */
+const SECTIONS = ["System", "Video", "Image", "Writing", "Creative"] as const;
+
+function sectionOf(s: SkillMeta): string {
+  if (s.system) return "System";
+  return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Creative";
 }
 
 /** The file glyph on every card. Dog-eared page, ruled lines. */
@@ -248,35 +262,46 @@ export function SkillsPanel({ onClose, onUseSkill }: {
             </span>
           </div>
         ) : (
-          <div className="skills-grid">
-            {skills.map((s) => (
-              <div key={s.slug} className="skills-card">
-                <button type="button" className="skills-card-main" onClick={() => void open(s.slug)} title={`Open ${s.title}`}>
-                  <FileIcon system={s.system} />
-                  <span className="skills-card-title">{s.title}</span>
-                  {s.description && <span className="skills-card-desc">{s.description}</span>}
-                  <span className="skills-card-meta">
-                    {s.system && <span className="skills-badge">System</span>}
-                    {relativeDate(s.updatedAt)}
-                  </span>
-                </button>
-                {onUseSkill && (
-                  <button
-                    type="button"
-                    className="skills-card-use"
-                    onClick={() => onUseSkill(s.slug, s.title)}
-                    aria-label={`Use ${s.title} with the agent`}
-                    title="Use with the agent"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                      <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                  </button>
-                )}
+          SECTIONS.filter((section) => skills.some((s) => sectionOf(s) === section)).map((section) => (
+            <section key={section} className="skills-section">
+              <h3 className="skills-section-title">
+                {section}
+                <span className="skills-section-count">{skills.filter((s) => sectionOf(s) === section).length}</span>
+              </h3>
+              <div className="skills-grid">
+                {skills.filter((s) => sectionOf(s) === section).map((s) => (
+                  <div key={s.slug} className="skills-card">
+                    <button
+                      type="button"
+                      className="skills-card-preview"
+                      onClick={() => void open(s.slug)}
+                      title={s.description || `Open ${s.title}`}
+                    >
+                      <span className="skills-card-preview-text">{s.preview || s.description}</span>
+                    </button>
+                    <div className="skills-card-bar">
+                      <span className="skills-card-title" title={s.title}>{s.title}</span>
+                      <span className="skills-card-date">{relativeDate(s.updatedAt)}</span>
+                      {onUseSkill && (
+                        <button
+                          type="button"
+                          className="skills-card-use"
+                          onClick={() => onUseSkill(s.slug, s.title)}
+                          aria-label={`Use ${s.title} with the agent`}
+                          title="Use with the agent"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="12 5 19 12 12 19" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </section>
+          ))
         )}
       </div>
 

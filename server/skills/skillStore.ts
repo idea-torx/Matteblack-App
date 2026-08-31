@@ -19,6 +19,11 @@ export type SkillMeta = {
   description: string;
   updatedAt: string;
   bytes: number;
+  /** Section the panel files it under. From `label:` in the frontmatter when
+   *  the author set one, otherwise read off the skill's own words. */
+  label: string;
+  /** First lines of the body, for the card face. */
+  preview: string;
 };
 export type Skill = SkillMeta & { body: string };
 
@@ -43,16 +48,18 @@ function skillPath(slug: string): string {
 /** Pull `title`/`name` and `description` out of optional YAML-ish frontmatter,
  *  falling back to the first `# heading` and first prose line. Not a YAML
  *  parser — two flat string keys is all a skill header ever needs. */
-function parseHeader(body: string, slug: string): { title: string; description: string } {
+function parseHeader(body: string, slug: string): { title: string; description: string; label: string } {
   let title = "";
   let description = "";
+  let label = "";
   const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(body);
   if (fm) {
     for (const line of fm[1].split(/\r?\n/)) {
-      const m = /^(name|title|description):\s*(.*)$/.exec(line.trim());
+      const m = /^(name|title|description|label):\s*(.*)$/.exec(line.trim());
       if (!m) continue;
       const value = m[2].trim().replace(/^["']|["']$/g, "");
       if (m[1] === "description") description ||= value;
+      else if (m[1] === "label") label ||= value;
       else title ||= value;
     }
   }
@@ -63,7 +70,35 @@ function parseHeader(body: string, slug: string): { title: string; description: 
       .split(/\r?\n/)
       .find((l) => l.trim() && !l.trim().startsWith("#")) ?? "").trim().slice(0, 200);
   }
-  return { title: title || slug, description };
+  return { title: title || slug, description, label: label || classify(`${title} ${description} ${rest.slice(0, 1200)}`) };
+}
+
+/** What kind of skill this is, from its own words. First rule that matches
+ *  wins, so the order is the priority: a video recipe that happens to mention
+ *  its voice-over is still a video recipe.
+ *  ponytail: keywords, not a model call — the panel needs a section header, not
+ *  a taxonomy. Authors who disagree write `label:` in the frontmatter. */
+const LABEL_RULES: Array<[string, RegExp]> = [
+  // Prefixes, not whole words — "animat" has to catch "animated" and "animation".
+  ["Video", /\b(video|clip|shot|scene|storyboard|animat|footage|cinemat|second|t2v|i2v|h3 max|veo|kling|seedance|minimax)/i],
+  ["Image", /\b(image|photo|poster|logo|still|thumbnail|illustration|seedream|nano banana|gpt-image|aspect ratio)/i],
+  ["Writing", /\b(writing|copy|caption|voice|tone|prose|headline|humaniz)/i],
+];
+
+export function classify(text: string): string {
+  for (const [label, re] of LABEL_RULES) if (re.test(text)) return label;
+  return "Creative";
+}
+
+/** Body without frontmatter or markdown furniture — what the card face shows. */
+function previewOf(body: string): string {
+  return body
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/[*_`>]/g, "")
+    .trim()
+    .slice(0, 320);
 }
 
 export function ensureSkillsDir(): void {
@@ -80,8 +115,8 @@ export function listSkills(): SkillMeta[] {
       const full = path.join(SKILLS_DIR, f);
       const stat = fs.statSync(full);
       const body = fs.readFileSync(full, "utf8");
-      const { title, description } = parseHeader(body, slug);
-      return { slug, title, description, updatedAt: stat.mtime.toISOString(), bytes: stat.size };
+      const { title, description, label } = parseHeader(body, slug);
+      return { slug, title, description, label, preview: previewOf(body), updatedAt: stat.mtime.toISOString(), bytes: stat.size };
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -92,8 +127,8 @@ export function readSkill(slug: string): Skill | null {
   const body = fs.readFileSync(p, "utf8");
   const stat = fs.statSync(p);
   const safe = slugify(slug);
-  const { title, description } = parseHeader(body, safe);
-  return { slug: safe, title, description, updatedAt: stat.mtime.toISOString(), bytes: stat.size, body };
+  const { title, description, label } = parseHeader(body, safe);
+  return { slug: safe, title, description, label, preview: previewOf(body), updatedAt: stat.mtime.toISOString(), bytes: stat.size, body };
 }
 
 /** Write (create or overwrite) a skill. Returns its metadata. */
@@ -103,8 +138,8 @@ export function writeSkill(slug: string, body: string): SkillMeta {
   fs.writeFileSync(p, body, "utf8");
   const safe = slugify(slug);
   const stat = fs.statSync(p);
-  const { title, description } = parseHeader(body, safe);
-  return { slug: safe, title, description, updatedAt: stat.mtime.toISOString(), bytes: stat.size };
+  const { title, description, label } = parseHeader(body, safe);
+  return { slug: safe, title, description, label, preview: previewOf(body), updatedAt: stat.mtime.toISOString(), bytes: stat.size };
 }
 
 export function deleteSkill(slug: string): boolean {

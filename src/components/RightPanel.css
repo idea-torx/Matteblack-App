@@ -1814,7 +1814,10 @@
 .design-subtool-bar--canvas {
   position: absolute;
   bottom: 20px;
-  left: calc(50% + (var(--canvas-left-inset, 0px) - var(--canvas-right-inset, 0px)) / 2);
+  /* Pegged to the viewport centre, not to the gap between the panels: the
+     insets outlive the panel that set them, so the bar used to sit off-centre
+     with everything closed. Fixed spot, whatever is open. */
+  left: 50%;
   transform: translateX(-50%);
   z-index: 25;
   margin: 0;

@@ -143,53 +143,91 @@
   max-width: var(--skills-panel-width);
 }
 
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-  padding: 4px 12px 16px;
+.skills-section {
+  padding: 0 12px;
+}
+.skills-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.skills-section-count {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: rgba(var(--tint-rgb), 0.08);
 }
 
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 0 0 4px;
+}
+
+/* A card is the document itself: a translucent page of its own text, on a
+ * solid bar carrying the title and the hand-to-agent arrow. */
 .skills-card {
-  position: relative;
   display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 12px;
   border: 1px solid rgba(var(--tint-rgb), 0.06);
   background: rgba(var(--tint-rgb), 0.02);
-  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+  transition: border-color 0.12s, transform 0.12s;
 }
 .skills-card:hover {
-  background: rgba(var(--tint-rgb), 0.05);
-  border-color: rgba(var(--tint-rgb), 0.12);
+  border-color: rgba(var(--tint-rgb), 0.14);
   transform: translateY(-1px);
 }
 
-.skills-card-main {
+.skills-card-preview {
   flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 16px 12px 12px;
-  text-align: center;
+  height: 108px;
+  overflow: hidden;
+  padding: 10px 10px 0;
+  text-align: left;
   background: none;
   border: none;
   cursor: pointer;
+  /* The page fades out rather than ending — it's a peek, not a truncation. */
+  mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
 }
+.skills-card-preview-text {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: opacity 0.12s;
+}
+.skills-card:hover .skills-card-preview-text { opacity: 0.8; }
 
-.skills-file {
-  color: var(--text-muted);
-  margin-bottom: 2px;
-  transition: color 0.12s;
+.skills-card-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 10px;
+  background: var(--bg-hover);
+  border-top: 1px solid rgba(var(--tint-rgb), 0.06);
 }
-.skills-card:hover .skills-file { color: var(--accent); }
-/* System skills read as app furniture, not user documents. */
-.skills-file--system { color: var(--accent); opacity: 0.75; }
 
 .skills-card-title {
-  width: 100%;
-  font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -197,31 +235,16 @@
   white-space: nowrap;
 }
 
-.skills-card-desc {
-  width: 100%;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.skills-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10px;
+.skills-card-date {
+  font-size: 9.5px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .skills-card-use {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 24px;
-  height: 24px;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -230,11 +253,8 @@
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  opacity: 0;
-  transition: color 0.12s, background 0.12s, opacity 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
-.skills-card:hover .skills-card-use,
-.skills-card-use:focus-visible { opacity: 1; }
 .skills-card-use:hover {
   color: var(--accent);
   background: var(--accent-dim);
