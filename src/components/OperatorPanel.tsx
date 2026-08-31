@@ -371,7 +371,7 @@ export function OperatorPanel({
   onBusyChange?: (busy: boolean) => void;
   // Supplies the canvas the user has open + their current viewport (world
   // coords), captured at send time so operator generations land on-screen.
-  getCanvasContext?: () => { canvasId?: string; viewport?: { cx: number; cy: number; w: number; h: number } };
+  getCanvasContext?: () => { canvasId?: string; viewport?: { cx: number; cy: number; w: number; h: number }; selectedNodeIds?: string[] };
   // The image(s) currently selected on the canvas — shown as removable chips in
   // the composer and sent as the generation reference (→ fal img2img).
   canvasReferenceImages?: ReferenceImage[];
@@ -681,7 +681,7 @@ export function OperatorPanel({
     setStreaming(true);
     const ac = new AbortController();
     abortRef.current = ac;
-    let ctx: { canvasId?: string; viewport?: { cx: number; cy: number; w: number; h: number } } = {};
+    let ctx: { canvasId?: string; viewport?: { cx: number; cy: number; w: number; h: number }; selectedNodeIds?: string[] } = {};
     try { ctx = getCanvasContext?.() || {}; } catch { /* canvas not ready */ }
     // Wait for any in-flight uploads so their references are never dropped.
     const uploadedUrls = (await Promise.allSettled(pendingUploadsRef.current))
@@ -711,6 +711,7 @@ export function OperatorPanel({
           effort: EFFORT_LEVELS[effortIndex]?.id,
           canvasId: ctx.canvasId,
           viewport: ctx.viewport,
+          selectedNodeIds: ctx.selectedNodeIds?.length ? ctx.selectedNodeIds : undefined,
           referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
           referenceAspectRatio,
         }),

@@ -50,3 +50,17 @@ assert.deepEqual(w.missing, ["bg"]);
 assert.equal((await inlineAssets("<p>hi</p>", undefined, fake)).html, "<p>hi</p>");
 
 console.log("all render_html asset checks passed");
+
+// applyEdits: a revision must land exactly where the agent aimed it, or not at all.
+{
+  const { applyEdits } = await import("./agentRender.js");
+  const doc = `<h1>Save 20%</h1><p>Save 20% today</p><span>Ends Friday</span>`;
+  assert.equal(applyEdits(doc, [{ find: "Ends Friday", replace: "Ends Sunday" }]),
+    `<h1>Save 20%</h1><p>Save 20% today</p><span>Ends Sunday</span>`);
+  // Ambiguous and stale edits are refused rather than half-applied.
+  assert.match((applyEdits(doc, [{ find: "Save 20%", replace: "Save 30%" }]) as { error: string }).error, /2 matches/);
+  assert.match((applyEdits(doc, [{ find: "Ends Monday", replace: "x" }]) as { error: string }).error, /no match/);
+  // A later edit that can't apply doesn't leave the earlier one in place.
+  const bad = applyEdits(doc, [{ find: "Ends Friday", replace: "Ends Sunday" }, { find: "nope", replace: "x" }]);
+  assert.ok(typeof bad !== "string");
+}
