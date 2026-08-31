@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 
-const SSE_DEBOUNCE_MS = 500;
+// Coalesces bursts of remote updates into one refetch. Kept short: the wait is
+// dead time between the agent finishing a render and the canvas showing it, and
+// a render is now ~150ms of work sitting behind it.
+const SSE_DEBOUNCE_MS = 150;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
