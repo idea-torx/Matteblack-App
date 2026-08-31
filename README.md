@@ -12,10 +12,10 @@ AI providers directly using **your own API keys**.
 - **Generation:** [fal.ai](https://fal.ai) (bring your own key)
 - **Agent / Brand IQ:** Anthropic (optional, bring your own key)
 
-> **Just want to use the app?** You don't need any of this — download the
-> installer from [Releases](https://github.com/idea-torx/FalForge/releases/latest)
-> and follow **[INSTALL.md](INSTALL.md)**. The rest of this file is for working on
-> the source.
+> **Just want to use the app?** See **[INSTALL.md](INSTALL.md)** — either
+> `npm run electron:dev` from a clone, or the installer from
+> [Releases](https://github.com/idea-torx/FalForge/releases/latest). The rest of
+> this file is for working on the source.
 
 > Converting this into a packaged Windows desktop app? See **[CONVERSION.md](CONVERSION.md)**
 > for the full architecture and phase-by-phase roadmap.
