@@ -2075,6 +2075,11 @@ function App() {
         aria-hidden="true"
         style={{ ["--titlebar-w" as string]: showAgentPanel ? "360px" : rightPanelOpen ? "300px" : "184px" }}
       />
+      {/* macOS only: the thin strip of window above the floating cards, full
+        * width. Everything below it — project tabs, panel tab strip — carries
+        * its own drag region, so this just closes the gap over the agent /
+        * tools panel and makes the whole top edge a handle. */}
+      <div className="app-titlebar app-titlebar--top" aria-hidden="true" />
       {shareModalOpen && activeProjectId && (
         <ShareModal
           projectId={activeProjectId}
