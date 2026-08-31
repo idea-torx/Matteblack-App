@@ -97,10 +97,10 @@
   --icon-rail-width: 64px;
   --panel-float-top: 12px;
   --project-tabs-h: 50px;
-  /* Left flyout panels start below the project tab strip so they stack under it
-   * instead of covering it. The rail itself keeps --panel-float-top: it holds
-   * the traffic lights and has to reach the window's top edge. */
-  --left-panel-top: calc(var(--panel-float-top) + var(--project-tabs-h));
+  /* Left flyout panels run the full height of the window; the project tab
+   * strip slides right by --canvas-left-inset to make room rather than being
+   * covered. */
+  --left-panel-top: var(--panel-float-top);
   --panel-float-bottom: 12px;
   --panel-float-gap: 12px;
   /* Breathing room between the left stack and the canvas edge. 0 when the
