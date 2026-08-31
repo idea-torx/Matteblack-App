@@ -29,6 +29,11 @@ type OperatorContext = {
   // The selected canvas image's aspect-ratio label (e.g. "3:4"). When set and
   // the user didn't pin an AR, the next generation inherits it (lineage).
   referenceAspectRatio?: string;
+  // Generation jobs this turn has dispatched. Stop has to reach these: killing
+  // the claude process ends the *reasoning*, but every generate_media it already
+  // fired is a queued fal job that keeps running, keeps charging, and keeps
+  // landing on the canvas — which is what "it wouldn't stop generating" is.
+  jobIds: Set<string>;
   updatedAt: number;
 };
 
@@ -44,6 +49,7 @@ export function setOperatorContext(
     viewport: ctx.viewport,
     referenceUrls: ctx.referenceUrls,
     referenceAspectRatio: ctx.referenceAspectRatio,
+    jobIds: new Set(),
     updatedAt: Date.now(),
   });
 }
@@ -52,3 +58,16 @@ export function getOperatorContext(userId: string): OperatorContext | undefined 
   return byUser.get(userId);
 }
 
+/** Record a job the operator just dispatched, so stop can cancel it. */
+export function noteOperatorJob(userId: string, jobId: string): void {
+  byUser.get(userId)?.jobIds.add(jobId);
+}
+
+/** Job ids dispatched since this turn started; clears them. */
+export function takeOperatorJobs(userId: string): string[] {
+  const ctx = byUser.get(userId);
+  if (!ctx) return [];
+  const ids = [...ctx.jobIds];
+  ctx.jobIds.clear();
+  return ids;
+}

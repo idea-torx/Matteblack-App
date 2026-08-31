@@ -8,7 +8,8 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
-import { setOperatorContext } from "../services/operatorCanvasContext.js";
+import { setOperatorContext, takeOperatorJobs } from "../services/operatorCanvasContext.js";
+import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -167,8 +168,32 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   send({ type: "ping" });
 
   // Abort the claude process if the client disconnects.
+  //
+  // Killing claude only ends the reasoning. Anything it already dispatched is a
+  // queued fal job that keeps running, keeps charging, and keeps dropping onto
+  // the canvas — so Stop looked like it did nothing and the only way out was
+  // quitting the app. Cancel this turn's jobs too: same status flip as
+  // /api/job/:id/cancel, which the fal.ts polling loop watches for and turns
+  // into a fal.queue.cancel.
   const ac = new AbortController();
-  req.on("close", () => ac.abort());
+  // 'close' also fires on a normal res.end(), and cancelling a completed turn's
+  // jobs would be a worse bug than the one being fixed. The finally block below
+  // runs first, so this flag is already true by then.
+  let finished = false;
+  req.on("close", () => {
+    ac.abort();
+    if (finished) return;
+    const ids = req.userId ? takeOperatorJobs(req.userId) : [];
+    if (ids.length === 0) return;
+    pool
+      .query(
+        `UPDATE jobs SET status = 'cancelled'
+          WHERE id = ANY($1::uuid[]) AND user_id = $2
+            AND status IN ('queued', 'pending', 'processing')`,
+        [ids, req.userId],
+      )
+      .catch((err) => console.error("[operator] failed to cancel in-flight jobs:", err));
+  });
 
   try {
     const { sessionId: finalSession } = await runOperator({
@@ -189,6 +214,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       send({ type: "error", message: err instanceof Error ? err.message : String(err) });
     }
   } finally {
+    finished = true;
     try { res.write("event: end\ndata: {}\n\n"); res.end(); } catch { /* already closed */ }
   }
 });

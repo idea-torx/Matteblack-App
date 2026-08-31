@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef, memo } from "react";
+import { NodeActions } from "./NodeActions";
 import { createPortal } from "react-dom";
 import type { CanvasNode, UndoCommand } from "../../types/canvas";
 import type { ResizeHandle } from "../../hooks/useResizeHandles";
@@ -487,128 +488,18 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         <div className="freeform-canvas__floating-toolbar" style={{ position: "absolute", left: node.x + node.width / 2, top: node.y + node.height + 6 / zoom, bottom: "auto", zIndex: 999999, transform: `translateX(-50%) scale(${Math.min(1.55 * Math.pow(1 / zoom, 0.55), 3.5)})`, transformOrigin: "top center" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="freeform-canvas__floating-toolbar__glass-shadow" aria-hidden="true" />
           <div className="freeform-canvas__floating-toolbar__glass-backdrop" aria-hidden="true" />
-          <button
-            type="button"
-            className="freeform-canvas__toolbar-btn"
-            title="Download"
-            aria-label="Download"
-            onClick={async (e) => {
-              e.stopPropagation();
-              await onDownloadNode(node);
+          <NodeActions
+            node={node}
+            onDownload={onDownloadNode}
+            onSaveToLibrary={onSaveToLibrary}
+            onOpenFullscreen={onOpenFullscreen}
+            onSavePrompt={onSavePrompt}
+            onReusePrompt={(n) => {
+              navigator.clipboard.writeText(n.label).catch(() => {});
+              if (onDropPrompt) onDropPrompt(n.label, n.job_id);
             }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="freeform-canvas__toolbar-btn"
-            title="Save to library"
-            aria-label="Save to library"
-            onClick={(e) => {
-              e.stopPropagation();
-              const btn = e.currentTarget;
-              if (btn.hasAttribute("disabled")) return;
-              btn.classList.add("freeform-canvas__toolbar-btn--saved");
-              btn.setAttribute("disabled", "true");
-              onSaveToLibrary(node).then((result) => {
-                if (result.ok) {
-                  setTimeout(() => {
-                    btn.classList.remove("freeform-canvas__toolbar-btn--saved");
-                    btn.removeAttribute("disabled");
-                  }, 1500);
-                } else {
-                  btn.classList.remove("freeform-canvas__toolbar-btn--saved");
-                  btn.classList.add("freeform-canvas__toolbar-btn--error");
-                  setTimeout(() => {
-                    btn.classList.remove("freeform-canvas__toolbar-btn--error");
-                    btn.removeAttribute("disabled");
-                  }, 2000);
-                }
-              });
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="freeform-canvas__toolbar-btn"
-            title="Fullscreen"
-            aria-label="Fullscreen"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenFullscreen(node);
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-          </button>
-          {node.label && (
-            <button
-              type="button"
-              className="freeform-canvas__toolbar-btn"
-              title="Save prompt"
-              aria-label="Save prompt"
-              onClick={(e) => {
-                e.stopPropagation();
-                const btn = e.currentTarget;
-                if (btn.hasAttribute("disabled")) return;
-                btn.classList.add("freeform-canvas__toolbar-btn--saved");
-                btn.setAttribute("disabled", "true");
-                onSavePrompt(node).then((result) => {
-                  if (!result.ok) {
-                    btn.classList.remove("freeform-canvas__toolbar-btn--saved");
-                    btn.classList.add("freeform-canvas__toolbar-btn--error");
-                  }
-                  setTimeout(() => {
-                    btn.classList.remove("freeform-canvas__toolbar-btn--saved");
-                    btn.classList.remove("freeform-canvas__toolbar-btn--error");
-                    btn.removeAttribute("disabled");
-                  }, result.ok ? 1500 : 2000);
-                });
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              </svg>
-            </button>
-          )}
-          {node.label && (
-            <button
-              type="button"
-              className="freeform-canvas__toolbar-btn"
-              title="Reuse prompt"
-              aria-label="Reuse prompt"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigator.clipboard.writeText(node.label).catch(() => {});
-                if (onDropPrompt) onDropPrompt(node.label, node.job_id);
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" /><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
-              </svg>
-            </button>
-          )}
-          <button
-            type="button"
-            className="freeform-canvas__toolbar-btn freeform-canvas__toolbar-btn--danger"
-            title="Delete"
-            aria-label="Delete"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteNode(node, { setNodes, pushUndo, canvasId });
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-            </svg>
-          </button>
+            onDelete={(n) => onDeleteNode(n, { setNodes, pushUndo, canvasId })}
+          />
         </div>,
         nodeRef.current.parentElement || document.body
       )}

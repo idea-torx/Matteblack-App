@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { CinemaViewer } from "../features/cinema-frame/components/CinemaViewer";
 import { usePlaybackState } from "../features/cinema-frame/hooks/usePlaybackState";
 import { getTotalDuration, type TimelineState } from "../features/cinema-frame/helpers/timelineState";
+import { NodeActions, type NodeActionHandlers } from "./canvas/NodeActions";
+import type { CanvasNode } from "../types/canvas";
 import "./MediaModal.css";
 
 /**
@@ -11,9 +13,14 @@ import "./MediaModal.css";
  * state the React tree didn't ask for. A cover inside the window is the same
  * picture with none of that.
  */
+/** The node behind the preview, plus whatever the opening surface can actually
+ *  do with it. Both are optional: a preview with neither still shows the media,
+ *  it just has nothing but a close button in the bar. */
+type WithActions = { label?: string; node?: CanvasNode; actions?: NodeActionHandlers };
+
 export type MediaModalTarget =
-  | { kind: "image" | "video" | "svg"; src: string; label?: string }
-  | { kind: "cinema"; timeline: TimelineState; label?: string };
+  | ({ kind: "image" | "video" | "svg"; src: string } & WithActions)
+  | ({ kind: "cinema"; timeline: TimelineState } & WithActions);
 
 function fmt(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -98,7 +105,11 @@ export function MediaModal({ target, onClose }: { target: MediaModalTarget | nul
       onClick={onClose}
     >
       <div className="media-modal__bar">
-        <span className="media-modal__title">{target.label || ""}</span>
+        {/* The same mini-menu as the canvas node, not the prompt: this is where
+            you decide to keep something, and the label is a whole paragraph. */}
+        <div className="media-modal__actions">
+          {target.node && target.actions && <NodeActions node={target.node} {...target.actions} />}
+        </div>
         <button type="button" className="media-modal__close" aria-label="Close preview" onClick={(e) => { e.stopPropagation(); onClose(); }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

@@ -368,7 +368,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "render_html",
     description:
-      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, edit it, and call this again with the same `nodeId` — never redraw from memory.",
+      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. To put real imagery in the page — a generated character as a sticker, a photo as a background, a logo from the user's repo — pass `images` and reference each one as `asset:NAME` in your CSS or markup; the pixels are attached server-side and never enter this conversation. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, edit it, and call this again with the same `nodeId` — never redraw from memory.",
     inputSchema: {
       type: "object",
       properties: {
@@ -377,6 +377,11 @@ const READ_TOOLS: Tool[] = [
         height: { type: "number", description: "Output height in pixels, e.g. 1350 for 4:5. Default 1350." },
         label: { type: "string", description: "Short name for the node, e.g. 'Quiz card 3'." },
         nodeId: { type: "string", description: "Re-render an existing piece in place (from a previous render_html or get_html). Omit to place a new one." },
+        images: {
+          type: "object",
+          description: "Imagery to embed, as { name: pathOrUrl }. The name is yours to pick ([A-Za-z0-9_-], up to 8 entries); reference it in the document as `asset:name` — e.g. background: url(asset:hero) or <img src=\"asset:logo\">. Each value is a canvas/generation URL (from generate_media or list_canvas), an https URL, or an absolute path on this machine (or ~/...) such as a file in the user's repo. The bytes are read on the server and inlined into the page, so nothing about the image is sent back to you. Anything that can't be read comes back in `missing` instead of silently rendering blank.",
+          additionalProperties: { type: "string" },
+        },
       },
       required: ["html"],
     },
@@ -578,6 +583,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** A reference the bridge can actually forward.
+ *
+ *  In the desktop build a generated result is re-hosted onto the app's own
+ *  storage, so `list_canvas` hands the model a relative `/uploads/...` URL —
+ *  which an https-only guard here silently dropped, taking every reference the
+ *  model correctly passed back with it. The server resolves local URLs to
+ *  fal-reachable ones at dispatch (makeReferencesFalReachable), so they only
+ *  ever needed to survive the trip. Same guard, same fix as `usableSrc` in
+ *  routes/agentTimeline.ts. */
+function usableRef(u: unknown): u is string {
+  return typeof u === "string" && (/^https?:\/\//i.test(u) || u.startsWith("/uploads/"));
+}
+
 /** Pull any caller-supplied reference URLs out of the tool arguments so they can
  *  be passed at the top level of /api/agent/tool (the endpoint resolves refs as
  *  URLs; canvas-id resolution arrives in J3's canvas tools). */
@@ -586,13 +604,12 @@ function extractReferenceUrls(args: Record<string, unknown>): string[] {
   for (const key of ["referenceUrls", "referenceImageUrls", "imageUrls"]) {
     const v = args[key];
     if (Array.isArray(v)) {
-      for (const u of v) if (typeof u === "string" && /^https?:\/\//i.test(u)) out.push(u);
+      for (const u of v) if (usableRef(u)) out.push(u);
     }
   }
   // Single-URL convenience fields.
   for (const key of ["imageUrl", "image_url", "referenceUrl"]) {
-    const v = args[key];
-    if (typeof v === "string" && /^https?:\/\//i.test(v)) out.push(v);
+    if (usableRef(args[key])) out.push(args[key] as string);
   }
   return out.slice(0, 4);
 }
@@ -1032,9 +1049,13 @@ async function runRenderHtml(args: Record<string, unknown>): Promise<CallToolRes
       height: args.height,
       label: args.label,
       nodeId: args.nodeId,
-    }, 60000)) as { nodeId: string; src: string; width: number; height: number; replaced: boolean };
+      images: args.images,
+    }, 60000)) as { nodeId: string; src: string; width: number; height: number; replaced: boolean; missing?: string[]; problems?: string[] };
+    const missing = r.missing?.length
+      ? `\nCouldn't read: ${(r.problems?.length ? r.problems : r.missing).join("; ")} — those asset: references rendered blank.`
+      : "";
     return ok(
-      `${r.replaced ? "Re-rendered" : "Rendered"} ${r.width}x${r.height} and placed on the canvas.\nnodeId: ${r.nodeId}\nURL: ${r.src}\nPass that nodeId back to render_html to revise it, or the URL to transform_media / set_timeline.`,
+      `${r.replaced ? "Re-rendered" : "Rendered"} ${r.width}x${r.height} and placed on the canvas.\nnodeId: ${r.nodeId}\nURL: ${r.src}${missing}\nPass that nodeId back to render_html to revise it, or the URL to transform_media / set_timeline.`,
     );
   } catch (err) {
     return errToFail(err);
@@ -1048,9 +1069,14 @@ async function runGetHtml(args: Record<string, unknown>): Promise<CallToolResult
   if (!nodeId) return fail("get_html requires the `nodeId` render_html returned.");
   try {
     const r = (await httpJson(ep, "GET", `/api/agent/html/${encodeURIComponent(nodeId)}`)) as {
-      html: string; width: number | null; height: number | null;
+      html: string; width: number | null; height: number | null; images?: Record<string, string>;
     };
-    return ok(`${r.width ?? "?"}x${r.height ?? "?"}\n\n${r.html}`);
+    // The markup keeps its `asset:` placeholders, so the map has to come back
+    // with it — re-rendering without it drops every image on the page.
+    const imgs = r.images && Object.keys(r.images).length
+      ? `\nimages: ${JSON.stringify(r.images)}  (pass these back to render_html unchanged)`
+      : "";
+    return ok(`${r.width ?? "?"}x${r.height ?? "?"}${imgs}\n\n${r.html}`);
   } catch (err) {
     return errToFail(err);
   }
@@ -1203,7 +1229,7 @@ const INSTRUCTIONS = [
   "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply.",
-  "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it.",
+  "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
   "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
   "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
   "LOCAL FILES: `list_local_dir` and `read_local_file` read this machine directly by absolute path (or ~/...). When the user points at a brief, script, brand guide, copy deck or repo, open it and use what it actually says rather than asking them to paste it. Credentials files are refused by design — don't try to route around that.",

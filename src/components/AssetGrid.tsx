@@ -2,6 +2,8 @@ import { useMemo, useState, type CSSProperties } from "react";
 import type { CanvasNode } from "../types/canvas";
 import { parseTimelineFromMetadata, getTotalDuration, type TimelineState } from "../features/cinema-frame/helpers/timelineState";
 import { MediaModal, type MediaModalTarget } from "./MediaModal";
+import type { NodeActionHandlers } from "./canvas/NodeActions";
+import { useNodeToolbar } from "../hooks/useNodeToolbar";
 import "./AssetGrid.css";
 
 /**
@@ -47,10 +49,48 @@ type Item = {
  *  AssetGrid.css. */
 const ROW = 4;
 const GAP = 2;
-function rowSpan(node: CanvasNode, col: number): number {
+
+/**
+ * Landscape tiles take two columns.
+ *
+ * A single fixed column width gives every tile the same WIDTH, which means a
+ * 9:16 portrait gets ~3x the area of a 16:9 landscape at the same setting —
+ * the tall shots dominate the page and the wide ones read as thumbnails.
+ * Doubling the width of anything meaningfully landscape evens the areas out at
+ * every slider position, since both sides scale with --asset-col.
+ *
+ * ponytail: 2 columns flat, not area-matched. If the window is narrower than
+ * two columns the browser adds an implicit one; at COL_MAX that needs a window
+ * under ~950px, which this app does not run in.
+ */
+const WIDE_RATIO = 1.3;
+
+/**
+ * Width / height of the PICTURE, which is not the node's box for every type.
+ *
+ * A cinema node is 1920x1700 — 1080 of picture plus the toolbar and timeline
+ * rows underneath it — so laying its tile out from the node box makes every cut
+ * near-square regardless of what it actually contains. The poster video knows
+ * its own dimensions, so cinema tiles start at 16:9 and correct themselves the
+ * moment `loadedmetadata` fires (preload="metadata" was already fetching it).
+ */
+const CINEMA_FALLBACK = 16 / 9;
+
+function aspectOf(node: CanvasNode, isCinema: boolean, measured: number | undefined): number {
+  if (measured && measured > 0) return measured;
+  if (isCinema) return CINEMA_FALLBACK;
   const w = node.width > 0 ? node.width : 1;
   const h = node.height > 0 ? node.height : 1;
-  return Math.max(1, Math.round((col * (h / w) + GAP) / (ROW + GAP)));
+  return w / h;
+}
+
+function colSpan(aspect: number): number {
+  return aspect >= WIDE_RATIO ? 2 : 1;
+}
+
+function rowSpan(aspect: number, col: number): number {
+  const px = colSpan(aspect) === 2 ? col * 2 + GAP : col;
+  return Math.max(1, Math.round((px / aspect + GAP) / (ROW + GAP)));
 }
 
 const COL_KEY = "falforge.gridCol";
@@ -59,6 +99,19 @@ const COL_MAX = 460;
 
 export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: () => void }) {
   const [viewing, setViewing] = useState<MediaModalTarget | null>(null);
+
+  // The same actions the canvas mini-menu offers, minus Delete: removing a node
+  // means pushing an undo command onto the canvas's own stack, which the grid is
+  // rendered above and has no handle on. Delete from the canvas.
+  const { downloadNode, saveToLibrary, savePrompt } = useNodeToolbar();
+  const actions: NodeActionHandlers = {
+    onDownload: (n) => downloadNode(n),
+    onSaveToLibrary: (n) => saveToLibrary(n, () => {}),
+    onSavePrompt: savePrompt,
+    onReusePrompt: (n) => { void navigator.clipboard.writeText(n.label || ""); },
+  };
+  // Real picture aspect for cinema tiles, learned from the poster video.
+  const [ratios, setRatios] = useState<Record<string, number>>({});
   const [col, setCol] = useState(() => {
     const n = Number(localStorage.getItem(COL_KEY));
     return n >= COL_MIN && n <= COL_MAX ? n : 200;
@@ -84,6 +137,7 @@ export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: ()
   return (
     <div className="asset-grid">
       <div className="asset-grid__bar">
+        <button type="button" className="asset-grid__back" onClick={onClose}>Back to canvas</button>
         <label className="asset-grid__scale">
           <span className="asset-grid__count">{items.length} {items.length === 1 ? "asset" : "assets"}</span>
           <input
@@ -100,7 +154,6 @@ export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: ()
             }}
           />
         </label>
-        <button type="button" className="asset-grid__back" onClick={onClose}>Back to canvas</button>
       </div>
 
       {items.length === 0 ? (
@@ -111,18 +164,18 @@ export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: ()
             const isCinema = !!timeline;
             const isVideo = node.node_type === "video";
             const duration = timeline ? getTotalDuration(timeline) : 0;
+            const aspect = aspectOf(node, isCinema, ratios[node.id]);
             return (
               <button
                 type="button"
                 key={node.id}
                 className="asset-grid__tile"
-                style={{ gridRow: `span ${rowSpan(node, col)}` }}
-                title={node.label || undefined}
+                style={{ gridRow: `span ${rowSpan(aspect, col)}`, gridColumn: `span ${colSpan(aspect)}` }}
                 onClick={() =>
                   setViewing(
                     timeline
-                      ? { kind: "cinema", timeline, label: node.label }
-                      : { kind: isVideo ? "video" : "image", src: node.src, label: node.label },
+                      ? { kind: "cinema", timeline, label: node.label, node, actions }
+                      : { kind: isVideo ? "video" : "image", src: node.src, label: node.label, node, actions },
                   )
                 }
                 // Hover-preview only for plain video; a cinema tile would need
@@ -141,7 +194,23 @@ export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: ()
                     </svg>
                   </div>
                 ) : isVideo || isCinema ? (
-                  <video className="asset-grid__media" src={poster} muted playsInline preload="metadata" />
+                  <video
+                    className="asset-grid__media"
+                    src={poster}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    onLoadedMetadata={
+                      isCinema
+                        ? (e) => {
+                            const v = e.currentTarget;
+                            if (!v.videoWidth || !v.videoHeight) return;
+                            const r = v.videoWidth / v.videoHeight;
+                            setRatios((prev) => (prev[node.id] === r ? prev : { ...prev, [node.id]: r }));
+                          }
+                        : undefined
+                    }
+                  />
                 ) : (
                   <img className="asset-grid__media" src={poster} alt={node.label || ""} loading="lazy" />
                 )}
@@ -152,7 +221,6 @@ export function AssetGrid({ nodes, onClose }: { nodes: CanvasNode[]; onClose: ()
                   </span>
                 )}
                 {isVideo && <span className="asset-grid__badge">Video</span>}
-                {node.label && <span className="asset-grid__label">{node.label}</span>}
               </button>
             );
           })}

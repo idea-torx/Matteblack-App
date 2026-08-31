@@ -5,6 +5,14 @@ import path from "node:path";
 import { seedBuiltinSkills, markSeeded, BUILTIN_SKILLS, OPERATOR_SKILL_SLUG } from "../skills/builtin.js";
 import { SKILLS_DIR } from "../skills/skillStore.js";
 
+// This test WRITES to SKILLS_DIR — including a fake "user edit" — so run it
+// against a throwaway data dir or it overwrites the real operator system
+// prompt with test junk and marks it as the user's, which seeding then
+// refuses to repair.
+if (!process.env.MATTEBLACK_DATA_DIR) {
+  throw new Error("Refusing to run: set MATTEBLACK_DATA_DIR=$(mktemp -d) — this test writes to the skills dir.");
+}
+
 const p = path.join(SKILLS_DIR, `${OPERATOR_SKILL_SLUG}.md`);
 const factory = BUILTIN_SKILLS[OPERATOR_SKILL_SLUG];
 

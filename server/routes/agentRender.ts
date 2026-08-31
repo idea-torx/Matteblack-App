@@ -18,6 +18,11 @@ import { getOperatorContext } from "../services/operatorCanvasContext.js";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 import { saveFile, getFileStream, parseFileUrl } from "../storage.js";
 import { canRenderHtml, renderHtmlToPng } from "../utils/htmlRender.js";
+import { resolveLocalPath } from "../utils/localPath.js";
+import { resolveUploadPath } from "../utils/uploadPath.js";
+import { UPLOADS_DIR } from "../config/runtime.js";
+import fs from "node:fs";
+import path from "node:path";
 
 const router = Router();
 
@@ -59,9 +64,101 @@ async function placeNewNode(
   return { rect, z: ((zRes.rows[0]?.z as number) ?? 0) + 1 };
 }
 
+/** 12MB per image — a poster background, not a raw camera file. */
+const MAX_IMAGE_BYTES = 12_000_000;
+const MAX_IMAGES = 8;
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+};
+
+type Resolved = string | { error: string };
+
+const mb = (n: number) => `${(n / 1_000_000).toFixed(1)}MB`;
+
+/** One `images` entry -> a data: URI, or why it couldn't be read. */
+async function toDataUri(ref: string): Promise<Resolved> {
+  try {
+    if (/^data:image\//i.test(ref)) return ref;
+
+    const upload = resolveUploadPath(ref, UPLOADS_DIR);
+    if (upload) {
+      const b = fs.readFileSync(upload.path);
+      if (b.byteLength > MAX_IMAGE_BYTES) return { error: `${mb(b.byteLength)}, over the ${mb(MAX_IMAGE_BYTES)} limit` };
+      return `data:${upload.mime};base64,${b.toString("base64")}`;
+    }
+
+    if (/^https?:\/\//i.test(ref)) {
+      const r = await fetch(ref);
+      if (!r.ok) return { error: `fetch failed (HTTP ${r.status})` };
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.byteLength > MAX_IMAGE_BYTES) return { error: `${mb(buf.byteLength)}, over the ${mb(MAX_IMAGE_BYTES)} limit` };
+      const mime = (r.headers.get("content-type") || "").split(";")[0].trim();
+      if (!mime.startsWith("image/")) return { error: `that URL served ${mime || "no content-type"}, not an image` };
+      return `data:${mime};base64,${buf.toString("base64")}`;
+    }
+
+    // Anything else is a path on this machine — same guard as read_local_file.
+    const local = resolveLocalPath(ref);
+    if ("error" in local) return { error: local.error };
+    const mime = MIME_BY_EXT[path.extname(local.path).toLowerCase()];
+    if (!mime) return { error: `unsupported file type ${path.extname(local.path) || "(none)"}` };
+    const b = fs.readFileSync(local.path);
+    if (b.byteLength > MAX_IMAGE_BYTES) return { error: `${mb(b.byteLength)}, over the ${mb(MAX_IMAGE_BYTES)} limit` };
+    return `data:${mime};base64,${b.toString("base64")}`;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "could not be read" };
+  }
+}
+
+/**
+ * Substitute `asset:NAME` placeholders with the actual image bytes.
+ *
+ * The point is that the bytes never touch the agent's context: it writes a
+ * short name and a path or URL, and the pixels are attached here. Inlining as
+ * data: URIs rather than leaving remote URLs in the markup also means the
+ * offscreen capture is not racing the network for the thing it is capturing.
+ *
+ * Returns the names that could not be resolved so the caller can say which,
+ * rather than silently rendering a page full of broken images.
+ */
+export async function inlineAssets(
+  html: string,
+  images: unknown,
+  resolve: (ref: string) => Promise<Resolved | null> = toDataUri,
+): Promise<{ html: string; missing: string[]; problems: string[] }> {
+  if (!images || typeof images !== "object" || Array.isArray(images)) return { html, missing: [], problems: [] };
+  const missing: string[] = [];
+  // Same names, with the reason attached — "ERR_INVALID_URL" for an oversized
+  // file cost a whole debugging cycle, so the key and the cause both go back.
+  const problems: string[] = [];
+  let out = html;
+  // Longest name first: with {bg, bg2} in that order, substituting `asset:bg`
+  // would eat the prefix of `asset:bg2` and leave a stray "2" in the markup.
+  const entries = Object.entries(images as Record<string, unknown>)
+    .slice(0, MAX_IMAGES)
+    .sort((a, b) => b[0].length - a[0].length);
+  for (const [name, ref] of entries) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(name) || typeof ref !== "string" || !ref.trim()) {
+      missing.push(name);
+      problems.push(`${name}: not a usable name/path pair`);
+      continue;
+    }
+    const uri = await resolve(ref.trim());
+    if (!uri || typeof uri !== "string") {
+      missing.push(name);
+      problems.push(`${name}: ${uri && uri.error ? uri.error : "could not be read"}`);
+      continue;
+    }
+    out = out.split(`asset:${name}`).join(uri);
+  }
+  return { html: out, missing, problems };
+}
+
 /** Render markup to a PNG on the canvas. With `nodeId`, re-renders that node. */
 router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
-  const body = (req.body ?? {}) as { html?: unknown; width?: unknown; height?: unknown; label?: unknown; nodeId?: unknown };
+  const body = (req.body ?? {}) as { html?: unknown; width?: unknown; height?: unknown; label?: unknown; nodeId?: unknown; images?: unknown };
   if (typeof body.html !== "string" || !body.html.trim()) {
     res.status(400).json({ error: "Expected an `html` string — a complete document." });
     return;
@@ -83,13 +180,19 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
   const nodeId = typeof body.nodeId === "string" ? body.nodeId : null;
 
   try {
-    const png = await renderHtmlToPng(body.html, width, height);
+    // Attach the pixels here, not in the agent's context: it wrote `asset:name`.
+    const { html: markup, missing, problems } = await inlineAssets(body.html, body.images);
+    const png = await renderHtmlToPng(markup, width, height);
     const stem = uuidv4();
     const src = await saveFile(`users/${userId}/html`, `${stem}.png`, png);
     // The markup lives next to the PNG rather than in the node's jsonb: canvas
     // sync ships every node's metadata on every load, and art pages are KBs.
     const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(body.html, "utf8"));
-    const metadata = { source: "agent", kind: "html", html_url: htmlUrl, pixel_width: width, pixel_height: height };
+    // The markup is stored with its `asset:` placeholders intact, so the map of
+    // names to paths has to travel with it or a later edit re-renders blank.
+    // It is a handful of short strings, unlike the markup itself.
+    const imageMap = body.images && typeof body.images === "object" && !Array.isArray(body.images) ? body.images : {};
+    const metadata = { source: "agent", kind: "html", html_url: htmlUrl, pixel_width: width, pixel_height: height, images: imageMap };
 
     if (nodeId) {
       const upd = await pool.query(
@@ -99,7 +202,7 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
       );
       if (upd.rows.length === 0) { res.status(404).json({ error: "No such node on the open canvas." }); return; }
       broadcastCanvasUpdate(canvasId, "");
-      res.json({ nodeId, src, width, height, replaced: true });
+      res.json({ nodeId, src, width, height, replaced: true, missing, problems });
       return;
     }
 
@@ -112,7 +215,7 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
       [id, canvasId, rect.x, rect.y, size.w, size.h, z, label, src, JSON.stringify(metadata)],
     );
     broadcastCanvasUpdate(canvasId, "");
-    res.json({ nodeId: id, src, width, height, replaced: false });
+    res.json({ nodeId: id, src, width, height, replaced: false, missing, problems });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Render failed.";
     console.error("[agent/render-html] failed:", err);
@@ -129,7 +232,7 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
       `SELECT metadata FROM canvas_nodes WHERE id = $1 AND canvas_id = $2`,
       [req.params.nodeId, canvasId],
     );
-    const meta = found.rows[0]?.metadata as { html_url?: string; pixel_width?: number; pixel_height?: number } | undefined;
+    const meta = found.rows[0]?.metadata as { html_url?: string; pixel_width?: number; pixel_height?: number; images?: Record<string, string> } | undefined;
     if (!meta?.html_url) { res.status(404).json({ error: "That node wasn't rendered from HTML." }); return; }
     const ref = parseFileUrl(meta.html_url);
     if (!ref) { res.status(404).json({ error: "The source markup is no longer on disk." }); return; }
@@ -141,6 +244,7 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
       html: Buffer.concat(chunks).toString("utf8"),
       width: meta.pixel_width ?? null,
       height: meta.pixel_height ?? null,
+      images: meta.images ?? {},
     });
   } catch (err) {
     console.error("[agent/html] read failed:", err);

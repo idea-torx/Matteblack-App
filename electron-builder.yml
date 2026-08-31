@@ -58,6 +58,9 @@ files:
 #
 # Cross-compiling this from Windows does not work: build it on the Mac.
 mac:
+  # build/icon.icns — the Matteblack mark, white on a near-black squircle.
+  # Regenerate with scripts/make-icon.py if the logo changes.
+  icon: build/icon.icns
   category: public.app-category.graphics-design
   identity: null
   target:
