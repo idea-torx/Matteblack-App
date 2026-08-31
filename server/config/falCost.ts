@@ -318,6 +318,19 @@ export const FAL_COST_RULES: Record<string, Rule> = {
   //    720p (1280x720):  21600 tok/s -> $0.302/s  (page says $0.3034/s)
   // Marked "approx" because the true frame size depends on aspect ratio; we
   // use the nominal 16:9 dimensions for the tier.
+  // Seedance 2.5: same token formula, $0.0214 per 1000 tokens at every tier.
+  ...(["t2v", "i2v", "r2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
+    const ep =
+      v === "t2v" ? "text-to-video" : v === "i2v" ? "image-to-video" : "reference-to-video";
+    acc[`seedance-2.5-${v}`] = {
+      endpoint: `bytedance/seedance-2.5/${ep}`,
+      unitPrice: 0.0214,
+      unit: "units",
+      cost: (p, unitPrice) => FAL_COST_RULES[`seedance-2.0-${v}`].cost(p, unitPrice),
+    };
+    return acc;
+  }, {}),
+
   ...(["t2v", "i2v", "r2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
     const ep =
       v === "t2v" ? "text-to-video" : v === "i2v" ? "image-to-video" : "reference-to-video";

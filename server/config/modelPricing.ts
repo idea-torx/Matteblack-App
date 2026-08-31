@@ -76,6 +76,10 @@ export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
   { model_key: "veo3.1-lite-flf2v", base_cost: 6, resolution_multipliers: null, duration_multipliers: { "per_second": 1 }, feature_surcharges: { "generate_audio": 4 } },
   // H3 Max: 12 credits/s at 768P ($0.08/s fal), 480P scaled to fal's own ratio.
   { model_key: "h3-max-t2v", base_cost: 12, resolution_multipliers: { "480p": 0.625, "768p": 1.0 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  // Seedance 2.5 is $0.0214/1k tokens against 2.0's $0.014 — 1.53x, so 139 cr/s.
+  { model_key: "seedance-2.5-t2v", base_cost: 139, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "seedance-2.5-i2v", base_cost: 139, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "seedance-2.5-r2v", base_cost: 139, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "seedance-2.0-t2v", base_cost: 91, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "seedance-2.0-i2v", base_cost: 91, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "seedance-2.0-r2v", base_cost: 91, resolution_multipliers: SEEDANCE_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },

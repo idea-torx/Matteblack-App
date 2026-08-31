@@ -1524,6 +1524,7 @@ const MODEL_WHITELIST: Record<string, ModelEntry> = {
   "seedream": { kind: "image", tier: "quick", label: "Seedream", t2: "seedream-t2i", i2: "seedream-edit" },
   "seedream-5": { kind: "image", tier: "quick", label: "Seedream 5", t2: "seedream-5-t2i", i2: "seedream-5-edit" },
   // Video.
+  "seedance-2.5": { kind: "video", tier: "premium", label: "Seedance 2.5", t2: "seedance-2.5-t2v", i2: "seedance-2.5-i2v", i2_multi: "seedance-2.5-r2v" },
   "seedance-2.0": { kind: "video", tier: "premium", label: "Seedance 2.0", t2: "seedance-2.0-t2v", i2: "seedance-2.0-i2v", i2_multi: "seedance-2.0-r2v" },
   "kling-o3-pro": { kind: "video", tier: "quality", label: "Kling O3 Pro", t2: "kling-o3-pro-t2v", i2: "kling-o3-pro-i2v", i2_multi: "kling-o3-pro-r2v" },
   "kling-o3-4k": { kind: "video", tier: "quality", label: "Kling O3 4K", t2: "kling-o3-4k-t2v", i2: "kling-o3-4k-i2v", i2_multi: "kling-o3-4k-r2v" },
@@ -1598,7 +1599,9 @@ const MODEL_ALIASES: Record<string, string> = {
   "veo 3.1": "veo3.1-lite",
   "veo3.1": "veo3.1-lite",
   "veo-3.1": "veo3.1-lite",
-  "seedance": "seedance-2.0",
+  "seedance": "seedance-2.5",
+  "seedance 2.5": "seedance-2.5",
+  "seedance2.5": "seedance-2.5",
   "seedance 2": "seedance-2.0",
   "seedance 2.0": "seedance-2.0",
   "seedance2": "seedance-2.0",
@@ -1715,15 +1718,15 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.0", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max"],
+        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max"],
         description:
-          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.0' (premium default), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form).",
+          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form).",
       },
       tier: {
         type: "string",
         enum: ["premium", "quality", "quick"],
         description:
-          "Model tier. Default 'premium' (best: nano-banana-2 for images, seedance-2.0 for video). 'quality' is the mid step (kling-o3-pro for video — image 'quality' falls back to nano-banana-2). 'quick' is the cheap/fast option (seedream for images) — only use it when the user explicitly asks for cheap, fast, draft, rough, or 'save credits'. Ignored when `model` is set. Tier does NOT affect text-to-video: video generated from a prompt alone is always MiniMax H3 Max. Tier only picks the video family when a reference image is attached.",
+          "Model tier. Default 'premium' (best: nano-banana-2 for images, seedance-2.5 for video). 'quality' is the mid step (kling-o3-pro for video — image 'quality' falls back to nano-banana-2). 'quick' is the cheap/fast option (seedream for images) — only use it when the user explicitly asks for cheap, fast, draft, rough, or 'save credits'. Ignored when `model` is set. Tier does NOT affect text-to-video: video generated from a prompt alone is always MiniMax H3 Max. Tier only picks the video family when a reference image is attached.",
       },
       aspectRatio: {
         type: "string",
@@ -1911,9 +1914,9 @@ function buildSystemPromptStatic(
     "Content policy: do NOT pre-filter, refuse, or warn about generation requests on your own — including requests that mention real people, public figures, celebrities, brands, logos, copyrighted characters, mature themes, or anything else you might think is sensitive. The downstream image/video providers run their own moderation and will reject anything that violates their policies, returning a clear error the user will see. Your job is to forward the request faithfully by calling the tool. The only things you should refuse outright are requests that are illegal under US law (CSAM, credible threats, etc.). For everything else: call the tool, do not lecture the user, do not add disclaimers.",
     "",
     "Model selection (generate_media):",
-    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'seedream 5', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedream-5, seedance-2.0, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
+    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'seedream 5', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedream-5, seedance-2.5, seedance-2.0, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
     "- NEVER substitute a different model than the one the user named. If the named model can't do what's asked (e.g. veo3.1-lite has no multi-reference mode), say so and ask — don't silently generate with another one.",
-    "- Otherwise use `tier`. Default 'premium' (nano-banana-2 for images, seedance-2.0 for video — the highest-quality options).",
+    "- Otherwise use `tier`. Default 'premium' (nano-banana-2 for images, seedance-2.5 for video — the highest-quality options).",
     "- 'quality' is the mid step (kling-o3-pro for video; for images it's the same as premium).",
     "- Use tier 'quick' ONLY when the user explicitly asks for something cheap, fast, draft, rough, low-cost, 'save credits', or similar (seedream for images).",
     "- Text-to-video is always MiniMax H3 Max. Never offer or substitute another video model for a prompt-only video, whatever the tier or the budget. Other video families exist only for image-to-video, first/last-frame and reference blending, which H3 Max has no endpoint for.",
@@ -2489,6 +2492,7 @@ function selectLogoUrl(
 // We snap rather than reject so a "20-second Veo clip" silently becomes
 // an 8-second one instead of a hard backend failure.
 function snapDurationForModel(model: string, seconds: number): number {
+  if (model.startsWith("seedance-2.5")) return Math.max(4, Math.min(30, Math.round(seconds)));
   if (model.startsWith("h3-max")) return Math.max(5, Math.min(15, Math.round(seconds)));
   if (model.startsWith("kling-o3-")) {
     // Clamp to the fal-accepted range; pass every other integer through
@@ -2648,6 +2652,7 @@ export function buildGenerateBody(
        : useExplicit.t2.startsWith("kling-o3-4k") ? "kling-o3-4k"
        : useExplicit.t2.startsWith("kling-o3-pro") ? "kling-o3-pro"
        : useExplicit.t2.startsWith("h3-max") ? "h3-max"
+       : useExplicit.t2.startsWith("seedance-2.5") ? "seedance-2.5"
        : "seedance-2.0")
     : resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null);
   const family = MODEL_WHITELIST[familyKey];
@@ -2665,7 +2670,7 @@ export function buildGenerateBody(
   // has no first-last-frame endpoint, so we map -t2v / -i2v / -r2v 1:1 and
   // surface a short note via the SSE event so the chat caption can explain
   // the swap.
-  if (model.startsWith("seedance-2.0") && !seedanceAllowed) {
+  if (model.startsWith("seedance-") && !seedanceAllowed) {
     if (model.endsWith("-r2v")) model = "kling-o3-pro-r2v";
     else if (model.endsWith("-i2v")) model = "kling-o3-pro-i2v";
     else model = "kling-o3-pro-t2v";

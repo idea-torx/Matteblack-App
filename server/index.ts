@@ -1515,7 +1515,7 @@ app.get("/api/pricing", requireAuth, async (_req: AuthRequest, res) => {
     const typeMap: Record<string, string[]> = {
       text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
       image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
-      video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v"],
+      video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v"],
       remove_bg: ["pixelcut_remove_bg", "remove_bg"],
       resize: ["bria_expand"],
       upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],
@@ -2305,7 +2305,7 @@ app.post("/api/generate", requireAuth, requireVerifiedEmail, async (req: AuthReq
       ...(resolvedModel ? { model: resolvedModel } : {}),
     };
 
-    if (resolvedModel && resolvedModel.startsWith("seedance-2.0")) {
+    if (resolvedModel && resolvedModel.startsWith("seedance-")) {
       fullParams.end_user_id = userId;
     }
 

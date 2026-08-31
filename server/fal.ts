@@ -349,6 +349,14 @@ function normalizeSeedanceResolution(value: unknown): "480p" | "720p" | "1080p" 
   return "1080p";
 }
 
+/** Seedance 2.5 goes to 30s natively, and takes "auto" to let the model pick. */
+function normalizeSeedance25Duration(value: unknown): string {
+  if (value === "auto" || value == null) return "auto";
+  const n = typeof value === "number" ? value : parseInt(String(value), 10);
+  if (!Number.isFinite(n)) return "auto";
+  return String(Math.max(4, Math.min(30, Math.round(n))));
+}
+
 function normalizeSeedanceDuration(value: unknown): string {
   const n = typeof value === "number" ? value : parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(n)) return "5";
@@ -1107,6 +1115,68 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  "seedance-2.5-t2v": {
+    falModelId: "bytedance/seedance-2.5/text-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: normalizeSeedance25Duration(params.duration),
+        resolution: normalizeSeedanceResolution(params.resolution),
+        generate_audio: params.generateAudio === true,
+      };
+      if (params.aspect_ratio) input.aspect_ratio = params.aspect_ratio;
+      if (params.end_user_id) input.end_user_id = params.end_user_id;
+      return input;
+    },
+  },
+  "seedance-2.5-i2v": {
+    falModelId: "bytedance/seedance-2.5/image-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: normalizeSeedance25Duration(params.duration),
+        resolution: normalizeSeedanceResolution(params.resolution),
+        generate_audio: params.generateAudio === true,
+      };
+      // aspect_ratio is always "auto" here — the endpoint takes it from the frame.
+      const firstFrame = sanitizeUrl(params.firstFrameUrl);
+      if (firstFrame) input.image_url = firstFrame;
+      const lastFrame = sanitizeUrl(params.lastFrameUrl);
+      if (lastFrame) input.end_image_url = lastFrame;
+      if (params.end_user_id) input.end_user_id = params.end_user_id;
+      return input;
+    },
+  },
+  "seedance-2.5-r2v": {
+    falModelId: "bytedance/seedance-2.5/reference-to-video",
+    type: "video",
+    async buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: normalizeSeedance25Duration(params.duration),
+        resolution: normalizeSeedanceResolution(params.resolution),
+        generate_audio: params.generateAudio === true,
+      };
+      if (params.aspect_ratio) input.aspect_ratio = params.aspect_ratio;
+      if (Array.isArray(params.referenceImageUrls)) {
+        // 30 images here, against 2.0's 3.
+        const cleaned = params.referenceImageUrls.map(sanitizeUrl).filter((u): u is string => !!u);
+        if (cleaned.length > 0) input.image_urls = cleaned.slice(0, 30);
+      }
+      // 2.5 takes LISTS where 2.0 took a single video_url / audio_url.
+      const videoUrl = sanitizeUrl(params.video_url);
+      if (videoUrl) input.video_urls = [videoUrl];
+      if (params.audio_url) {
+        let audioUrl = params.audio_url as string;
+        if (audioUrl.startsWith("data:")) audioUrl = await ensureHostedUrl(audioUrl);
+        input.audio_urls = [audioUrl];
+      }
+      if (params.end_user_id) input.end_user_id = params.end_user_id;
+      return input;
+    },
+  },
   "veo3.1-lite-t2v": {
     falModelId: "fal-ai/veo3.1/lite",
     type: "video",
@@ -1495,7 +1565,7 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"] 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
   text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
   image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
-  video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
+  video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],
   upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],
