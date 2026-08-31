@@ -349,6 +349,18 @@ function normalizeSeedanceResolution(value: unknown): "480p" | "720p" | "1080p" 
   return "1080p";
 }
 
+/** Gemini Omni: 3-10s, and a 360p/720p/1080p/4k ladder of its own. */
+function normalizeGeminiOmniDuration(value: unknown): number {
+  const n = typeof value === "number" ? value : parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(n)) return 8;
+  return Math.max(3, Math.min(10, Math.round(n)));
+}
+
+function normalizeGeminiOmniResolution(value: unknown): "360p" | "720p" | "1080p" | "4k" {
+  const v = String(value ?? "").toLowerCase();
+  return v === "360p" || v === "1080p" || v === "4k" ? v : "720p";
+}
+
 /** Seedance 2.5 goes to 30s natively, and takes "auto" to let the model pick. */
 function normalizeSeedance25Duration(value: unknown): string {
   if (value === "auto" || value == null) return "auto";
@@ -1177,6 +1189,36 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  "gemini-omni-t2v": {
+    falModelId: "google/gemini-omni-flash/v1.1/text-to-video",
+    type: "video",
+    buildInput(params) {
+      return {
+        prompt: params.prompt || "",
+        duration: normalizeGeminiOmniDuration(params.duration),
+        resolution: normalizeGeminiOmniResolution(params.resolution),
+        // 16:9 / 9:16 only — anything else is rejected, so square falls to landscape.
+        aspect_ratio: params.aspect_ratio === "9:16" ? "9:16" : "16:9",
+      };
+    },
+  },
+  "gemini-omni-i2v": {
+    falModelId: "google/gemini-omni-flash/v1.1/image-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: normalizeGeminiOmniDuration(params.duration),
+        resolution: normalizeGeminiOmniResolution(params.resolution),
+        aspect_ratio: params.aspect_ratio === "9:16" ? "9:16" : "16:9",
+      };
+      const firstFrame = sanitizeUrl(params.firstFrameUrl);
+      if (firstFrame) input.image_url = firstFrame;
+      const lastFrame = sanitizeUrl(params.lastFrameUrl);
+      if (lastFrame) input.end_image_url = lastFrame;
+      return input;
+    },
+  },
   "veo3.1-lite-t2v": {
     falModelId: "fal-ai/veo3.1/lite",
     type: "video",
@@ -1565,7 +1607,7 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"] 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
   text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
   image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
-  video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
+  video_gen: ["gemini-omni-t2v", "gemini-omni-i2v", "kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],
   upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],

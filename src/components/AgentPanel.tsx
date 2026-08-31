@@ -535,6 +535,7 @@ function prettyAgentModelLabel(model: string | undefined | null): string {
   if (m.startsWith("gpt-image-2")) return "GPT Image 2";
   if (m.startsWith("seedream-5")) return "Seedream 5";
   if (m.startsWith("seedream")) return "Seedream";
+  if (m.startsWith("gemini-omni")) return "Gemini Omni Flash";
   if (m.startsWith("seedance-2.5")) return "Seedance 2.5";
   if (m.startsWith("seedance-2.0")) return "Seedance 2.0";
   if (m.startsWith("kling-o3-pro")) return "Kling O3 Pro";
