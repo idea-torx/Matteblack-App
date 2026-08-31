@@ -173,8 +173,8 @@
   padding: 0 0 4px;
 }
 
-/* A card is the document itself: a translucent page of its own text, on a
- * solid bar carrying the title and the hand-to-agent arrow. */
+/* A card is the document itself: title on top, a translucent page of its own
+ * text in the middle, and the two things you do with it on a white foot. */
 .skills-card {
   display: flex;
   flex-direction: column;
@@ -189,39 +189,11 @@
   transform: translateY(-1px);
 }
 
-.skills-card-preview {
-  flex: 1;
-  height: 108px;
-  overflow: hidden;
-  padding: 10px 10px 0;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  /* The page fades out rather than ending — it's a peek, not a truncation. */
-  mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
-}
-.skills-card-preview-text {
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
-  line-height: 1.65;
-  color: var(--text-secondary);
-  opacity: 0.55;
-  white-space: pre-wrap;
-  word-break: break-word;
-  transition: opacity 0.12s;
-}
-.skills-card:hover .skills-card-preview-text { opacity: 0.8; }
-
-.skills-card-bar {
+.skills-card-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
-  padding: 8px 8px 8px 10px;
-  background: var(--bg-hover);
-  border-top: 1px solid rgba(var(--tint-rgb), 0.06);
+  padding: 9px 10px 6px;
 }
 
 .skills-card-title {
@@ -241,23 +213,76 @@
   white-space: nowrap;
 }
 
-.skills-card-use {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+.skills-card-preview {
+  /* Fixed window on the document — flex:1 let the text push the card open. */
+  flex: none;
+  height: 104px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* The page fades out rather than ending — it's a peek, not a truncation. */
+  mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
+}
+.skills-card-preview-text {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: opacity 0.12s;
+}
+.skills-card:hover .skills-card-preview-text { opacity: 0.85; }
+
+.skills-card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.skills-card-action {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #444444;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   transition: color 0.12s, background 0.12s;
 }
-.skills-card-use:hover {
+.skills-card-action:hover {
+  color: #111111;
+  background: rgba(0, 0, 0, 0.06);
+}
+.skills-card-action--inject:hover {
   color: var(--accent);
   background: var(--accent-dim);
+}
+
+.skills-sort {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid rgba(var(--tint-rgb), 0.1);
+  border-radius: 6px;
+  padding: 3px 4px;
+  cursor: pointer;
 }
 
 /* ─── Review / edit modal ─── */

@@ -64,6 +64,14 @@ function relativeDate(iso: string): string {
  *  else lands in "Creative" — the panel never hides a skill it can't place. */
 const SECTIONS = ["System", "Video", "Image", "Writing", "Creative"] as const;
 
+const SORTS = {
+  recent: { label: "Newest", cmp: (a: SkillMeta, b: SkillMeta) => b.updatedAt.localeCompare(a.updatedAt) },
+  oldest: { label: "Oldest", cmp: (a: SkillMeta, b: SkillMeta) => a.updatedAt.localeCompare(b.updatedAt) },
+  name: { label: "A–Z", cmp: (a: SkillMeta, b: SkillMeta) => a.title.localeCompare(b.title) },
+  size: { label: "Largest", cmp: (a: SkillMeta, b: SkillMeta) => b.bytes - a.bytes },
+} as const;
+type SortKey = keyof typeof SORTS;
+
 function sectionOf(s: SkillMeta): string {
   if (s.system) return "System";
   return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Creative";
@@ -93,6 +101,7 @@ export function SkillsPanel({ onClose, onUseSkill }: {
   // Open modal: null = grid only. `slug` is empty for an unsaved new skill.
   const [editing, setEditing] = useState<{ slug: string; body: string; dirty: boolean; system?: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sort, setSort] = useState<SortKey>("recent");
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -223,6 +232,17 @@ export function SkillsPanel({ onClose, onUseSkill }: {
       <div className="sidebar-panel-header">
         <span className="sidebar-panel-title">Skills</span>
         <div className="skills-header-actions">
+          <select
+            className="skills-sort"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            aria-label="Sort skills"
+            title="Sort"
+          >
+            {(Object.keys(SORTS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>{SORTS[k].label}</option>
+            ))}
+          </select>
           <button type="button" className="skills-link" disabled={importing} onClick={() => fileInputRef.current?.click()}>
             {importing ? "Importing…" : "Import"}
           </button>
@@ -269,8 +289,12 @@ export function SkillsPanel({ onClose, onUseSkill }: {
                 <span className="skills-section-count">{skills.filter((s) => sectionOf(s) === section).length}</span>
               </h3>
               <div className="skills-grid">
-                {skills.filter((s) => sectionOf(s) === section).map((s) => (
+                {skills.filter((s) => sectionOf(s) === section).sort(SORTS[sort].cmp).map((s) => (
                   <div key={s.slug} className="skills-card">
+                    <div className="skills-card-head">
+                      <span className="skills-card-title" title={s.description || s.title}>{s.title}</span>
+                      <span className="skills-card-date">{relativeDate(s.updatedAt)}</span>
+                    </div>
                     <button
                       type="button"
                       className="skills-card-preview"
@@ -279,18 +303,19 @@ export function SkillsPanel({ onClose, onUseSkill }: {
                     >
                       <span className="skills-card-preview-text">{s.preview || s.description}</span>
                     </button>
-                    <div className="skills-card-bar">
-                      <span className="skills-card-title" title={s.title}>{s.title}</span>
-                      <span className="skills-card-date">{relativeDate(s.updatedAt)}</span>
+                    <div className="skills-card-actions">
+                      <button type="button" className="skills-card-action" onClick={() => void open(s.slug)}>
+                        Edit
+                      </button>
                       {onUseSkill && (
                         <button
                           type="button"
-                          className="skills-card-use"
+                          className="skills-card-action skills-card-action--inject"
                           onClick={() => onUseSkill(s.slug, s.title)}
-                          aria-label={`Use ${s.title} with the agent`}
-                          title="Use with the agent"
+                          title="Hand this skill to the agent"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          Inject
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="5" y1="12" x2="19" y2="12" />
                             <polyline points="12 5 19 12 12 19" />
                           </svg>
