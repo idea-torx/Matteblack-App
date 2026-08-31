@@ -775,12 +775,13 @@ function VideoCards({
   type VideoMode = "text-to-video" | "image-to-video" | "reference-to-video";
   const [videoMode, setVideoMode] = useState<VideoMode>("text-to-video");
   const [prompt, setPrompt] = useState("");
-  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.0" | "h3-max">("kling-o3-pro");
+  const [videoModel, setVideoModel] = useState<"kling-o3-pro" | "kling-o3-4k" | "veo3.1-lite" | "seedance-2.5" | "seedance-2.0" | "h3-max">("kling-o3-pro");
   const [duration, setDuration] = useState<string>("5");
   const [generateAudio, setGenerateAudio] = useState(true);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p" | "768p" | "1080p">("1080p");
 
+  const SEEDANCE_25_DURATIONS = ["4", "6", "8", "10", "15", "20", "25", "30"];
   const SEEDANCE_DURATIONS = ["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"];
   const KLING_O3_DURATIONS = ["3", "5", "7", "9", "11", "13", "15"];
   const H3_DURATIONS = ["5", "7", "9", "11", "13", "15"];
@@ -795,6 +796,7 @@ function VideoCards({
     "kling-o3-pro": "Kling O3 Pro",
     "kling-o3-4k": "Kling O3 4K",
     "veo3.1-lite": "Veo 3.1 Lite",
+    "seedance-2.5": "Seedance 2.5",
     "seedance-2.0": "Seedance 2.0",
     "h3-max": "MiniMax H3 Max",
   };
@@ -815,6 +817,9 @@ function VideoCards({
   useEffect(() => {
     if (videoModel === "veo3.1-lite") {
       setDuration((d) => (["4", "6", "8"].includes(d) ? d : "6"));
+    } else if (videoModel === "seedance-2.5") {
+      setDuration((d) => (SEEDANCE_25_DURATIONS.includes(d) ? d : "10"));
+      setVideoResolution((r) => (r === "768p" ? "1080p" : r));
     } else if (videoModel === "seedance-2.0") {
       setDuration((d) => (SEEDANCE_DURATIONS.includes(d) ? d : "5"));
       setVideoResolution((r) => (r === "768p" ? "1080p" : r));
@@ -874,11 +879,11 @@ function VideoCards({
 
   useEffect(() => {
     if (videoMode !== "reference-to-video") return;
-    const supportsR2v = videoModel === "seedance-2.0" || videoModel.startsWith("kling-o3-");
+    const supportsR2v = videoModel.startsWith("seedance-") || videoModel.startsWith("kling-o3-");
     if (!supportsR2v) return;
     if (imageRefs.length === 0) return;
-    // Seedance accepts up to 3 reference images; Kling O3 (Pro / 4K) accepts up to 4.
-    const refCap = videoModel.startsWith("kling-o3-") ? 4 : 3;
+    // Seedance 2.5 accepts up to 30 reference images, 2.0 up to 3; Kling O3 (Pro / 4K) up to 4.
+    const refCap = videoModel.startsWith("kling-o3-") ? 4 : videoModel === "seedance-2.5" ? 30 : 3;
     const newImages: Array<{ id: string; url: string; name: string }> = [];
     for (const ref of imageRefs.slice(0, refCap)) {
       const rawUrl = extractRawUrl(ref.gradient);
@@ -947,7 +952,7 @@ function VideoCards({
     } else {
       modelKey = `${videoModel}-i2v`;
     }
-    onPricingChange?.(modelKey, duration, (videoModel === "seedance-2.0" || videoModel === "h3-max") ? videoResolution : undefined);
+    onPricingChange?.(modelKey, duration, (videoModel.startsWith("seedance-") || videoModel === "h3-max") ? videoResolution : undefined);
   }, [videoModel, duration, videoMode, firstFrame, lastFrame, videoResolution, onPricingChange]);
 
   useEffect(() => {
@@ -993,7 +998,7 @@ function VideoCards({
   const isGenerateDisabled =
     (videoMode === "image-to-video" && !firstFrame) ||
     (videoMode === "reference-to-video" && videoModel.startsWith("kling-o3-") && r2vImages.length === 0) ||
-    (videoMode === "reference-to-video" && videoModel === "seedance-2.0" && !referenceVideo && r2vImages.length === 0);
+    (videoMode === "reference-to-video" && videoModel.startsWith("seedance-") && !referenceVideo && r2vImages.length === 0);
 
   const handleGenerate = useCallback(() => {
     let modelKey: string;
@@ -1016,7 +1021,7 @@ function VideoCards({
         : videoMode === "image-to-video"
           ? (firstFrame?.aspectRatio || lastFrame?.aspectRatio)
           : undefined,
-      resolution: (videoModel === "seedance-2.0" || videoModel === "h3-max") ? videoResolution : undefined,
+      resolution: (videoModel.startsWith("seedance-") || videoModel === "h3-max") ? videoResolution : undefined,
       jobType: "video_gen",
       firstFrameUrl: videoMode === "image-to-video" ? firstFrame?.url : undefined,
       lastFrameUrl: videoMode === "image-to-video" ? lastFrame?.url : undefined,
@@ -1066,13 +1071,14 @@ function VideoCards({
   const videoModeOptions = (() => {
     const base: VideoMode[] = ["text-to-video", "image-to-video"];
     if (videoModel === "h3-max") return ["text-to-video"] as VideoMode[];
-    if (videoModel === "seedance-2.0" || videoModel.startsWith("kling-o3-")) base.push("reference-to-video");
+    if (videoModel.startsWith("seedance-") || videoModel.startsWith("kling-o3-")) base.push("reference-to-video");
     return base;
   })();
   const videoModeIndex = videoModeOptions.indexOf(videoMode);
 
   const durationOptions = (() => {
     if (videoModel === "veo3.1-lite") return ["4", "6", "8"];
+    if (videoModel === "seedance-2.5") return SEEDANCE_25_DURATIONS;
     if (videoModel === "seedance-2.0") return ["4", "6", "8", "10", "12", "15"];
     if (videoModel === "h3-max") return H3_DURATIONS;
     // kling-o3-pro / kling-o3-4k: fal accepts every integer "3".."15", but
@@ -1192,7 +1198,7 @@ function VideoCards({
         </div>
       )}
 
-      {videoMode === "reference-to-video" && (videoModel === "seedance-2.0" || videoModel.startsWith("kling-o3-")) && (() => {
+      {videoMode === "reference-to-video" && (videoModel.startsWith("seedance-") || videoModel.startsWith("kling-o3-")) && (() => {
         const refCap = videoModel.startsWith("kling-o3-") ? 4 : 3;
         return (
           <div className="rpanel-card rpanel-frame-section">
@@ -1259,7 +1265,7 @@ function VideoCards({
         );
       })()}
 
-      {videoMode === "reference-to-video" && videoModel === "seedance-2.0" && (
+      {videoMode === "reference-to-video" && videoModel.startsWith("seedance-") && (
         <div className="rpanel-more-refs">
           <button type="button" className="rpanel-more-refs-toggle" onClick={() => setMoreRefsOpen((v) => !v)}>
             <svg className={`rpanel-more-refs-chevron ${moreRefsOpen ? "rpanel-more-refs-chevron--open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -1397,6 +1403,11 @@ function VideoCards({
               Veo 3.1 Lite
               <span className="rpanel-tag">Quick</span>
             </button>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("seedance-2.5"); toggle("model"); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>
+              Seedance 2.5
+              <span className="rpanel-tag">Premium</span>
+            </button>
             <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.0" ? "rpanel-list-btn--active" : ""}`} onClick={() => { handleSelectSeedance(); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>
               Seedance 2.0
@@ -1441,7 +1452,7 @@ function VideoCards({
         </div>
       </div>
 
-      {(videoModel === "seedance-2.0" || videoModel === "h3-max") && (
+      {(videoModel.startsWith("seedance-") || videoModel === "h3-max") && (
         <div className="rpanel-flat-section">
           <span className="rpanel-flat-label">Resolution</span>
           <div className="rpanel-seg-group rpanel-seg-group--full" data-count={videoResOptions.length} data-active={videoResIndex >= 0 ? videoResIndex : 0}>
