@@ -5,6 +5,12 @@
  * puppeteer stays a devDependency rather than bolting a second browser (~200MB)
  * into the shipped app. Offscreen renders in software, which is slower but
  * paints filters, gradients and blend modes the same way.
+ *
+ * The window is kept warm between renders. Building one costs ~100ms and its
+ * first navigation another ~200-600ms while the renderer process spins up and
+ * the compositor wakes; reusing it takes a whole revision from ~500ms to ~60ms,
+ * which is the difference between editing an ad and waiting on one. It is torn
+ * down after a minute idle so an app left open doesn't hold a renderer forever.
  */
 const { BrowserWindow } = require("electron");
 const fs = require("node:fs");
@@ -28,15 +34,41 @@ const SETTLE = `new Promise((r) => {
   Promise.all([loaded, fonts]).then(settle, settle);
 })`;
 
-async function renderHtmlToPng(html, width, height) {
-  const w = Math.max(1, Math.min(4096, Math.round(width) || 1080));
-  const h = Math.max(1, Math.min(4096, Math.round(height) || 1350));
-  const win = new BrowserWindow({
+const IDLE_MS = 60_000;
+
+let warm = null;
+let idleTimer = null;
+// One window, so renders queue rather than overwrite each other's page.
+let chain = Promise.resolve();
+
+function dropWarm() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  const win = warm;
+  warm = null;
+  try { if (win && !win.isDestroyed()) win.destroy(); } catch { /* already gone */ }
+}
+
+function getWindow(w, h) {
+  clearTimeout(idleTimer);
+  if (warm && !warm.isDestroyed() && !warm.webContents.isDestroyed()) {
+    warm.setSize(w, h);
+    return warm;
+  }
+  warm = new BrowserWindow({
     width: w,
     height: h,
     show: false,
     webPreferences: { offscreen: true, nodeIntegration: false, contextIsolation: true },
   });
+  // A dead renderer stays "not destroyed" from the outside, and every later
+  // navigation on it fails — forget it so the next render builds a fresh one.
+  warm.webContents.on("render-process-gone", dropWarm);
+  return warm;
+}
+
+async function renderOnce(html, w, h) {
+  const win = getWindow(w, h);
   // A temp file, not a data: URL. Chromium caps data-URL navigations at ~2MB,
   // and a page with one inlined image in it clears that on its own — base64
   // inflates ~1.37x and percent-encoding the document expands it again. The
@@ -58,10 +90,24 @@ async function renderHtmlToPng(html, width, height) {
     const img = await win.webContents.capturePage();
     const shot = img.getSize().width === w ? img : img.resize({ width: w, height: h, quality: "best" });
     return shot.toPNG();
+  } catch (err) {
+    // The warm window is the prime suspect for any navigation failure, and a
+    // sticky broken one would fail every render after it. Start over next time.
+    dropWarm();
+    throw err;
   } finally {
-    try { win.destroy(); } catch { /* already gone */ }
     try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+    if (warm) idleTimer = setTimeout(dropWarm, IDLE_MS);
   }
+}
+
+function renderHtmlToPng(html, width, height) {
+  const w = Math.max(1, Math.min(4096, Math.round(width) || 1080));
+  const h = Math.max(1, Math.min(4096, Math.round(height) || 1350));
+  const next = chain.then(() => renderOnce(html, w, h));
+  // The queue must survive a failed render, so it chains on the settled result.
+  chain = next.catch(() => {});
+  return next;
 }
 
 module.exports = { renderHtmlToPng };
