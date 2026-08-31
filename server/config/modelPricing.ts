@@ -25,6 +25,9 @@ export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
   { model_key: "nano-banana-2", base_cost: 16, resolution_multipliers: RESOLUTION_MULTIPLIERS, duration_multipliers: null, feature_surcharges: null },
   { model_key: "seedream-t2i", base_cost: 6, resolution_multipliers: RESOLUTION_MULTIPLIERS, duration_multipliers: null, feature_surcharges: { "web_search": 2, "high_thinking": 1 } },
   { model_key: "seedream-edit", base_cost: 6, resolution_multipliers: RESOLUTION_MULTIPLIERS, duration_multipliers: null, feature_surcharges: { "web_search": 2, "high_thinking": 1 } },
+  // Seedream 5 Lite is a flat $0.035/image at 2K-4K, so no resolution ladder.
+  { model_key: "seedream-5-t2i", base_cost: 6, resolution_multipliers: null, duration_multipliers: null, feature_surcharges: null },
+  { model_key: "seedream-5-edit", base_cost: 6, resolution_multipliers: null, duration_multipliers: null, feature_surcharges: null },
   { model_key: "gpt-image-2-t2i", base_cost: 21, resolution_multipliers: { "1k": 1.0, "2k": 1.67 }, duration_multipliers: null, feature_surcharges: { "quality_medium": -15, "quality_low": -19 } },
   { model_key: "gpt-image-2-edit", base_cost: 21, resolution_multipliers: { "1k": 1.0, "2k": 1.67 }, duration_multipliers: null, feature_surcharges: { "quality_medium": -15, "quality_low": -19 } },
   // kling-2.6-t2v / kling-2.6-i2v are kept here SOLELY so historical generation

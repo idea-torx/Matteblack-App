@@ -584,6 +584,26 @@ const h3Aspect = (v: unknown, fallback = "16:9") => {
   return H3_ASPECTS.includes(ar) ? ar : fallback;
 };
 
+/** Seedream v5 refuses anything under 2560x1440 total pixels and anything over
+ *  4096 on a side, so the v4.5 1k/2k/4k long-edge ladder would fail outright.
+ *  Size from the aspect ratio, then scale up to clear the floor.
+ *  ponytail: ratios past ~3:1 can't clear the floor inside the 4096 cap; fal
+ *  rejects those, and no caller offers one. */
+export function seedream5Size(aspectRatio: string | undefined, resolution: string | undefined): { width: number; height: number } {
+  const [aw, ah] = (aspectRatio || "1:1").split(":").map(Number);
+  const ratio = aw && ah ? aw / ah : 1;
+  const long = resolution === "4k" ? 4096 : resolution === "2k" ? 3072 : 2560;
+  let width = ratio >= 1 ? long : Math.round(long * ratio);
+  let height = ratio >= 1 ? Math.round(long / ratio) : long;
+  const MIN_PX = 2560 * 1440;
+  if (width * height < MIN_PX) {
+    const k = Math.sqrt(MIN_PX / (width * height));
+    width = Math.round(width * k);
+    height = Math.round(height * k);
+  }
+  return { width: Math.min(4096, Math.max(1, width)), height: Math.min(4096, Math.max(1, height)) };
+}
+
 const MODEL_MAP: Record<string, ModelConfig> = {
   "nano-banana-2-t2i": {
     falModelId: "fal-ai/nano-banana-2",
@@ -721,6 +741,34 @@ const MODEL_MAP: Record<string, ModelConfig> = {
         if (cleaned.length > 0) {
           input.image_urls = cleaned;
         }
+      }
+      return input;
+    },
+  },
+  "seedream-5-t2i": {
+    falModelId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+    type: "image",
+    buildInput(params) {
+      return {
+        prompt: params.prompt || "",
+        num_images: params.imageNumber || 1,
+        image_size: seedream5Size(params.aspect_ratio as string | undefined, params.resolution as string | undefined),
+      };
+    },
+  },
+  "seedream-5-edit": {
+    falModelId: "fal-ai/bytedance/seedream/v5/lite/edit",
+    type: "image",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        num_images: params.imageNumber || 1,
+        image_size: seedream5Size(params.aspect_ratio as string | undefined, params.resolution as string | undefined),
+      };
+      if (Array.isArray(params.referenceImageUrls)) {
+        // v5 takes up to 10 references, against v4.5's smaller list.
+        const cleaned = params.referenceImageUrls.map(sanitizeUrl).filter((u): u is string => !!u).slice(0, 10);
+        if (cleaned.length > 0) input.image_urls = cleaned;
       }
       return input;
     },
@@ -1445,8 +1493,8 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"] 
 }
 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
-  text_to_image: ["nano-banana-2-t2i", "seedream-t2i", "gpt-image-2-t2i"],
-  image_to_image: ["nano-banana-2", "seedream-edit", "gpt-image-2-edit"],
+  text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
+  image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
   video_gen: ["kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],

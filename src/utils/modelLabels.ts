@@ -6,6 +6,8 @@ export type ModelInfo = {
 const MODEL_INFO: Record<string, ModelInfo> = {
   "nano-banana-2-t2i": { displayName: "Nano Banana 2", variation: "Text → Image" },
   "nano-banana-2": { displayName: "Nano Banana 2", variation: "Image → Image" },
+  "seedream-5-t2i": { displayName: "Seedream 5", variation: "Text → Image" },
+  "seedream-5-edit": { displayName: "Seedream 5", variation: "Image → Image" },
   "seedream-t2i": { displayName: "Seedream", variation: "Text → Image" },
   "seedream-edit": { displayName: "Seedream", variation: "Image → Image" },
   "gpt-image-2-t2i": { displayName: "GPT Image 2", variation: "Text → Image" },
