@@ -50,3 +50,18 @@ seedBuiltinSkills();
 assert.equal(fs.readFileSync(p, "utf8"), factory, "adopted copy tracks factory");
 
 console.log("all seeding checks passed");
+
+// 5. skills/*.md in the repo mirrors the shipped constants. They exist so the
+// recipes are readable and diffable outside the app; the bundle still ships the
+// TS constants, so this is what stops the two from drifting.
+// ponytail: mirror + check, not a build-time .md import — tsx (dev server, this
+// test) can't import .md, so single-sourcing would need an esbuild loader AND a
+// dev-time shim. Revisit if the skill list grows past a handful.
+const repoSkills = path.join(import.meta.dirname, "../../skills");
+for (const [slug, body] of Object.entries(BUILTIN_SKILLS)) {
+  assert.equal(
+    fs.readFileSync(path.join(repoSkills, `${slug}.md`), "utf8"),
+    body,
+    `skills/${slug}.md is out of sync with BUILTIN_SKILLS — copy one onto the other`,
+  );
+}
