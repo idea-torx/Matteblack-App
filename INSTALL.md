@@ -49,8 +49,8 @@ the `.dmg` for your Mac:
 
 | Your Mac | File |
 |----------|------|
-| Apple Silicon (M1–M4) | `Fal Forge-<version>-arm64.dmg` |
-| Intel | `Fal Forge-<version>-x64.dmg` |
+| Apple Silicon (M1–M4) | `Fal-Forge-<version>-arm64.dmg` |
+| Intel | `Fal-Forge-<version>-x64.dmg` |
 
 Not sure which you have:  ▸ **About This Mac**. "Chip" means Apple Silicon,
 "Processor" means Intel.
