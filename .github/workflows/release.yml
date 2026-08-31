@@ -1,26 +1,67 @@
-# Builds the Windows desktop app and publishes an installer + auto-update feed
-# to GitHub Releases whenever a semver tag (e.g. v0.1.0) is pushed.
+# Builds the desktop app and publishes installers + the auto-update feed to
+# GitHub Releases whenever a semver tag (e.g. v0.2.1) is pushed.
 #
-# electron-builder uploads the NSIS installer, the portable exe, latest.yml, and
-# blockmaps to the GitHub Release for the tag, which is exactly what
+# electron-builder uploads the platform artifacts, latest.yml / latest-mac.yml
+# and blockmaps to the Release for the tag, which is exactly what
 # electron-updater consumes. GITHUB_TOKEN is provided automatically to the job;
 # electron-builder reads it as GH_TOKEN.
+#
+# Two jobs, not one: macOS artifacts can only be built on a macOS runner, and
+# Windows ones on Windows. Both publish into the same Release for the tag.
 name: release
 
 on:
   push:
     tags:
       - "v*"
+  # Lets a build be re-run from the Actions tab without moving the tag —
+  # useful when a job fails for an infrastructure reason rather than a code one.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. v0.2.1)"
+        required: true
 
 permissions:
   contents: write # required to create/upload the GitHub Release
 
 jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + server bundle
+        run: npm run electron:prep
+
+      # Both architectures: the runner is arm64, and electron-builder fetches
+      # the x64 Electron binary for the Intel target rather than cross-compiling.
+      # Unsigned (electron-builder.yml sets identity: null) — see INSTALL.md for
+      # the first-launch step that costs collaborators.
+      - name: Package and publish
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
