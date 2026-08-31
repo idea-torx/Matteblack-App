@@ -433,7 +433,7 @@ function ImageCards({
 }) {
   const [prompt, setPrompt] = useState("");
   const promptEditorRef = useRef<HTMLDivElement>(null);
-  const [model, setModel] = useState<"nano-banana-2" | "seedream" | "gpt-image-2">("nano-banana-2");
+  const [model, setModel] = useState<"nano-banana-2" | "seedream-5" | "seedream" | "gpt-image-2">("nano-banana-2");
   const [quality, setQuality] = useState<"low" | "medium" | "high">("high");
   const [resolution, setResolution] = useState<"1k" | "2k">("1k");
   const [imageNumber, setImageNumberRaw] = useState(1);
@@ -485,6 +485,8 @@ function ImageCards({
   const effectiveJobType = isTextToImage ? "text_to_image" : "image_to_image";
   const effectiveModel = model === "nano-banana-2"
     ? (isTextToImage ? "nano-banana-2-t2i" : "nano-banana-2")
+    : model === "seedream-5"
+      ? (isTextToImage ? "seedream-5-t2i" : "seedream-5-edit")
     : model === "seedream"
       ? (isTextToImage ? "seedream-t2i" : "seedream-edit")
       : model === "gpt-image-2"
@@ -629,10 +631,10 @@ function ImageCards({
         </span>
         <span className="rpanel-model-selector-info">
           <span className="rpanel-model-selector-name">
-            {model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : "Seedream"}
+            {model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
           </span>
           <span className="rpanel-model-selector-provider">
-            {model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : "Google · quick"}
+            {model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}
           </span>
         </span>
         <svg className={`rpanel-card-chevron ${openSections.model ? "rpanel-card-chevron--open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
@@ -649,6 +651,11 @@ function ImageCards({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
               Nano Banana 2
               <span className="rpanel-tag">Quality</span>
+            </button>
+            <button type="button" className={`rpanel-list-btn ${model === "seedream-5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("seedream-5"); toggle("model"); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 16s1-4 5-4 5 4 9 4 5-4 5-4" /><path d="M2 12s1-4 5-4 5 4 9 4 5-4 5-4" /></svg>
+              Seedream 5
+              <span className="rpanel-tag">Quick</span>
             </button>
             <button type="button" className={`rpanel-list-btn ${model === "seedream" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("seedream"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 16s1-4 5-4 5 4 9 4 5-4 5-4" /><path d="M2 12s1-4 5-4 5 4 9 4 5-4 5-4" /></svg>

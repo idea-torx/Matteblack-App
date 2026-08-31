@@ -157,6 +157,20 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     cost: flatPerUnit("image"),
   },
 
+  // Seedream 5 Lite: flat $0.035/image, every size.
+  "seedream-5-t2i": {
+    endpoint: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+    unitPrice: 0.035,
+    unit: "images",
+    cost: flatPerUnit("image"),
+  },
+  "seedream-5-edit": {
+    endpoint: "fal-ai/bytedance/seedream/v5/lite/edit",
+    unitPrice: 0.035,
+    unit: "images",
+    cost: flatPerUnit("image"),
+  },
+
   // GPT-Image-2 bills in CUSTOM UNITS: the live API reports unit="units",
   // unit_price=$1, i.e. the billed quantity IS the dollar amount and is only
   // known after the fact (x-fal-billable-units on the result fetch). So the
