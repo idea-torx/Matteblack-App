@@ -5,6 +5,41 @@ For collaborators. Ten minutes, most of it downloading.
 The repo is **private**, so you need to be signed in to GitHub with access to
 `idea-torx/FalForge` before the download links will work.
 
+Two ways in:
+
+- **[Run from source](#run-from-source)** — clone and build. No Gatekeeper
+  prompt at all, because an app you built yourself was never quarantined. This is
+  the recommended path today.
+- **[Install the dmg](#1-download)** — one download, but macOS calls the app
+  damaged on first launch and you have to clear that by hand (step 2). It stays
+  that way until the app is code-signed.
+
+---
+
+## Run from source
+
+Needs [Node 22+](https://nodejs.org) and `git`. The first install pulls Electron,
+so budget a few hundred MB and a couple of minutes.
+
+```bash
+git clone https://github.com/idea-torx/FalForge.git
+cd FalForge
+npm install
+npm run electron:dev
+```
+
+That builds the renderer and both server bundles, then opens the real desktop
+app — same code as the dmg, no quarantine flag, no `xattr`. Run it again any
+time; to pick up changes, `git pull` and re-run the same command.
+
+Then jump to **[step 3](#3-add-your-falai-key)** to add your fal key — the rest
+of the setup is identical.
+
+> There is also `npm run dev:server:local` + `npm run dev` for browser-based
+> frontend work with hot reload, but `render_html` (the agent's HTML-to-PNG
+> tool) needs Electron and is unavailable there. Use `electron:dev` unless you
+> are specifically iterating on the UI.
+
 ---
 
 ## 1. Download
@@ -89,14 +124,18 @@ anywhere — copy it if you care about it.
 
 ## Updating
 
-Download the newer dmg from Releases and drag it over the old app. Your
-`~/.matteblack/` folder is untouched by an update. Re-run the `xattr` command
-from step 2 on the new copy.
+Running from source: `git pull && npm install && npm run electron:dev`.
+
+Installed from a dmg: download the newer one from Releases and drag it over the
+old app, then re-run the `xattr` command from step 2 on the new copy. (Automatic
+updates are wired up but inert on macOS until the app is code-signed.)
+
+Either way your `~/.matteblack/` folder is untouched by an update.
 
 ## Uninstalling
 
-Drag `/Applications/Fal Forge.app` to the Trash, and delete `~/.matteblack/` if
-you want your projects and keys gone too.
+Delete the clone, or drag `/Applications/Fal Forge.app` to the Trash. Delete
+`~/.matteblack/` too if you want your projects and keys gone.
 
 ---
 
