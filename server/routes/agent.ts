@@ -28,7 +28,7 @@ import { scheduleCanvasFlush } from "../services/canvasCheckpointScheduler.js";
 import redisClient from "../services/redisClient.js";
 import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
-import { extractLastFrame, extractTailClip, VideoTailError, MIN_TAIL_SECONDS } from "../utils/videoTail.js";
+import { extractLastFrame, extractTailClip, VideoTailError, DEFAULT_TAIL_SECONDS } from "../utils/videoTail.js";
 import { getOperatorContext, noteOperatorJob } from "../services/operatorCanvasContext.js";
 
 const router = Router();
@@ -1669,7 +1669,7 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       prompt: {
         type: "string",
-        description: "What happens in THIS chunk only, 1-3 vivid English sentences. Describe the action continuing, not the whole story — the model already sees the end of the previous clip. Keep the subject, wardrobe, lighting and camera language identical across chunks; a changed adjective is how a sequence drifts.",
+        description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — a holdable rest pose for seam='frame', or the motion the next chunk continues for seam='reference'. A changed adjective is how a sequence drifts.",
       },
       seam: {
         type: "string",
@@ -1686,7 +1686,13 @@ const CONTINUE_VIDEO_TOOL: Tool = {
         type: "number",
         minimum: 2,
         maximum: 15,
-        description: "Only for seam='reference': how many seconds off the end of the source clip to use as the reference (2-15, default 2). Longer carries more motion context and costs nothing extra.",
+        description: "Only for seam='reference': how many seconds off the end of the source clip to use as the reference (2-15, default 6, clamped to the source clip's length). Longer carries more motion context and costs nothing extra.",
+      },
+      referenceUrls: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 4,
+        description: "Only for seam='reference': up to 4 image URLs of the sequence's locked subjects (character stills, palette frames) to pin alongside the tail. The tail only carries the last few seconds — these stills are what hold identity together once the sequence is many chunks long. Pass the SAME urls on every chunk.",
       },
       resolution: {
         type: "string",
@@ -4738,7 +4744,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       let handoff: string;
       try {
         handoff = seam === "reference"
-          ? await extractTailClip(src, Number(input.tailSeconds) || MIN_TAIL_SECONDS)
+          ? await extractTailClip(src, Number(input.tailSeconds) || DEFAULT_TAIL_SECONDS)
           : await extractLastFrame(src);
       } catch (err) {
         // A bad seam is worth failing on: continuing from the wrong frame
@@ -4780,7 +4786,9 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         aspect_ratio: aspectRatio,
         canvas_id: canvasId,
         workspace_id: workspaceId,
-        params: { source: "agent", continuedFrom: src },
+        // seam recorded so set_timeline can auto-trim the duplicated frame a
+        // seam='frame' continuation starts on (see routes/agentTimeline.ts).
+        params: { source: "agent", continuedFrom: src, seam },
       };
       if (seam === "reference") {
         body.referenceVideoUrls = [handoff];

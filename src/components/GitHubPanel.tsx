@@ -296,7 +296,7 @@ export function GitHubPanel({ onClose }: { onClose: () => void }) {
                     )}
 
                     <div className="gh-stats">
-                      <span className={r.git?.dirty ? "gh-stat gh-stat--warn" : "gh-stat"}>{r.git ? (r.git.dirty ? `${r.git.dirty} uncommitted` : "clean") : "no checkout"}</span>
+                      <span className={`gh-stat${r.git ? (r.git.dirty ? " gh-stat--warn" : " gh-stat--clean") : ""}`}>{r.git ? (r.git.dirty ? `${r.git.dirty} uncommitted` : "clean") : "no checkout"}</span>
                       {!!r.git?.ahead && <span className="gh-stat">↑{r.git.ahead}</span>}
                       {!!r.git?.behind && <span className="gh-stat">↓{r.git.behind}</span>}
                       <span className="gh-stat">{r.files ?? 0} files · {size(r.bytes)}</span>
@@ -306,11 +306,11 @@ export function GitHubPanel({ onClose }: { onClose: () => void }) {
                     {r.error && <div className="gh-tile-error">sync failed: {r.error}</div>}
 
                     <div className="gh-tile-actions">
-                      <button type="button" className="skills-link" disabled={busy === r.nameWithOwner} onClick={() => void setWritable(r)}>
+                      <button type="button" className={`gh-btn${r.writable ? " gh-btn--write" : ""}`} disabled={busy === r.nameWithOwner} onClick={() => void setWritable(r)}>
                         {r.writable ? "Revoke authoring" : "Enable authoring"}
                       </button>
-                      <button type="button" className="skills-link" disabled={busy === r.nameWithOwner} onClick={() => void sync(r.nameWithOwner)}>Sync</button>
-                      <button type="button" className="skills-link gh-remove" onClick={() => void detach(r.nameWithOwner)}>Remove</button>
+                      <button type="button" className="gh-btn" disabled={busy === r.nameWithOwner} onClick={() => void sync(r.nameWithOwner)}>Sync</button>
+                      <button type="button" className="gh-btn gh-remove" onClick={() => void detach(r.nameWithOwner)}>Remove</button>
                     </div>
                   </div>
                 ))}

@@ -176,7 +176,12 @@ const EMBEDDED_TOOLS: Tool[] = [
         prompt: { type: "string", description: "What happens in this chunk only." },
         seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
         durationSeconds: { type: "integer", description: "Chunk length, 5-15s (default 5)." },
-        tailSeconds: { type: "number", description: "seam='reference' only: seconds of tail to reference, 2-15 (default 2)." },
+        tailSeconds: { type: "number", description: "seam='reference' only: seconds of tail to reference, 2-15 (default 6)." },
+        referenceUrls: {
+          type: "array",
+          items: { type: "string" },
+          description: "seam='reference' only: up to 4 image URLs of the sequence's locked subjects, pinned on every chunk so identity survives past the tail.",
+        },
         aspectRatio: { type: "string", enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], description: "The sequence's aspect ratio. Defaults to the source clip's shape; seam='reference' falls back to 16:9 without it, so pass it on every chunk of a non-16:9 sequence." },
       },
       required: ["sourceUrl", "prompt"],

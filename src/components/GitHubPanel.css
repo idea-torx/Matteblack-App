@@ -55,11 +55,25 @@
 }
 .gh-row:hover .gh-row-actions,
 .gh-row:focus-within .gh-row-actions { opacity: 1; }
-.gh-remove:hover { color: #f87171; }
+.gh-remove:hover:not(:disabled) { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }
 
 /* Tiles. Flat: 4px corners, one hairline, no shadow — same language as the
    rest of the chrome. */
-.gh-tiles { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
+.gh-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 12px;
+  /* Read vs author is the one thing worth reading across the whole list at a
+     glance, so it gets colour rather than another grey label. Mid-tones that
+     hold up on both the light and the dark surface. */
+  --gh-read: #10896a;
+  --gh-write: #7c4dff;
+}
+[data-theme="dark"] .gh-tiles {
+  --gh-read: #34d399;
+  --gh-write: #a78bfa;
+}
 
 .gh-tile {
   display: flex;
@@ -71,7 +85,7 @@
   background: rgba(var(--tint-rgb), 0.02);
 }
 /* Authoring is the one state worth seeing at a glance across the list. */
-.gh-tile--writable { border-color: rgba(var(--tint-rgb), 0.24); }
+.gh-tile--writable { border-color: color-mix(in srgb, var(--gh-write) 45%, transparent); }
 
 .gh-tile-head { display: flex; align-items: center; gap: 8px; }
 .gh-tile-name {
@@ -80,9 +94,16 @@
 }
 .gh-mode {
   flex: none; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--text-muted); padding: 2px 5px; border: 1px solid rgba(var(--tint-rgb), 0.14); border-radius: 3px;
+  padding: 2px 5px; border-radius: 3px;
+  color: var(--gh-read);
+  border: 1px solid color-mix(in srgb, var(--gh-read) 40%, transparent);
+  background: color-mix(in srgb, var(--gh-read) 10%, transparent);
 }
-.gh-mode--write { color: var(--text-primary); border-color: rgba(var(--tint-rgb), 0.3); }
+.gh-mode--write {
+  color: var(--gh-write);
+  border-color: color-mix(in srgb, var(--gh-write) 45%, transparent);
+  background: color-mix(in srgb, var(--gh-write) 12%, transparent);
+}
 
 .gh-tile-desc {
   font-size: 11px; color: var(--text-secondary); line-height: 1.35;
@@ -124,9 +145,32 @@
 .gh-stats { display: flex; flex-wrap: wrap; gap: 6px; }
 .gh-stat { font-size: 10px; color: var(--text-muted); }
 .gh-stat--warn { color: #d97706; }
+/* A clean tree is the state you want to see before handing work off. */
+.gh-stat--clean { color: var(--gh-read); }
 
 .gh-tile-error { font-size: 11px; color: #f87171; }
 
-.gh-tile-actions { display: flex; gap: 10px; padding-top: 2px; }
+.gh-tile-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+
+/* Card actions are buttons, not text links: same 4px chip as the branch
+   control, so every control on a tile reads as the same kind of thing. */
+.gh-btn {
+  padding: 4px 9px;
+  border: 1px solid rgba(var(--tint-rgb), 0.14);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.gh-btn:hover:not(:disabled) { color: var(--text-primary); border-color: rgba(var(--tint-rgb), 0.3); }
+.gh-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Granting authoring is the consequential one — it takes the purple. Revoking
+   it is the same button, so it keeps the colour and reads as "you are here". */
+.gh-btn--write,
+.gh-tile--writable .gh-btn--write { color: var(--gh-write); border-color: color-mix(in srgb, var(--gh-write) 40%, transparent); }
+.gh-btn--write:hover:not(:disabled) { color: var(--gh-write); border-color: var(--gh-write); background: color-mix(in srgb, var(--gh-write) 10%, transparent); }
 
 .gh-rule { padding: 4px 2px; font-size: 10px; line-height: 1.45; color: var(--text-muted); }

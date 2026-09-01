@@ -149,13 +149,51 @@ async function clearTrack(canvasId: string, trackId: string): Promise<void> {
 
 async function insertClip(
   canvasId: string, trackId: string,
-  clip: { src: string; duration: number; startOffset: number; label: string; sortOrder: number; volume?: number },
+  clip: { src: string; duration: number; startOffset: number; label: string; sortOrder: number; volume?: number; trimStart?: number },
 ): Promise<void> {
   await pool.query(
     `INSERT INTO cinema_clips (id, track_id, canvas_id, source_node_id, src, clip_type, duration, start_offset, trim_start, trim_end, volume, label, linked_clip_id, sort_order)
-     VALUES ($1, $2, $3, '', $4, $5, $6, $7, 0, 0, $8, $9, NULL, $10)`,
-    [uuidv4(), trackId, canvasId, clip.src, clipTypeFor(clip.src), clip.duration, clip.startOffset, clip.volume ?? 1, clip.label.slice(0, 120), clip.sortOrder],
+     VALUES ($1, $2, $3, '', $4, $5, $6, $7, $8, 0, $9, $10, NULL, $11)`,
+    [uuidv4(), trackId, canvasId, clip.src, clipTypeFor(clip.src), clip.duration, clip.startOffset, clip.trimStart ?? 0, clip.volume ?? 1, clip.label.slice(0, 120), clip.sortOrder],
   );
+}
+
+/** A continue_video seam='frame' chunk STARTS on the exact frame its source
+ *  clip ENDED on — that is what makes the join invisible in generation, and
+ *  what makes the same frame play twice when the chunks sit side by side on
+ *  the timeline. Detect those chunks (the job row records continuedFrom +
+ *  seam) and trim one frame off their head so the seam doesn't stutter.
+ *  ponytail: ~1 frame at 24fps; read the real fps off the clip if a model
+ *  ever ships something slower. */
+export const SEAM_TRIM_SECONDS = 0.05;
+
+/** Trim for clip i of the cut: one frame off the head iff it is a seam='frame'
+ *  continuation of the clip it actually follows in this list. */
+export function seamTrimFor(
+  i: number,
+  srcs: string[],
+  continuations: Map<string, { from: string; seam: string }>,
+): number {
+  if (i === 0) return 0;
+  const cont = continuations.get(srcs[i]);
+  return cont && cont.seam === "frame" && cont.from === srcs[i - 1] ? SEAM_TRIM_SECONDS : 0;
+}
+
+/** Map result_url -> its generation's {continuedFrom, seam} for the given srcs. */
+async function continuationInfo(srcs: string[]): Promise<Map<string, { from: string; seam: string }>> {
+  const out = new Map<string, { from: string; seam: string }>();
+  if (srcs.length === 0) return out;
+  try {
+    const r = await pool.query(
+      `SELECT result_url, params->>'continuedFrom' AS cf, params->>'seam' AS seam FROM jobs WHERE result_url = ANY($1)`,
+      [srcs],
+    );
+    for (const row of r.rows as { result_url: string; cf: string | null; seam: string | null }[]) {
+      // Older jobs recorded continuedFrom but not seam; 'frame' was the default.
+      if (row.cf) out.set(row.result_url, { from: row.cf, seam: row.seam ?? "frame" });
+    }
+  } catch { /* trim is a nicety — never fail the cut over it */ }
+  return out;
 }
 
 /** Every cinema frame on the canvas, each with its own cut, in play order —
@@ -224,11 +262,13 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
     const muteVideoAudio = body.muteVideoAudio === true;
     await pool.query(`UPDATE cinema_tracks SET muted = $3 WHERE canvas_id = $1 AND id = $2`, [canvasId, video, muteVideoAudio]);
     await clearTrack(canvasId, video);
+    const continuations = await continuationInfo(incoming.map((c) => c.src));
     let at = 0;
     for (const [i, c] of incoming.entries()) {
       const duration = Number.isFinite(c.durationSeconds) && (c.durationSeconds as number) > 0 ? (c.durationSeconds as number) : 5;
-      await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i });
-      at += duration;
+      const trimStart = seamTrimFor(i, incoming.map((x) => x.src), continuations);
+      await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i, trimStart });
+      at += duration - trimStart;
     }
     const music = body.music;
     if (music && usableSrc(music.src)) {

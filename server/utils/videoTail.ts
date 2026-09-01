@@ -34,6 +34,10 @@ const BUCKET = "generations";
 /** fal caps a reference video at 15s and refuses anything under 2s. */
 export const MIN_TAIL_SECONDS = 2;
 export const MAX_TAIL_SECONDS = 15;
+/** Default tail for seam='reference'. More tail carries more motion and
+ *  identity context at no extra cost; extractTailClip clamps it to the source
+ *  clip's own length, so this is safe against 5s chunks. */
+export const DEFAULT_TAIL_SECONDS = 6;
 
 export class VideoTailError extends Error {}
 
