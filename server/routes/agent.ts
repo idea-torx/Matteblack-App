@@ -122,6 +122,12 @@ const REFERENCE_CATALOG_CAP = 12;
 // hundred tokens off the average image-only turn.
 const MUSIC_INTENT_RE = /\b(song|songs|track|tracks|music|musical|beat|beats|jingle|anthem|soundtrack|melody|melodies|lyric|lyrics|instrumental|tune|tunes|score|composition|compose|bpm|chorus|verse|hook|jingle|edm|hip[\s-]?hop|techno|house\s+music|lo[\s-]?fi)\b/i;
 
+// Same idea for the voiceover tool: a turn that says nothing about speech
+// doesn't pay for its schema. Deliberately narrower than the music regex —
+// "voice", "read" and "line" are common enough words that matching them alone
+// would surface the tool on most turns.
+const VOICEOVER_INTENT_RE = /\b(voice[\s-]?over|voiceover|vo\s+(?:line|track|script)|narrat(?:e|es|ed|ing|ion|or)|narration|speak|speaks|spoken|say\s+it|read\s+(?:this|it|out|aloud)|aloud|dialogue|monologue|announcer|text[\s-]?to[\s-]?speech|tts|speech)\b/i;
+
 const DEFAULT_MODEL_KEY = "haiku";
 
 const MAX_INPUT_CHARS = 60_000;
@@ -1929,12 +1935,14 @@ function buildVoiceoverBody(
 }
 
 // Static portion of the system prompt — identical across turns for a given
-// (outputMode, includeMusicTool) combination, so Anthropic can cache it.
+// (outputMode, includeMusicTool, includeVoiceoverTool) combination, so Anthropic
+// can cache it.
 // Excludes the per-turn reference catalog and the brand/product blocks
 // (those go in the dynamic suffix).
 function buildSystemPromptStatic(
   outputMode: "in_chat" | "on_canvas" = "in_chat",
   includeMusicTool: boolean = true,
+  includeVoiceoverTool: boolean = false,
 ): string {
   // The user has chosen where their generations land this turn. In on-canvas
   // mode the chat does NOT show a media preview — the asset appears on the
@@ -1966,8 +1974,18 @@ function buildSystemPromptStatic(
   // time"). Calling this out explicitly in the system prompt is the cheapest
   // mitigation; the server-side detector below catches the residual cases
   // and surfaces a failed card.
+  const toolList = [
+    "generate_media", "transform_media",
+    ...(includeMusicTool ? ["generate_music"] : []),
+    ...(includeVoiceoverTool ? ["generate_voiceover"] : []),
+  ].join(" + ");
+  // Appended rather than woven into the numbered intro so the two gates stay
+  // independent — a speech turn with no music intent still reads correctly.
+  const voiceoverLine = includeVoiceoverTool
+    ? "\n\nYou can also SPEAK: when the user asks for a voiceover, narration, a spoken line, dialogue, an announcer read, or text read aloud — call the generate_voiceover tool with the exact words to speak. It returns an audio card like generate_music does. generate_voiceover is for spoken words; generate_music is for a music bed. A request for both (\"a jingle with a voiceover over it\") is two tool calls in the same turn, not one."
+    : "";
   const noPhantomLine =
-    "Tool-call honesty (HARD RULE): if your reply says — or even implies — that you are creating, generating, making, rendering, drawing, composing, transforming, upscaling, or removing the background of something, you MUST emit a matching generate_media / transform_media / generate_music tool_use block in the SAME turn. Narration without a tool_use block is a bug — it leaves the user with an empty promise. If you decide NOT to call a tool (asking a clarifying question, brainstorming, declining), do NOT use generation verbs in the present/future tense — say what you're doing instead (\"Want me to generate it?\" / \"Tell me X first\") rather than \"I'll create it now\".";
+    `Tool-call honesty (HARD RULE): if your reply says — or even implies — that you are creating, generating, making, rendering, drawing, composing, transforming, upscaling, or removing the background of something, you MUST emit a matching tool_use block (one of: ${toolList}) in the SAME turn. Narration without a tool_use block is a bug — it leaves the user with an empty promise. If you decide NOT to call a tool (asking a clarifying question, brainstorming, declining), do NOT use generation verbs in the present/future tense — say what you're doing instead (\"Want me to generate it?\" / \"Tell me X first\") rather than \"I'll create it now\".`;
   const noFalseRefusalLine =
     "Web-search honesty (HARD RULE): you have a working web_search tool available RIGHT NOW in this conversation. Do NOT claim you can't browse the web, can't look things up, don't have internet access, can't access live information, or that your knowledge is frozen at a training cutoff. If the user asks for current/recent info, news, today's date or weather, prices, scores, lyrics, specs, or anything that needs a citation or is past your training cutoff — call web_search instead of refusing or hedging. Refusing to search when a search would answer the question is a bug. The only acceptable reasons NOT to search are: (a) the answer is a stable well-known fact you already know, or (b) the user explicitly told you not to search.";
   const intro = includeMusicTool
@@ -1990,9 +2008,6 @@ function buildSystemPromptStatic(
         "",
         "When the user clearly asks to make / generate / create / render an image, picture, illustration, photo, video, clip, or animation — call the generate_media tool. When they ask to remove a background, upscale, enlarge, resize / outpaint / expand to a new aspect ratio — call the transform_media tool instead. When they ask about something current, recent, or that needs a source — use web_search first, then answer (and feel free to feed what you learned into a follow-up generate_media call in the same turn if they asked you to make an image about it). Each generation tool streams its result inline as a card the user can drag to the canvas. Tool-calling turns are batch jobs, not dialogue — write one short status line, fire ALL tool_use blocks for the request in this single turn, then stop. No preamble, no acknowledgment beyond the status line, no commentary, no offers, no pasting the prompt back. The output format rules at the end of this prompt are authoritative.",
       ].join("\n");
-  const toolList = includeMusicTool
-    ? "generate_media + transform_media + generate_music"
-    : "generate_media + transform_media";
   const multiCallLine = [
     `BATCH MODE (HARD RULE — read this before anything else): a tool-calling turn is a batch job, NOT a back-and-forth dialogue. When the user asks for N items (videos, images, songs, transforms, or any mix), you MUST emit all N tool_use blocks in THIS single assistant turn, back-to-back, before stopping. Do not pause for confirmation. Do not stop after the first tool_use block. Do not wait for the user to react. Do not split a batch across multiple turns. The system runs at most ${MAX_GENERATIONS_PER_TURN} generation tool calls per reply (${toolList} combined; web_search does NOT count).`,
     `  • If the user asks for N independent items (e.g. '5 video clips of a cat surfing', '10 logo ideas', '3 variations', 'an image and a matching video', '4 logo variations and a matching video', 'remove the bg and then upscale 2x', 'make a song and album cover'): emit exactly N tool_use blocks IN PARALLEL in this single reply (capped at ${MAX_GENERATIONS_PER_TURN}). All N must appear together. Video clips follow the same rule as images — '5 clips of X' fires 5 parallel generate_media calls in this same turn, no exceptions, no matter how heavy the operation feels.`,
@@ -2003,7 +2018,7 @@ function buildSystemPromptStatic(
     "  • No dialogue framing: do not propose next steps, do not ask follow-up questions, do not offer variations after a batch — emit the status line, fire the N tool_use blocks, and end the turn.",
   ].join("\n");
   return [
-    intro,
+    intro + voiceoverLine,
     "",
     multiCallLine,
     "",
@@ -2066,6 +2081,16 @@ function buildSystemPromptStatic(
     "",
     "Audio (generate_media, video only): native audio is ON by default — leave `generateAudio` unset for normal video requests. Pass `generateAudio: false` ONLY when the user clearly asks for a silent / muted / no-audio clip (e.g. 'no sound', 'silent video', 'mute the audio', 'without audio'). Audio enables voice/sound for Veo and Kling at a small per-second surcharge that the system charges automatically; for Seedance audio is included at no extra cost.",
     "",
+    includeVoiceoverTool ? [
+      "Voiceover generation (generate_voiceover tool):",
+      "- Call generate_voiceover when the user asks for a voiceover, narration, a spoken line, dialogue, an announcer read, a VO track, or text read aloud.",
+      "- `text` is the exact words spoken — no speaker labels, no stage directions, nothing the listener shouldn't hear. Punctuate for delivery: a full stop is a beat, a comma is a breath.",
+      "- One call per line or paragraph you want as its own clip. A 4-line script the user wants to cut to picture is 4 calls in this turn, not one blob.",
+      "- `voice` defaults to Friendly_Person. Keep the same voice for the same character across a whole piece; only switch voices for a different speaker.",
+      "- `speed` defaults to 1.0 (0.5–2.0). Cut-to-picture narration usually wants 0.9–1.1. `emotion` defaults to neutral.",
+      "- Spoken words only. Music beds are generate_music; sound effects are not this tool.",
+      "",
+    ].join("\n") : "",
     includeMusicTool ? [
       "Music generation (generate_music tool):",
       "- Call generate_music when the user asks to create a song, track, beat, jingle, anthem, soundtrack, composition, or music.",
@@ -3591,6 +3616,10 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
   // skip the tool entirely (saves ~hundreds of input tokens per turn).
   const includeMusicTool = hasAudioRef || MUSIC_INTENT_RE.test(retainedTextLower);
 
+  // Same gate for the voiceover tool. No audio-reference fallback: a pinned
+  // music asset implies music intent, not speech intent.
+  const includeVoiceoverTool = VOICEOVER_INTENT_RE.test(retainedTextLower);
+
   // Conditional brand context block. Inject when:
   //   - the user (or sticky chat row) explicitly pinned a brand for this
   //     turn, OR
@@ -3630,6 +3659,7 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
   const staticSystem = buildSystemPromptStatic(
     body.output_mode === "on_canvas" ? "on_canvas" : "in_chat",
     includeMusicTool,
+    includeVoiceoverTool,
   );
   const dynamicSystem = buildSystemPromptDynamic(
     referenceCatalog,
@@ -3649,12 +3679,15 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
     systemBlocks.push({ type: "text", text: dynamicSystem });
   }
 
-  // Conditionally include the music tool. Mark the *last* tool with
+  // Conditionally include the music / voiceover tools. Mark the *last* tool with
   // cache_control so the entire tools block becomes part of the cached
   // prefix.
-  const baseTools: Tool[] = includeMusicTool
-    ? [GENERATE_MEDIA_TOOL, TRANSFORM_MEDIA_TOOL, GENERATE_MUSIC_TOOL]
-    : [GENERATE_MEDIA_TOOL, TRANSFORM_MEDIA_TOOL];
+  const baseTools: Tool[] = [
+    GENERATE_MEDIA_TOOL,
+    TRANSFORM_MEDIA_TOOL,
+    ...(includeMusicTool ? [GENERATE_MUSIC_TOOL] : []),
+    ...(includeVoiceoverTool ? [GENERATE_VOICEOVER_TOOL] : []),
+  ];
   const cachedBaseTools: Tool[] = baseTools.map((t, i, arr) =>
     i === arr.length - 1
       ? ({ ...t, cache_control: { type: "ephemeral" } } as Tool)
@@ -4151,6 +4184,56 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
       }, "success");
     };
 
+    // Voiceover rides the "music" card kind on purpose: the client's inline
+    // audio card, the audio canvas node and the .mp3 download are all keyed
+    // off it. `audioKind` is the only thing that distinguishes the two, and
+    // it only changes the card label and the Audio Studio clip type.
+    const processVoiceoverBlock = async (block: ToolUseBlock): Promise<void> => {
+      const parsed = parseGenerateVoiceoverInput(block);
+      if ("error" in parsed) {
+        sendToolUse({ id: block.id, kind: "music", audioKind: "voiceover", error: parsed.error }, "parse_error");
+        return;
+      }
+      if (!canvasId) {
+        const resolved = await resolveOrCreateCanvasForUser(userId, workspaceId);
+        if (!resolved) {
+          sendToolUse({
+            id: block.id,
+            kind: "music",
+            audioKind: "voiceover",
+            prompt: parsed.text,
+            error: "Couldn't find a canvas to generate into. Try refreshing.",
+            errorCode: "no_canvas",
+          }, "dispatch_error");
+          return;
+        }
+        canvasId = resolved;
+      }
+      const built = buildVoiceoverBody(parsed, canvasId, workspaceId);
+      const dispatch = await dispatchAgentGeneration(req, built.body);
+      if (!dispatch.ok) {
+        sendToolUse({
+          id: block.id,
+          kind: "music",
+          audioKind: "voiceover",
+          prompt: parsed.text,
+          model: built.resolvedModel,
+          error: dispatch.error,
+          errorCode: dispatch.status === 402 ? "insufficient_credits" : undefined,
+        }, "dispatch_error");
+        return;
+      }
+      sendToolUse({
+        id: block.id,
+        kind: "music",
+        audioKind: "voiceover",
+        prompt: parsed.text,
+        model: built.resolvedModel,
+        jobId: dispatch.jobId,
+        canvasId,
+      }, "success");
+    };
+
     const processMusicBlock = async (block: ToolUseBlock): Promise<void> => {
       const parsed = parseGenerateMusicInput(block);
       if ("error" in parsed) {
@@ -4256,6 +4339,8 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
         await processTransformBlock(block);
       } else if (block.name === "generate_music") {
         await processMusicBlock(block);
+      } else if (block.name === "generate_voiceover") {
+        await processVoiceoverBlock(block);
       }
     };
 
@@ -4263,7 +4348,8 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
     stream.on("contentBlock", (block) => {
       if (cancelled) return;
       if (block.type !== "tool_use") return;
-      if (block.name !== "generate_media" && block.name !== "transform_media" && block.name !== "generate_music") return;
+      if (block.name !== "generate_media" && block.name !== "transform_media"
+        && block.name !== "generate_music" && block.name !== "generate_voiceover") return;
       toolCounts.streamed += 1;
       const p = processToolBlock(block as ToolUseBlock).catch((err) => {
         console.error("[agent/tool] streaming dispatch failed", err);
@@ -4299,7 +4385,8 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
     const toolUses = final.content.filter(
       (b): b is ToolUseBlock =>
         b.type === "tool_use" &&
-        (b.name === "generate_media" || b.name === "transform_media" || b.name === "generate_music"),
+        (b.name === "generate_media" || b.name === "transform_media"
+          || b.name === "generate_music" || b.name === "generate_voiceover"),
     );
     for (const block of toolUses) {
       if (handledToolUseIds.has(block.id)) continue;
@@ -4460,6 +4547,7 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
       images: prepared.imageCount,
       droppedForWindow: prepared.droppedForWindow,
       includeMusicTool,
+      includeVoiceoverTool,
       includeBrandBlock,
       includeProductBlock: visibleProducts.length > 0,
       refCatalogSize: referenceCatalog.length,

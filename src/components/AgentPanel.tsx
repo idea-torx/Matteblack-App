@@ -111,7 +111,7 @@ type AgentPanelProps = {
    * messages) so the welcome state reads as alive.
    */
   onBusyChange?: (busy: boolean) => void;
-  onMusicGenerationStarted?: (clip: { id: string; prompt: string; jobId: string }) => void;
+  onMusicGenerationStarted?: (clip: { id: string; prompt: string; jobId: string; audioKind?: "voiceover" }) => void;
 };
 
 export type AgentPanelHandle = {
@@ -146,6 +146,9 @@ export type InlineGeneration = {
   id: string;            // tray item id (the canonical id; doubles as React key)
   jobId: string | null;
   kind: "image" | "video" | "music";
+  // Voiceover is a "music" card (same inline player, same audio node, same
+  // .mp3 download) — this only changes the label and the Audio Studio type.
+  audioKind?: "voiceover";
   status: "pending" | "generating" | "ready" | "failed";
   prompt: string;
   model: string;
@@ -2278,6 +2281,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
             const aspectRatio = typeof data.aspectRatio === "string" ? data.aspectRatio : "1:1";
             const resolutionStr = typeof data.resolution === "string" ? data.resolution : undefined;
             const promptStr = typeof data.prompt === "string" ? data.prompt : "";
+            const audioKind = data.audioKind === "voiceover" ? "voiceover" as const : undefined;
             // In "on_canvas" mode we drop a generating placeholder node onto
             // the canvas immediately so the user sees something landing in
             // their viewport while the job runs. Polling later mutates the
@@ -2405,6 +2409,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
               id: jobId || (typeof data.id === "string" ? data.id : crypto.randomUUID()),
               jobId,
               kind,
+              audioKind,
               status: toolErr ? "failed" : "pending",
               prompt: promptStr,
               model: typeof data.model === "string" ? data.model : "",
@@ -2427,7 +2432,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                 : m
             ));
             if (kind === "music" && jobId && !toolErr && onMusicGenerationStartedRef.current) {
-              onMusicGenerationStartedRef.current({ id: gen.id, prompt: promptStr, jobId });
+              onMusicGenerationStartedRef.current({ id: gen.id, prompt: promptStr, jobId, audioKind });
             }
             // Sound parity: start chime when a job kicks off, error chime
             // if the tool call was rejected outright (e.g. no canvas).
@@ -3137,7 +3142,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                           </div>
                           <div className="agent-gen__meta">
                             <div className="agent-gen__caption" title={g.prompt}>
-                              {g.prompt || (g.kind === "music" ? "Music" : g.kind === "video" ? "Video" : "Image")}
+                              {g.prompt || (g.kind === "music" ? (g.audioKind === "voiceover" ? "Voiceover" : "Music") : g.kind === "video" ? "Video" : "Image")}
                             </div>
                             {captionParts && <div className="agent-gen__sub">{captionParts}</div>}
                             {g.notice && <div className="agent-gen__notice">{g.notice}</div>}

@@ -2231,11 +2231,11 @@ function App() {
               if (!activeAudioProjectId) return;
               const audioClip: AudioClip = {
                 id: clip.id,
-                type: "music" as AudioType,
-                prompt: clip.prompt || "Music generation",
+                type: (clip.audioKind === "voiceover" ? "tts" : "music") as AudioType,
+                prompt: clip.prompt || (clip.audioKind === "voiceover" ? "Voiceover" : "Music generation"),
                 duration: "0:00",
                 bars: randomBars(80),
-                style: clip.prompt?.slice(0, 30) || "Music",
+                style: clip.prompt?.slice(0, 30) || (clip.audioKind === "voiceover" ? "Voiceover" : "Music"),
                 loading: true,
                 jobId: clip.jobId,
                 name: generateClipName(clip.id),
