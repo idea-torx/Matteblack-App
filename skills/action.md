@@ -162,12 +162,10 @@ corridor.
 ## 10. Seams — when the fight is one continuing take
 
 The default is hard cuts (§0): separate clips, trimmed. When a take must genuinely continue via
-`continue_video`, action INVERTS `bridge`'s end-on-a-holdable-pose rule — asked for a rest frame, the
-model knocks a fighter down and the next chunk wastes its opening on him getting up. Instead:
-`seam='reference'` on every intra-fight join, end every chunk on a motion still in flight ("END ON:
-his cross still travelling"), open the next chunk by completing it, and never end a chunk on a fall or
-a stagger unless it is the finish. Full rules in `bridge`. Whatever the seam, trim its dead frames out
-on the timeline.
+`continue_video`, do not follow `bridge`'s chaining flow — get_skill `action-bridge`, which owns
+action chains: frame one mid-action, the motion vector re-declared verbatim every chunk, one camera
+for the whole chain, reference seams only, short chains between hard cuts. Whatever the seam, trim
+its dead frames out on the timeline.
 
 ## 11. Reroll economics
 

@@ -197,7 +197,8 @@ oscillate and morph; locked-off was inert; begin-at-rest / end-at-rest worked.)*
 The at-rest rule above is for the CAMERA, and the rest-pose instinct it encourages is right for
 dialogue and wrong for violence. In a fight or chase, a subject-at-rest seam is the tempo killer: asked
 to hand the seam a clean frame, the model manufactures one — a fighter falls over, lies there, and the
-next clip spends its opening seconds on him getting back up. For any scene the `action` skill applies to:
+next clip spends its opening seconds on him getting back up. For any scene the `action` skill applies
+to, get_skill `action-bridge` — it replaces this skill's chaining flow for action. The short version:
 
 - **First choice: don't chain the fight at all.** `action`'s native mode — separate 5s single-exchange
   clips, hard cuts, trimmed to 1–2s on the timeline — has no seams to protect.

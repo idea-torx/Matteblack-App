@@ -56,6 +56,9 @@ For any live-action / photoreal shot, also get_skill `realism` — it is what ke
 skin unwaxy and dialogue timed; skip it only for stylized or animated work.
 For any fight, chase or stunt beat, also get_skill `action` — it owns the choreography: one
 exchange per 5s clip cut on the timeline, hits written as cause → contact → consequence, damage that persists.
+When action must CHAIN via continue_video (a continuous take, a kaiju rampage), get_skill
+`action-bridge` instead of following bridge's chaining flow — it is what stops chained action from
+opening on a pause, reversing its motion, or changing camera mid-take.
 Inside a scene, continue_video is the join — it starts the next chunk from the real end of the last one;
 a fresh keyframe is a hard cut and belongs only where the story cuts. `bridge` has the full decision table.
 
