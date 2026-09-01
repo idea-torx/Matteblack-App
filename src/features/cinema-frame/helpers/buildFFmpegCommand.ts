@@ -269,6 +269,10 @@ export function buildFFmpegCommand(
 
   args.push("-c:v", "libx264", "-preset", "fast", "-crf", "23");
   args.push("-pix_fmt", "yuv420p");
+  // Without an explicit level x264 in the wasm build writes SPS level 6.2 (the
+  // concat graph's microsecond timebase reads as a huge frame rate), and iOS
+  // refuses the file. Same cap the passthrough branch rewrites to.
+  args.push("-profile:v", "high", "-level:v", "5.1");
   args.push("-movflags", "+faststart");
   args.push("-t", totalDuration.toFixed(4));
 
