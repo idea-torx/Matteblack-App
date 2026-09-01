@@ -120,9 +120,9 @@
    * board reads as the "site" against the lighter floating chrome. */
   --bg-base-rgb: 240, 240, 243;
   --bg-base: #f0f0f3;
-  /* Flat light chrome: rail, tools panel and agent panel all share one fill —
-   * the separation comes from the hairline borders, not from three shades. */
-  --rail-bg: #e9e9ee;
+  /* Flat light chrome: rail and the top tab band take the site background,
+   * so the whole frame around the canvas is one tone. */
+  --rail-bg: var(--bg-base);
   --panel-bg: #e9e9ee;
   --panel-bg-translucent: #e9e9ee;
   /* Raised surfaces sit a clear shade DARKER than the panel bg in

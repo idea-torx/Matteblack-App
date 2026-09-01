@@ -23,9 +23,9 @@
    * (a pill filled with --text-primary) can use it as their text colour and
    * stay legible when the dark override below flips both. */
   --agent-surface: #F0F0F3;
-  /* The paper behind and around the card — a shade under the card so the
-   * card reads as floating on the same tone as the top band. */
-  --agent-backdrop: #e9e9ee;
+  /* The paper behind and around the card is the site background itself, so
+   * the reserved right strip is invisible against the rest of the window. */
+  --agent-backdrop: var(--bg-base);
 
   position: fixed;
   /* Floating card inside the right reserved area (--canvas-right-inset
