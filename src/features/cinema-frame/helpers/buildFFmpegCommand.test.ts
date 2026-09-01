@@ -80,3 +80,17 @@ assert.ok(!noMusic.includes("music.mp3"), "muted audio track contributes nothing
 assert.ok(noMusic.includes("vid.mp4"), "picture unaffected by an audio-track mute");
 
 console.log("buildFFmpegCommand: all checks passed");
+
+// An image clip (end card) is looped into the picture chain, not dropped.
+{
+  const st = {
+    ...state(false),
+    tracks: [{ id: "v1", type: "video", muted: false, clips: [clip("vid"), clip("card", { type: "image", sourceUrl: "/uploads/card.png", startOffset: 5, duration: 3 })] }],
+  } as TimelineState;
+  const f = new Map([["vid", "vid.mp4"], ["card", "card.png"]]);
+  const out = buildFFmpegCommand(st, f, cfg, 8, info).args.join(" ");
+  assert.match(out, /-loop 1 -framerate 30 -t 3\.0000 -i card\.png/, "image looped as input");
+  assert.match(out, /concat=n=2/, "image joins concat");
+  assert.doesNotMatch(out, /color=c=black/, "no black gap where the card sits");
+  console.log("image clip export: ok");
+}

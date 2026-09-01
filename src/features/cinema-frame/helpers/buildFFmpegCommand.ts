@@ -37,7 +37,7 @@ export function buildFFmpegCommand(
   for (const track of videoTracks) {
     for (const clip of track.clips) {
       const filename = clipFileMap.get(clip.id);
-      if (filename && clip.type === "video") {
+      if (filename && (clip.type === "video" || clip.type === "image")) {
         videoClips.push({ clip, filename });
         if (track.muted) mutedVideoClipIds.add(clip.id);
       }
@@ -150,7 +150,8 @@ export function buildFFmpegCommand(
     ? `,scale=${resolutionMap[config.resolution].w}:${resolutionMap[config.resolution].h}:force_original_aspect_ratio=decrease,pad=${resolutionMap[config.resolution].w}:${resolutionMap[config.resolution].h}:(ow-iw)/2:(oh-ih)/2:color=black`
     : "";
 
-  const firstClipInfo = videoClips.length > 0 ? streamInfoMap.get(videoClips[0].clip.id) : undefined;
+  const firstVideo = videoClips.find((e) => e.clip.type === "video");
+  const firstClipInfo = firstVideo ? streamInfoMap.get(firstVideo.clip.id) : undefined;
   const firstClipDims = {
     w: firstClipInfo?.width || 1920,
     h: firstClipInfo?.height || 1080,
@@ -182,12 +183,17 @@ export function buildFFmpegCommand(
       videoSegmentLabels.push(`[${gapLabel}]`);
     }
 
+    // A still (end card, title) is looped into a clip of its own duration and
+    // scaled to the export frame so concat accepts it beside the video clips.
+    const isImage = entry.clip.type === "image";
+    if (isImage) inputArgs.push("-loop", "1", "-framerate", "30", "-t", effDur.toFixed(4));
     inputArgs.push("-i", entry.filename);
     const thisIdx = inputIdx++;
     videoInputIndexMap.set(entry.clip.id, thisIdx);
     const vLabel = `v${videoSegmentLabels.length}`;
+    const imageFilter = `,scale=${res.w}:${res.h}:force_original_aspect_ratio=decrease,pad=${res.w}:${res.h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p`;
     filterParts.push(
-      `[${thisIdx}:v]trim=start=${entry.clip.trimStart.toFixed(4)}:end=${(entry.clip.duration - entry.clip.trimEnd).toFixed(4)},setpts=PTS-STARTPTS${scaleFilter}[${vLabel}]`
+      `[${thisIdx}:v]trim=start=${entry.clip.trimStart.toFixed(4)}:end=${(entry.clip.duration - entry.clip.trimEnd).toFixed(4)},setpts=PTS-STARTPTS${isImage ? imageFilter : scaleFilter}[${vLabel}]`
     );
     videoSegmentLabels.push(`[${vLabel}]`);
 

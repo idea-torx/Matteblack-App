@@ -171,7 +171,8 @@ export function useCinemaExport(timeline: TimelineState | null) {
 
         let vfsName = uniqueSrcs.get(clip.src);
         if (!vfsName) {
-          const ext = clip.type === "audio" ? "mp3" : "mp4";
+          // Stills keep their real extension: ffmpeg picks the image demuxer by name.
+          const ext = clip.type === "audio" ? "mp3" : clip.type === "image" ? (/\.(png|jpe?g|webp|gif)(?:\?|$)/i.exec(clip.src)?.[1] ?? "png") : "mp4";
           vfsName = `input_${fileIdx++}.${ext}`;
 
           let fetchUrl = clip.src;

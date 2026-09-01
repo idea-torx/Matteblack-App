@@ -130,6 +130,10 @@ paraphrase; drift in the words is drift in the picture.
 - **Subjects** — one locked description per character, 15–25 words: build, hair, wardrobe with colours,
   one distinguishing detail.
 - **Sound** — what the diegetic bed is, stated every clip so it doesn't restart.
+- **Voice** — per speaking character: age, gender, accent, temperament. e.g. *"MAYA: a woman in her
+  mid-twenties, warm low London accent, dry and unhurried."* State the accent twice in every chunk, once
+  here and once beside the lines, and put the wrong accents and the wrong gender in the negative prompt.
+  One mention drifts by the third chunk.
 - **Subject stills** — one approved still per character (keyframe-then-animate, §1), generated before
   the first clip. Pass the same URLs as `referenceUrls` on every `reference` continuation: the tail
   carries only the last few seconds, and these stills are what hold a face together once the scene is
