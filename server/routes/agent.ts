@@ -28,7 +28,7 @@ import { scheduleCanvasFlush } from "../services/canvasCheckpointScheduler.js";
 import redisClient from "../services/redisClient.js";
 import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
-import { extractLastFrame, extractTailClip, VideoTailError, DEFAULT_TAIL_SECONDS } from "../utils/videoTail.js";
+import { extractLastFrame, extractTailClip, probeMinDimension, VideoTailError, DEFAULT_TAIL_SECONDS } from "../utils/videoTail.js";
 import { getOperatorContext, noteOperatorJob } from "../services/operatorCanvasContext.js";
 
 const router = Router();
@@ -4967,7 +4967,15 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         model: seam === "reference" ? `${family}-r2v` : `${family}-i2v`,
         prompt,
         duration,
-        resolution: typeof input.resolution === "string" ? input.resolution : undefined,
+        // Inherit the source clip's resolution tier when the caller doesn't
+        // name one — otherwise undefined falls to each family's own default
+        // and a chain can jump tiers mid-sequence. Snapped to the family's
+        // ladder here because probeMinDimension returns raw pixels.
+        resolution: typeof input.resolution === "string" ? input.resolution
+          : await probeMinDimension(src).then((d) => d === undefined ? undefined
+            : family === "seedance-2.5"
+              ? (d <= 480 ? "480p" : d <= 720 ? "720p" : "1080p")
+              : (d <= 480 ? "480p" : "768p")),
         aspect_ratio: aspectRatio,
         // fal.ts checks generateAudio === true strictly; leaving it unset made
         // every continuation chunk silent. Default on, like generate_media.

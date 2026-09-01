@@ -117,6 +117,24 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
  * Without it, ffmpeg decodes the last second and `-update` overwrites the same
  * PNG each frame, so what survives is the last one.
  */
+/**
+ * The source clip's smaller pixel dimension, for inheriting its resolution
+ * tier across a continuation chain. Best-effort: undefined on any failure.
+ * ffprobe reads http(s) URLs directly, so remote sources cost a header fetch,
+ * not a download.
+ */
+export async function probeMinDimension(videoUrl: string): Promise<number | undefined> {
+  const target = resolveUploadFile(videoUrl, UPLOADS_DIR) ?? videoUrl;
+  try {
+    const { stdout } = await run("ffprobe", [
+      "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+      "-of", "csv=p=0", target,
+    ]);
+    const [w, h] = String(stdout).trim().split(",").map(Number);
+    return w > 0 && h > 0 ? Math.min(w, h) : undefined;
+  } catch { return undefined; }
+}
+
 export async function extractLastFrame(videoUrl: string): Promise<string> {
   await ensureFfmpeg();
   return withTempDir(async (dir) => {
@@ -152,7 +170,10 @@ export async function extractTailClip(videoUrl: string, seconds: number): Promis
     const out = path.join(dir, "tail.mp4");
     await run("ffmpeg", [
       "-ss", String(Math.max(0, total - take)), "-i", src,
-      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      // -crf 16: near-transparent. The default (23) visibly softens the tail,
+      // and H3 conditions every continuation on this file — seam quality IS
+      // output quality.
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-movflags", "+faststart", "-y", out,
     ]);
     const data = await fsp.readFile(out).catch(() => {
