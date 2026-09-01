@@ -39,6 +39,12 @@
   app-region: drag;
 }
 
+/* Flat light chrome: the band is plain white rather than the translucent
+ * grey, so the top of the window reads as one white strip. */
+[data-theme="light"] .project-tabs {
+  background: #fff;
+}
+
 .project-tab,
 .project-tabs__new {
   -webkit-app-region: no-drag;
