@@ -4,6 +4,7 @@ import type { ReferenceImage, CanvasNode } from "../types/canvas";
 import { renderMarkdown } from "../utils/markdown";
 import { QuantumThinking } from "./QuantumThinking";
 import { ThinkingPill } from "./ThinkingPill";
+import { StreamingText } from "./StreamingText";
 import { useGenerationSound } from "../hooks/useGenerationSound";
 import { findEmptySlots, layout, placeholderSize } from "../utils/canvasPlacement";
 import {
@@ -432,9 +433,14 @@ function hydrateStoredMessage(m: { id: string; role: string; text: string; image
       // Reload-time status: explicit 'failed' stays failed; rows with a URL
       // are 'ready'; rows without a URL but with a tray id are 'pending' and
       // the polling effect will resolve them.
+      // Reload-time status. A row with no url AND no jobId has no resolution
+      // path left — polling is keyed on jobId — so it is a corpse from a
+      // previous session, not work in flight. Calling it failed is what stops
+      // "Generating on canvas…" spinning forever after a restart.
       const status: InlineGeneration["status"] =
         img.status === "failed" ? "failed"
         : img.url ? "ready"
+        : !img.jobId ? "failed"
         : (img.status === "generating" ? "generating" : "pending");
       generations.push({
         canvasNodeId: img.canvasNodeId || null,
@@ -1504,7 +1510,15 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
           if (!m.generations || m.generations.length === 0) return m;
           let innerChanged = false;
           const gens = m.generations.map((g) => {
-            if (!g.canvasNodeId) return g;
+            if (!g.canvasNodeId) {
+              // Linkage was never established (the server placed the node
+              // after the gen reached the thread). Adopt it by stable key so
+              // the chip becomes clickable instead of staying inert forever.
+              const adopted = (g.jobId && byJob.get(g.jobId)) || (g.id && byTray.get(g.id)) || null;
+              if (!adopted) return g;
+              innerChanged = true;
+              return { ...g, canvasNodeId: adopted.id };
+            }
             // Direct id hit: still mounted, nothing to do.
             if (byId.has(g.canvasNodeId)) return g;
             // Remap path: the original id is gone, but a node with the same
@@ -2954,10 +2968,17 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                       <ThinkingPill className="agent-panel__thinking" />
                     ) : (
                       <>
-                        <div
-                          className="agent-panel__markdown"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
-                        />
+                        {/* Mid-stream the text renders as word spans so each
+                            new one can resolve out of blur; the finished
+                            message swaps to the markdown pass. */}
+                        {m.streaming ? (
+                          <StreamingText text={m.text} />
+                        ) : (
+                          <div
+                            className="agent-panel__markdown"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
+                          />
+                        )}
                         {m.streaming && (
                           <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" />
                         )}
@@ -2999,7 +3020,11 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                               className={`agent-gen__placed-chip ${failed ? "agent-gen__placed-chip--failed" : ""}`}
                               onClick={() => handleFocusPlacedNode(g)}
                               title={ready ? "Show on canvas" : failed ? "Show error on canvas" : "Show placeholder on canvas"}
-                              disabled={!g.canvasNodeId}
+                              /* Same resolver the click uses — the stored id can
+                                 be stale or absent while the node is findable by
+                                 jobId, and disabling on the stored one alone made
+                                 live chips inert. */
+                              disabled={!resolveLiveNodeId(g)}
                             >
                               {inFlight ? (
                                 <QuantumThinking size={14} ariaLabel="Generating" />

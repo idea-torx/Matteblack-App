@@ -1,0 +1,41 @@
+.streaming-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.streaming-text__word {
+  display: inline;
+  animation: streaming-text-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes streaming-text-in {
+  from { opacity: 0; filter: blur(4px); }
+  to { opacity: 1; filter: blur(0); }
+}
+
+/* Sits on the baseline at the end of the last word, so it tracks the text
+ * without needing to be positioned. */
+.streaming-text__caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: currentColor;
+  animation: streaming-text-caret 1s steps(2, jump-none) infinite;
+}
+
+@keyframes streaming-text-caret {
+  from { opacity: 1; }
+  to { opacity: 0.15; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-text__word { animation: none; }
+  .streaming-text__caret { animation: none; opacity: 0.5; }
+}

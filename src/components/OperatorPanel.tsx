@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
 import { ThinkingPill } from "./ThinkingPill";
+import { StreamingText } from "./StreamingText";
 import { renderMarkdown } from "../utils/markdown";
 import type { ReferenceImage } from "../types/canvas";
 import { desktopBridge } from "../desktop";
@@ -1063,7 +1064,11 @@ export function OperatorPanel({
                         <ThinkingPill className="agent-panel__thinking" />
                       ) : (
                         <>
-                          <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                          {m.streaming ? (
+                            <StreamingText text={m.text} />
+                          ) : (
+                            <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                          )}
                           {m.streaming && <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" />}
                         </>
                       )}
