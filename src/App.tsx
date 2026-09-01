@@ -2291,7 +2291,7 @@ function App() {
           />
         )}
         <div
-          className={`canvas-area${presentMode ? " canvas-area--present" : ""}${(rightPanelOpen || showAgentPanel || (rightPanelHidden && !presentMode)) && !presentMode ? " canvas-area--card" : ""}${showAgentPanel && agentBusy && !presentMode ? " canvas-area--agent-busy" : ""}${panelSwapping ? " canvas-area--swap" : ""}`}
+          className={`canvas-area${presentMode ? " canvas-area--present" : ""}${(rightPanelOpen || showAgentPanel || (rightPanelHidden && !presentMode)) && !presentMode ? " canvas-area--card" : ""}${panelSwapping ? " canvas-area--swap" : ""}`}
           style={{
             ["--canvas-left-inset" as string]:
               // QuickSettings and Settings panels honor the responsive
@@ -2385,7 +2385,6 @@ function App() {
               />
             </div>
           )}
-          <div className="canvas-glow canvas-glow--sharp" aria-hidden="true" />
           {isActiveProjectViewer && activeOwnerLabel && (
             <div
               style={{

@@ -12,7 +12,7 @@
     radial-gradient(ellipse 120% 100% at center, transparent 35%, rgba(0, 0, 0, 0.06) 100%),
     var(--bg-canvas);
   cursor: default;
-  border-radius: 8px;
+  border-radius: 0;
   user-select: none;
   overscroll-behavior: none;
   touch-action: none;

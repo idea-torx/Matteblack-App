@@ -194,19 +194,18 @@ html.is-mac .app-titlebar--top {
 }
 
 .canvas-area--card {
-  /* Matches .freeform-canvas — the card paints --bg-canvas behind the canvas,
-   * so a square corner here would fill in the rounded one and there would be
-   * nothing to see. */
-  border-radius: 8px;
+  /* Flat: square corners, no drop shadow, one hairline stroke. Outline rather
+   * than border so the 1px does not re-lay-out the canvas. */
+  border-radius: 0;
+  outline: 1px solid rgba(var(--tint-rgb), 0.14);
+  outline-offset: -1px;
   margin-right: var(--canvas-right-inset, 0px);
-  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
   /* margin-right is NOT animated. Animating the inset re-lays-out the canvas
    * every frame for 240ms with the right panel's backdrop-filter blur on top,
    * and the compositor drops the canvas's cached layers — that is the white
    * flash on every tool switch that opens or closes the right panel. The swap
    * case was already exempted for exactly this reason; open/close leaked
    * through the exemption. The inset snaps; the panels still crossfade. */
-  transition: box-shadow 360ms ease;
 }
 
 /* Surface-swap (agent ↔ rpanel) used to slide the canvas card across
@@ -217,75 +216,6 @@ html.is-mac .app-titlebar--top {
  * cached layers. The panels (.rpanel, .agent-panel) still opacity
  * crossfade via .app-body--swap, which is enough to mask the swap
  * without touching the canvas width. */
-
-.canvas-area--card .freeform-canvas {
-}
-
-
-/* Busy-state edge glow: glow divs inside the canvas card use the same
- * rotating conic-gradient technique as the agent panel composer. */
-.canvas-glow {
-  position: absolute;
-  inset: -3px;
-  /* The canvas radius plus this ring's own 3px inset. Kept in step by hand:
-   * a glow rounder than the card it traces reads as a halo that has come
-   * loose from the edge. */
-  border-radius: 11px;
-  z-index: 20;
-  overflow: hidden;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 420ms ease;
-  padding: 3px;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-}
-.canvas-glow::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: conic-gradient(
-    from 0deg,
-    #3B82F6 0%,
-    #60a5fa 12%,
-    transparent 25%,
-    transparent 35%,
-    #3B82F6 45%,
-    #93c5fd 55%,
-    transparent 68%,
-    transparent 78%,
-    #3B82F6 90%,
-    #3B82F6 100%
-  );
-}
-
-
-/* The outer blurred bloom that used to live here is gone. Its inner element
- * (.canvas-glow--soft) inherited `opacity: 0` from .canvas-glow and nothing
- * ever raised it, so the wrapper composited a full-card `blur(20px)` layer
- * that drew nothing at all. */
-
-.canvas-area--card.canvas-area--agent-busy {
-  box-shadow: none;
-}
-.canvas-area--agent-busy .canvas-glow--sharp {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .canvas-area--agent-busy .canvas-glow::before {
-    animation: none;
-  }
-  .canvas-area--agent-busy .canvas-glow--sharp {
-    opacity: 0.7;
-  }
-}
 
 .canvas-area--present {
   position: absolute;
@@ -438,15 +368,4 @@ html.is-mac .app-titlebar--top {
 }
 [data-theme="light"] .rpanel-top-tabs__divider { background: var(--border-subtle); }
 
-[data-theme="light"] .canvas-area--card {
-  /* Compact ~30px graceful shadow off the canvas card's right edge —
-   * a soft single layer that fades cleanly into the #D6D6DB site bg
-   * without bleeding deep into the panel area. */
-  box-shadow:
-    4px 0 12px rgba(15, 17, 21, 0.12),
-    8px 0 30px rgba(15, 17, 21, 0.18);
-}
 
-[data-theme="light"] .canvas-area--card.canvas-area--agent-busy {
-  box-shadow: none;
-}
