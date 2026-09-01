@@ -1675,7 +1675,7 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       prompt: {
         type: "string",
-        description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — a holdable rest pose for seam='frame', or the motion the next chunk continues for seam='reference'. A changed adjective is how a sequence drifts.",
+        description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — for seam='frame' a camera at rest (subjects may still be moving; name their direction), for seam='reference' the motion the next chunk continues. A changed adjective is how a sequence drifts.",
       },
       model: {
         type: "string",
@@ -1713,7 +1713,11 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       aspectRatio: {
         type: "string",
         enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
-        description: "The sequence's aspect ratio. Defaults to the source clip's own shape. seam='frame' inherits it from the seed frame anyway, but seam='reference' does NOT read it off the tail clip and will fall back to 16:9 — so pass it on every chunk of a non-16:9 sequence.",
+        description: "The sequence's aspect ratio. Defaults to the source clip's own shape on either seam; pass it only to change it, which you should never do mid-sequence.",
+      },
+      generateAudio: {
+        type: "boolean",
+        description: "Whether this chunk generates its own audio (default true). Pass false on every chunk of a scored piece — a bed that restarts at each seam is audible even when the picture joins cleanly.",
       },
     },
     required: ["sourceUrl", "prompt"],

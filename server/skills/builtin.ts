@@ -160,10 +160,19 @@ chained clips.
 | Seam | What it does | Returns | Use for |
 |---|---|---|---|
 | \`frame\` | Starts the new clip on the previous clip's **exact final frame**. | \`h3-max-i2v\` | **Inside a scene.** One continuous take, one camera position or one contained move. The default for chaining. |
-| \`reference\` (+ \`tailSeconds: 3\`) | Feeds the previous clip's final seconds as a **motion and subject reference** — carries the room, the light and the faces, not the frame. | \`h3-max-r2v\` | **Across a cut**, when you want a genuinely new angle but the same world. Coverage within one location, and scene breaks. |
+| \`reference\` (+ \`tailSeconds\`) | Feeds the previous clip's final seconds as a **motion and subject reference** — carries the room, the light and the faces, not the frame. | \`h3-max-r2v\` | **Across a cut**, when you want a genuinely new angle but the same world. Coverage within one location, and scene breaks. |
 
 Check the returned model string. \`-i2v\` or \`-r2v\` means the seam engaged; \`-t2v\` means the source was
 silently dropped and you have an unrelated clip.
+
+**Who is moving at the seam decides the seam.** \`frame\` is for a camera that has settled; it carries no
+velocity, so a subject caught mid-stride restarts in whatever direction the model guesses. If the *subject*
+is still moving where the chunk ends — a chase, a walk, a dance — use \`reference\` and repeat the MOTION line
+word for word, with its screen direction, in the next prompt. Never stop a runner so a frame seam can hold.
+
+**\`tailSeconds\` defaults to 6 and costs nothing extra.** Use 3 at a scene break, where the camera changes
+and you want the old setup to have as little pull as possible; keep 6 for coverage inside one location,
+where the extra seconds carry more identity and motion across the cut.
 
 **\`reference\` carries the aspect ratio.** The tool reads the source clip's shape and sends it with the
 generation, so a 9:16 source stays 9:16 over either seam — pick the seam for the cut, never for the
@@ -218,6 +227,10 @@ is the most common cause of a sequence that won't cut together.
 A short block, repeated **word for word in every single clip prompt**. Not "same as before" and not a
 paraphrase; drift in the words is drift in the picture.
 
+Before the bible, one sentence of **arc**: what the scene changes, a state the viewer can name before and
+after. It is not pasted into prompts; it decides which chunk carries the turn and which one lands it, so
+the last chunk cannot end where the first began.
+
 - **Look** — one sentence of stock, light, grade, grain. e.g. *"Shot on 35mm in the flat bright look of a
   1990s American sitcom: even warm key light, minimal shadow, gentle film grain, television framing."*
 - **World** — location, time of day, era, and 3–4 specific set objects that let you say "same" later
@@ -225,6 +238,10 @@ paraphrase; drift in the words is drift in the picture.
 - **Subjects** — one locked description per character, 15–25 words: build, hair, wardrobe with colours,
   one distinguishing detail.
 - **Sound** — what the diegetic bed is, stated every clip so it doesn't restart.
+- **Subject stills** — one approved still per character (keyframe-then-animate, §1), generated before
+  the first clip. Pass the same URLs as \`referenceUrls\` on every \`reference\` continuation: the tail
+  carries only the last few seconds, and these stills are what hold a face together once the scene is
+  many chunks old. Record the URLs in the cut (§9) so the next piece inherits the cast.
 
 Keep it lean. **Prompt bloat feeds morphing** — an overloaded prompt gives the model more to reinvent at
 every seam. Say each thing once, clearly, and stop.
@@ -296,6 +313,10 @@ four ways on the same scene: ending mid-arc flipped the direction; re-declaring 
 oscillate and morph; locked-off was inert; begin-at-rest / end-at-rest worked.)*
 
 ## 5. Beats and pacing
+
+**Repeat the bible, never the previous chunk's verbs.** The seed frame or tail already shows the last
+action; writing it again makes the model perform it again, which is the repeated beat you see at a join.
+Each prompt's action is new and starts from where the picture already is.
 
 ### Beat density — write enough story to fill the runtime
 
@@ -422,6 +443,10 @@ a previous version gets restored.
 If one clip breaks, regenerate **that clip only** and re-send the list. Never re-run the sequence. Read
 back with \`get_timeline\` before changing anything.
 
+\`set_timeline\` already trims the duplicated first frame off every \`frame\`-seam chunk (it checks the two
+frames actually match before trimming), so a seam that stutters is a camera or performance problem, not
+a trim you owe.
+
 **Watch the seams, not the clips.** When a join reads wrong, name which side is at fault: clip N still
 moving at its last frame (§4), a character unaccounted for off-screen (§3), a beat that starts slack
 because it was grafted onto a resolution (§5), or a scene boundary being forced to behave like a chain
@@ -430,14 +455,17 @@ not the stitch.
 
 ## 8. Audio
 
-\`continue_video\` has no \`generateAudio\` switch, so every chunk generates its own audio. Keep it diegetic
-and describe the same bed in every prompt — *"room tone, cutlery, low murmur, continuous with the previous
-shot"* — and say **no music, no laugh track, no narration** so nothing tries to start a score mid-scene.
+\`continue_video\` generates audio on every chunk by default. For a diegetic piece keep it and describe
+the same bed in every prompt — *"room tone, cutlery, low murmur, continuous with the previous shot"* —
+and say **no music, no laugh track, no narration** so nothing tries to start a score mid-scene. For a
+scored piece pass \`generateAudio: false\` on every chunk instead: a bed that restarts at each seam is
+audible even when the picture joins cleanly.
 
-For a scored piece, call \`generate_music\` **once** for the whole runtime and pass it to \`set_timeline\` as
-\`music\` with \`muteVideoAudio\`. A new track per clip is the fastest way to make good clips sound like
-different films. \`set_timeline\` takes one bed, so a piece needing continuous VO *and* continuous music
-needs them mixed before they reach the timeline.
+For the score, call \`generate_music\` **once** for the whole runtime — a new track per clip is the fastest
+way to make good clips sound like different films. \`set_timeline\` takes an \`audio\` list on up to eight
+parallel tracks: the music bed on one track, voiceover (\`generate_voiceover\`) on another with
+\`startSeconds\` to cut it to picture, and \`volume\` to duck the music (~0.25) under the spoken line. Pass
+\`muteVideoAudio\` when the clips' own sound would fight the bed.
 
 ## 9. Record the cut
 

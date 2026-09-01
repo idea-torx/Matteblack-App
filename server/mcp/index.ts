@@ -173,7 +173,7 @@ const EMBEDDED_TOOLS: Tool[] = [
       type: "object",
       properties: {
         sourceUrl: { type: "string", description: "URL of the clip to continue from." },
-        prompt: { type: "string", description: "What happens in this chunk only." },
+        prompt: { type: "string", description: "What happens in this chunk only. End on a camera at rest for seam='frame' (subjects may keep moving; name their direction), or on the motion the next chunk continues for seam='reference'." },
         model: { type: "string", enum: ["h3-max", "seedance-2.5"], description: "Model family (default h3-max). seedance-2.5 takes chunks up to 30s and does native audio; keep one family per sequence." },
         seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
         durationSeconds: { type: "integer", description: "Chunk length (default 5). h3-max 5-15s, seedance-2.5 4-30s." },
@@ -183,7 +183,8 @@ const EMBEDDED_TOOLS: Tool[] = [
           items: { type: "string" },
           description: "seam='reference' only: up to 4 image URLs of the sequence's locked subjects, pinned on every chunk so identity survives past the tail.",
         },
-        aspectRatio: { type: "string", enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], description: "The sequence's aspect ratio. Defaults to the source clip's shape; seam='reference' falls back to 16:9 without it, so pass it on every chunk of a non-16:9 sequence." },
+        aspectRatio: { type: "string", enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], description: "The sequence's aspect ratio. Defaults to the source clip's shape on either seam." },
+        generateAudio: { type: "boolean", description: "Whether this chunk generates its own audio (default true). Pass false on every chunk of a scored piece so no chunk starts a competing bed." },
       },
       required: ["sourceUrl", "prompt"],
     },
