@@ -61,10 +61,9 @@ chained clips.
 Check the returned model string. `-i2v` or `-r2v` means the seam engaged; `-t2v` means the source was
 silently dropped and you have an unrelated clip.
 
-**`reference` does not carry the aspect ratio.** It receives tail seconds, not dimensions, and falls back
-to 16:9 — a 9:16 source will come back landscape even with `aspectRatio: "9:16"` passed, because that
-argument only sizes the canvas placeholder. Until that is fixed, **any non-16:9 piece must chain on
-`frame` seams throughout.** Belt and braces: put the orientation at the very top of the prompt
+**`reference` carries the aspect ratio.** The tool reads the source clip's shape and sends it with the
+generation, so a 9:16 source stays 9:16 over either seam — pick the seam for the cut, never for the
+orientation. Belt and braces on non-16:9 pieces: put the orientation at the very top of the prompt
 (*"Vertical 9:16 portrait frame, tall and narrow"*) and add `horizontal frame, widescreen, 16:9,
 letterbox, black bars, changing aspect ratio` to the negatives.
 
@@ -191,27 +190,6 @@ the camera *does* in the positive prompt and forbid movement generically in the 
 *(This supersedes the old rule about ending a clip mid-camera-move for the next one to complete. Tested
 four ways on the same scene: ending mid-arc flipped the direction; re-declaring the vector harder made it
 oscillate and morph; locked-off was inert; begin-at-rest / end-at-rest worked.)*
-
-### Action scenes: the subject never rests at a seam
-
-The at-rest rule above is for the CAMERA, and the rest-pose instinct it encourages is right for
-dialogue and wrong for violence. In a fight or chase, a subject-at-rest seam is the tempo killer: asked
-to hand the seam a clean frame, the model manufactures one — a fighter falls over, lies there, and the
-next clip spends its opening seconds on him getting back up. For any scene the `action` skill applies
-to, get_skill `action-bridge` — it replaces this skill's chaining flow for action. The short version:
-
-- **First choice: don't chain the fight at all.** `action`'s native mode — separate 5s single-exchange
-  clips, hard cuts, trimmed to 1–2s on the timeline — has no seams to protect.
-- When one take must genuinely continue, every intra-fight join is **`seam='reference'`, never
-  `seam='frame'`** — the tail carries the momentum a still cannot, so the fighters cross the seam still
-  in flight. The camera still obeys §4 (one small move, easing to rest); it is the SUBJECTS that never
-  settle.
-- Never write "falls", "collapses", "drops", "staggers back and pauses" at the end of a chunk unless it
-  is the fight's finish. A body on the floor is a rest point the model will milk.
-- End each chunk on a named motion — "END ON: his cross still travelling toward the jaw" — and open the
-  next chunk's first timecoded beat by completing it ("0-1s: the cross lands"), so frame one is
-  mid-strike.
-- The only legal rest seams in a fight: the turn (the one breath `action` allows) and after the finish.
 
 ## 5. Beats and pacing
 
