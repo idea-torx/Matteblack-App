@@ -133,7 +133,7 @@ generating anything, from what changes across it:
 
 | Boundary between chunk N and N+1 | Join |
 |---|---|
-| Same shot, action continuing | \`continue_video\` \`seam='frame'\` — invisible, starts on the exact last frame |
+| Same shot, action continuing | \`continue_video\` \`seam='frame'\` — invisible, starts on the exact last frame. For fight/chase chains use \`seam='reference'\` — see the action override in §3 |
 | Same scene, new angle or camera reposition | \`continue_video\` \`seam='reference'\` — carries motion and identity, not the frame |
 | New scene, new location, or a time jump | Hard cut: new keyframe + \`generate_media\` (\`first_frame\`), then keep chaining inside the new scene |
 | The rest of the piece fits in one clip | One generation, no join |
@@ -188,6 +188,23 @@ in the middle of fast motion halts or reverses that motion on screen. So:
   can carry into the next generation.
 - When motion must cross the boundary (a run, a fall, a pan), use \`seam='reference'\` — its tail clip
   carries the motion vector a still cannot.
+
+**Action sequences INVERT the rest-pose rule.** In a fight or chase, a rest-point seam is the failure
+mode: told to end holdable, the model manufactures one — a fighter falls over, lies there, then the
+next chunk opens with seconds of him getting back up. The pacing dies at every join. For any chain
+\`action\` applies to:
+
+- Every join inside the fight is \`seam='reference'\`, never \`seam='frame'\` — the tail carries the
+  momentum, and motion crosses the seam still in flight.
+- \`END ON:\` names a motion, not a pose: "END ON: his cross still travelling toward the jaw". The next
+  chunk's ACTION line opens by completing it ("the cross lands —") so frame one is mid-strike.
+- Never write "falls", "collapses", "drops", "staggers back and pauses" at a chunk end unless it is
+  the fight's finish. A body on the floor is a rest point the model will milk.
+- The only legal rest-point seams in a fight: the turn (the one breath \`action\` §3 allows) and after
+  the finish.
+- Prefer \`action\`'s native mode — separate 5s clips hard-cut and trimmed on the timeline — over a
+  continue chain at all; chain only when one take must genuinely continue, and trim the seam's dead
+  frames out regardless.
 
 ## 4. Generate the chain
 
@@ -841,7 +858,17 @@ receiver owns the impact close-up, damage from clip 2 is worn in clips 3 and 5, 
 sits at the turn, and the finish is the fastest cut in the piece. Steal the shape, replace the
 corridor.
 
-## 10. Reroll economics
+## 10. Seams — when the fight is one continuing take
+
+The default is hard cuts (§0): separate clips, trimmed. When a take must genuinely continue via
+\`continue_video\`, action INVERTS \`bridge\`'s end-on-a-holdable-pose rule — asked for a rest frame, the
+model knocks a fighter down and the next chunk wastes its opening on him getting up. Instead:
+\`seam='reference'\` on every intra-fight join, end every chunk on a motion still in flight ("END ON:
+his cross still travelling"), open the next chunk by completing it, and never end a chunk on a fall or
+a stagger unless it is the finish. Full rules in \`bridge\`. Whatever the seam, trim its dead frames out
+on the timeline.
+
+## 11. Reroll economics
 
 A 5s clip is ~17s to make. A clip where the punch misses, the move got fancy, a fighter healed, or
 the exchange plays slower than real time is a REROLL, not an edit note — but check first whether the fix is actually a missing close-up (§2) or

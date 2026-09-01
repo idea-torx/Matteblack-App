@@ -159,7 +159,17 @@ receiver owns the impact close-up, damage from clip 2 is worn in clips 3 and 5, 
 sits at the turn, and the finish is the fastest cut in the piece. Steal the shape, replace the
 corridor.
 
-## 10. Reroll economics
+## 10. Seams — when the fight is one continuing take
+
+The default is hard cuts (§0): separate clips, trimmed. When a take must genuinely continue via
+`continue_video`, action INVERTS `bridge`'s end-on-a-holdable-pose rule — asked for a rest frame, the
+model knocks a fighter down and the next chunk wastes its opening on him getting up. Instead:
+`seam='reference'` on every intra-fight join, end every chunk on a motion still in flight ("END ON:
+his cross still travelling"), open the next chunk by completing it, and never end a chunk on a fall or
+a stagger unless it is the finish. Full rules in `bridge`. Whatever the seam, trim its dead frames out
+on the timeline.
+
+## 11. Reroll economics
 
 A 5s clip is ~17s to make. A clip where the punch misses, the move got fancy, a fighter healed, or
 the exchange plays slower than real time is a REROLL, not an edit note — but check first whether the fix is actually a missing close-up (§2) or
