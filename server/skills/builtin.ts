@@ -227,10 +227,6 @@ is the most common cause of a sequence that won't cut together.
 A short block, repeated **word for word in every single clip prompt**. Not "same as before" and not a
 paraphrase; drift in the words is drift in the picture.
 
-Before the bible, one sentence of **arc**: what the scene changes, a state the viewer can name before and
-after. It is not pasted into prompts; it decides which chunk carries the turn and which one lands it, so
-the last chunk cannot end where the first began.
-
 - **Look** — one sentence of stock, light, grade, grain. e.g. *"Shot on 35mm in the flat bright look of a
   1990s American sitcom: even warm key light, minimal shadow, gentle film grain, television framing."*
 - **World** — location, time of day, era, and 3–4 specific set objects that let you say "same" later
@@ -313,10 +309,6 @@ four ways on the same scene: ending mid-arc flipped the direction; re-declaring 
 oscillate and morph; locked-off was inert; begin-at-rest / end-at-rest worked.)*
 
 ## 5. Beats and pacing
-
-**Repeat the bible, never the previous chunk's verbs.** The seed frame or tail already shows the last
-action; writing it again makes the model perform it again, which is the repeated beat you see at a join.
-Each prompt's action is new and starts from where the picture already is.
 
 ### Beat density — write enough story to fill the runtime
 

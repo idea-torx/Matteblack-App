@@ -1675,7 +1675,7 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       prompt: {
         type: "string",
-        description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — for seam='frame' a camera at rest (subjects may still be moving; name their direction), for seam='reference' the motion the next chunk continues. A changed adjective is how a sequence drifts.",
+        description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — a holdable rest pose for seam='frame', or the motion the next chunk continues for seam='reference'. A changed adjective is how a sequence drifts.",
       },
       model: {
         type: "string",

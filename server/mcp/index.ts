@@ -173,7 +173,7 @@ const EMBEDDED_TOOLS: Tool[] = [
       type: "object",
       properties: {
         sourceUrl: { type: "string", description: "URL of the clip to continue from." },
-        prompt: { type: "string", description: "What happens in this chunk only. End on a camera at rest for seam='frame' (subjects may keep moving; name their direction), or on the motion the next chunk continues for seam='reference'." },
+        prompt: { type: "string", description: "What happens in this chunk only. End on a holdable rest pose for seam='frame', or on the motion the next chunk continues for seam='reference'." },
         model: { type: "string", enum: ["h3-max", "seedance-2.5"], description: "Model family (default h3-max). seedance-2.5 takes chunks up to 30s and does native audio; keep one family per sequence." },
         seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
         durationSeconds: { type: "integer", description: "Chunk length (default 5). h3-max 5-15s, seedance-2.5 4-30s." },
