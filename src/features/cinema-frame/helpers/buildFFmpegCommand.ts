@@ -245,7 +245,7 @@ export function buildFFmpegCommand(
   }
 
   if (config.includeAudio && mixAudioLabels.length > 1) {
-    filterComplex += `;\n${mixAudioLabels.join("")}amix=inputs=${mixAudioLabels.length}:duration=longest:dropout_transition=0[outa]`;
+    filterComplex += `;\n${mixAudioLabels.join("")}amix=inputs=${mixAudioLabels.length}:duration=longest:dropout_transition=0:normalize=0[outa]`;
   } else if (config.includeAudio && mixAudioLabels.length === 1) {
     filterComplex += `;\n${mixAudioLabels[0]}anull[outa]`;
   }
@@ -264,6 +264,7 @@ export function buildFFmpegCommand(
   args.push("-c:v", "libx264", "-preset", "fast", "-crf", "23");
   args.push("-pix_fmt", "yuv420p");
   args.push("-movflags", "+faststart");
+  args.push("-t", totalDuration.toFixed(4));
 
   args.push(outputName);
 

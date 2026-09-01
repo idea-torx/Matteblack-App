@@ -417,7 +417,7 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
         perTrack.set(b.track, sortOrder + 1);
         await insertClip(canvasId, audio[b.track], {
           src: b.src,
-          duration: bedStats.get(b.src)?.duration ?? b.durationSeconds ?? at,
+          duration: Math.min(bedStats.get(b.src)?.duration ?? b.durationSeconds ?? at, at - b.startSeconds),
           startOffset: b.startSeconds, label: b.label, sortOrder, volume: b.volume ?? 0.8,
         });
       }

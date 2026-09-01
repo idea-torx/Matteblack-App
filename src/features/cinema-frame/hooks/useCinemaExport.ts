@@ -226,7 +226,8 @@ export function useCinemaExport(timeline: TimelineState | null) {
 
       setExportState({ stage: "encoding", progress: 0.35 });
 
-      const totalDuration = getTotalDuration(timeline);
+      // Picture decides the export length; a longer music bed is cut, not padded with black.
+      const totalDuration = getTotalDuration({ ...timeline, tracks: timeline.tracks.filter((t) => t.type === "video") });
       const { args, concatListContent } = buildFFmpegCommand(timeline, clipFileMap, config, totalDuration, streamInfoMap);
 
       if (concatListContent) {
