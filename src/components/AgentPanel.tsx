@@ -3474,10 +3474,6 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
           </div>
         )}
         <div className={`agent-panel__textarea-wrap${agentWorking ? " agent-panel__textarea-wrap--generating" : ""}`}>
-          <div className="agent-panel__glow agent-panel__glow--sharp" aria-hidden="true" />
-          <div className="agent-panel__glow-blur" aria-hidden="true">
-            <div className="agent-panel__glow agent-panel__glow--soft" />
-          </div>
           <textarea
             ref={textareaRef}
             className="agent-panel__textarea"

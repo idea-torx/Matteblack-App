@@ -1114,106 +1114,6 @@
   display: grid;
 }
 
-.agent-panel__glow {
-  position: absolute;
-  inset: -2px;
-  border-radius: 20px;
-  z-index: 2;
-  overflow: hidden;
-  pointer-events: none;
-  transition: opacity 0.3s ease, border-radius 0.12s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 2px;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-}
-.agent-panel__glow::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: conic-gradient(
-    from 0deg,
-    #3B82F6 0%,
-    #60a5fa 12%,
-    transparent 25%,
-    transparent 35%,
-    #3B82F6 45%,
-    #93c5fd 55%,
-    transparent 68%,
-    transparent 78%,
-    #3B82F6 90%,
-    #3B82F6 100%
-  );
-}
-
-.agent-panel__glow-blur {
-  position: absolute;
-  inset: -8px;
-  border-radius: 28px;
-  z-index: 2;
-  pointer-events: none;
-  filter: blur(12px);
-  transition: opacity 0.3s ease;
-}
-
-.agent-panel__glow--soft {
-  inset: 0;
-  border-radius: inherit;
-  padding: 4px;
-}
-.agent-panel__glow--soft::before {
-  background: conic-gradient(
-    from 0deg,
-    rgba(59, 130, 246, 0.8) 0%,
-    rgba(96, 165, 250, 0.7) 12%,
-    transparent 25%,
-    transparent 35%,
-    rgba(59, 130, 246, 0.8) 45%,
-    rgba(147, 197, 253, 0.6) 55%,
-    transparent 68%,
-    transparent 78%,
-    rgba(59, 130, 246, 0.8) 90%,
-    rgba(59, 130, 246, 0.8) 100%
-  );
-}
-
-.agent-panel__glow--sharp {
-  opacity: 0.7;
-}
-.agent-panel__glow-blur {
-  opacity: 0.5;
-}
-
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow--sharp,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow--sharp {
-  opacity: 1;
-}
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__glow-blur,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:placeholder-shown)) .agent-panel__glow-blur {
-  opacity: 0.7;
-}
-
-.agent-panel__textarea-wrap--generating .agent-panel__glow--sharp,
-.agent-panel__textarea-wrap--generating .agent-panel__glow-blur {
-  opacity: 0;
-}
-
-/* Idle and empty: the composer is a plain pill. The spin is paused in this
- * state (the ring no longer animates at all), so the glow was a static
- * blue smear rather than motion — dark enough to read as a rendering fault.
- * It lights up again the moment the field is focused or has text. */
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow--sharp,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown) .agent-panel__glow-blur {
-  border-radius: 999px;
-  opacity: 0;
-}
-
-
 /* Perpetual animations are this app's single largest idle cost. Any animation
  * still running keeps Chromium compositing the whole window at 60fps, and with
  * ~100 backdrop-filter surfaces in the UI that measured (Electron, idle, no
@@ -1234,12 +1134,9 @@
   position: relative;
   z-index: 1;
   display: block;
-  /* Expanded (focused / has content) state — a soft-cornered square
-   * box, distinct from the rounded pill at rest. The 18px radius
-   * matches the curvature of the 36x36 send button (circle r=18) so
-   * the button reads as nestled into the corner instead of being
-   * tighter than the box rounding. */
-  border-radius: 18px;
+  /* Flat: same 4px corner in both the expanded and the resting state, so
+   * the composer no longer morphs from pill to box. */
+  border-radius: 4px;
   color: var(--text-primary, #e6e9ee);
   /* Top/right/bottom/left:
    *   top 12 — small breathing above the cursor row
@@ -1282,7 +1179,7 @@
   min-height: 48px;
   height: 48px;
   padding: 12px 50px;
-  border-radius: 999px;
+  border-radius: 4px;
   overflow: hidden;
   box-shadow:
     0 1px 2px rgba(15, 17, 21, 0.08),
@@ -1376,7 +1273,7 @@
   min-width: 0;
   height: 36px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 4px;
 }
 .agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)
   .agent-panel__send--text .agent-panel__send-label {
@@ -1426,7 +1323,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 4px;
   background: transparent;
   border: none;
   color: var(--text-muted, #9ca0a8);
@@ -1462,9 +1359,7 @@
    * lower than the (+) opposite it. Applies in both pill and
    * expanded modes via the bottom:8 baseline. */
   bottom: 8px;
-  /* 5px from the right edge so the send circle nestles into the
-   * box's rounded corner (18px radius matches the circle r=18). */
-  right: 5px;
+  right: 6px;
   /* 36x36 in both modes so the send circle doesn't visibly resize
    * when the composer expands from pill to square. */
   width: 36px;
@@ -1472,7 +1367,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 4px;
   background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
   border: none;
   color: #fff;

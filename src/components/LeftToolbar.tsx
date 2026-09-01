@@ -423,7 +423,11 @@ export function LeftToolbar({
                   className={`nav-row nav-row--child ${selectedTool === "create" && makeVideoMode === video ? "nav-row--active" : ""}`}
                   onClick={() => {
                     onMakeVideoModeSelect?.(video);
-                    onToolSelect("create");
+                    /* Re-selecting "create" while it is already open is the
+                     * fit-all-to-view gesture (App.tsx handleToolSelect) —
+                     * flipping the image/video toggle must not zoom the
+                     * canvas out. */
+                    if (selectedTool !== "create") onToolSelect("create");
                   }}
                 >
                   <span className="nav-row-icon">{icon}</span>
