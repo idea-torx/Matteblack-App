@@ -61,8 +61,8 @@ function relativeDate(iso: string): string {
 }
 
 /** Sections, in the order they read. Anything the server labels with something
- *  else lands in "Creative" — the panel never hides a skill it can't place. */
-const SECTIONS = ["System", "Video", "Image", "Writing", "Creative"] as const;
+ *  else lands in "Your Skills" — the panel never hides a skill it can't place. */
+const SECTIONS = ["System", "Your Skills", "Video", "Image", "Writing"] as const;
 
 const SORTS = {
   recent: { label: "Newest", cmp: (a: SkillMeta, b: SkillMeta) => b.updatedAt.localeCompare(a.updatedAt) },
@@ -74,7 +74,7 @@ type SortKey = keyof typeof SORTS;
 
 function sectionOf(s: SkillMeta): string {
   if (s.system) return "System";
-  return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Creative";
+  return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Your Skills";
 }
 
 /** The file glyph on every card. Dog-eared page, ruled lines. */
@@ -293,6 +293,10 @@ export function SkillsPanel({ onClose, onUseSkill }: {
                   <div key={s.slug} className="skills-card">
                     <div className="skills-card-head">
                       <span className="skills-card-title" title={s.description || s.title}>{s.title}</span>
+                      {/* Anything the app didn't ship is the user's own file —
+                          worth marking, because system skills are the only ones
+                          with a factory version to reset back to. */}
+                      {!s.system && <span className="skills-card-tag">User skill</span>}
                       <span className="skills-card-date">{relativeDate(s.updatedAt)}</span>
                     </div>
                     <button

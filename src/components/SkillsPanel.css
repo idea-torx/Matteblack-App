@@ -207,6 +207,21 @@
   white-space: nowrap;
 }
 
+/* Sits between the title and the date, so the title's ellipsis gives way
+ * to it rather than the tag wrapping. */
+.skills-card-tag {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 2px 5px;
+  border: 1px solid rgba(var(--tint-rgb), 0.14);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
 .skills-card-date {
   font-size: 9.5px;
   color: var(--text-muted);

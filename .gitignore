@@ -16,6 +16,8 @@ dist-ssr
 
 # Local desktop build: per-user data (embedded DB, uploaded/generated files)
 .matteblack/
+# User-written skills are documents in the user's data dir, never repo content
+/skills/
 /uploads/
 /data/
 
