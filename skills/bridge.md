@@ -1,183 +1,390 @@
 ---
 name: Bridge — long-form continuity
-description: Chain short generations into one continuous long-form video that holds character, style and story — and know exactly where each narrative unit ends.
+description: Chain short generations into long-form video. Continuity is scene-scoped — a scene is a handful of clips, then you cut. Covers seam modes, screen geography for multi-person scenes, the camera-motion rule that stops seams from morphing, beat density so a long clip doesn't play hollow, and how to extend a cut without the beats going slack.
 ---
 
 # Bridge — long-form continuity
 
-Use this whenever the ask is longer than one generation: a story, an ad, an explainer, "a 2 minute video",
-or any sequence of shots that must feel like one piece. Video models produce short clips with no memory of
-each other, so continuity is something you carry, not something the model provides.
+Use this whenever the ask is longer than one generation: a story, an ad, a scene, "a 2 minute video."
+Video models produce 5–15 second clips with no memory of each other, so continuity is something you
+carry.
 
-## 0. Fewest seams wins
+The core idea, and the thing most people get wrong:
 
-Every join is a place the piece can break. Before planning any chain, take the highest rung that fits:
+> **Continuity is a bridge between adjacent clips inside a scene. It is not a through-path across the
+> whole piece.**
 
-1. **One generation, zero seams.** A continuous piece up to ~30s fits in a single seedance-2.5 clip
-   (up to 30s, native audio). If the whole ask fits in one clip, chain nothing.
-2. **`continue_video` for everything inside a scene.** It reads the real end of the previous clip — its
-   exact last frame (`seam='frame'`) or its final seconds (`seam='reference'`) — and feeds it into the
-   next generation. This is the strongest join in the toolbox: the model literally starts from where the
-   picture left off. It runs on H3 Max (default, 5–15s chunks) or `model='seedance-2.5'` (4–30s chunks,
-   native audio) — seedance's longer chunks mean fewer seams for the same runtime, so prefer it for long
-   pieces with dialogue or sound. Pick ONE model for the whole sequence and never mix families mid-chain;
-   each family has its own look and a switch reads as a grade change.
-3. **Keyframe + `generate_media` for hard cuts only.** A fresh still animated with `first_frame` is how
-   you start a NEW scene — it is a cut, and it should only appear where the story cuts.
+A film is not one unbroken flow. It is a handful of scenes, each internally continuous, separated by
+honest cuts. Trying to make minute three continuous with minute one is not ambitious, it is a category
+error — and every clip spent forcing it is a clip that morphs, drifts or teleports.
 
-## 1. Draw the lines first: where does each narrative unit end?
+## 0. Structure: scenes, then cuts
 
-The single most common failure is joining two chunks with the wrong seam. Decide every boundary before
-generating anything, from what changes across it:
-
-| Boundary between chunk N and N+1 | Join |
-|---|---|
-| Same shot, action continuing | `continue_video` `seam='frame'` — invisible, starts on the exact last frame. For fight/chase chains use `seam='reference'` — see the action override in §3 |
-| Same scene, new angle or camera reposition | `continue_video` `seam='reference'` — carries motion and identity, not the frame |
-| New scene, new location, or a time jump | Hard cut: new keyframe + `generate_media` (`first_frame`), then keep chaining inside the new scene |
-| The rest of the piece fits in one clip | One generation, no join |
-
-A seam across a scene boundary smears two scenes into each other; a hard cut mid-action breaks the shot.
-If you cannot say which beat of the arc a chunk serves, the narrative unit ended a chunk ago — stop
-chaining and cut.
-
-## 2. Write the bible (before generating anything)
-
-Produce a short block and keep it verbatim for the whole job. Do not paraphrase it later — drift in the
-words is drift in the picture.
-
-- **Look:** one sentence of film stock / lens / grade / lighting. e.g. "shot on 35mm, 40mm anamorphic, warm
-  tungsten key with cool practical fill, soft grain".
-- **Subjects:** one locked description per recurring subject, 15–25 words, always repeated identically —
-  age, build, hair, wardrobe with colours, one distinguishing detail. Generate one still of each recurring
-  subject up front (`generate_media` kind: image) and keep its URL — that still is the identity anchor for
-  the whole chain.
-- **World:** location, time of day, weather, era.
-- **Motion grammar:** how the camera behaves (handheld, locked tripod, slow push).
-
-Show the bible to the user and get a nod before spending generations on shots.
-
-## 3. Beat sheet — plan every seam at a rest point
-
-**Shape the arc to the runtime before chunking it.** Give each chunk ONE story function — establish,
-build, turn, payoff — and place the turn at roughly two-thirds of the total runtime, the payoff in the
-final chunk only. In a 4-chunk piece: chunk 1 establishes, chunks 2–3 escalate (the turn lands late in
-3), chunk 4 pays off. A middle chunk raises pressure and *withholds* — it never resolves, reveals, or
-lands the ending early; if the story is over by chunk 2, the remaining chunks are padding and it will
-feel like it. When a chunk's share of story feels thin, that is correct: the clip fills its seconds with
-behavior and texture, the arc only needs one change per chunk.
-
-**Hold screen direction and camera direction inside a scene.** A subject moving left-to-right keeps
-moving left-to-right across every seam; a camera move continues or comes to rest across a join — it never
-reverses. Write the direction into every chunk's CAMERA line. A direction flip reads as a cut even when
-the seam itself is invisible; save flips for the hard cuts, where they belong.
-
-This is a rule about **joins**, not about clips. It applies where one chunk continues into the next under
-`seam='frame'`. A standalone clip, or one that ends on a hard cut, joins nothing — it can move
-throughout and end mid-move. Do not carry rest-at-the-seam into work that has no seam.
-
-Break the story into chunks of 5–15 seconds. Prefer longer chunks when the beat allows: fewer seams for
-the same runtime. For each chunk write: beat (what changes, as `[before] → [after]`), the one action, the
-camera, the join to the next chunk (from the table above), and **what the chunk ends on**.
-
-The end matters because `seam='frame'` restarts generation from a single still frame — a boundary placed
-in the middle of fast motion halts or reverses that motion on screen. So:
-
-- End each chunk on a **holdable pose**: a stance, a look, a landed gesture — something a paused frame
-  can carry into the next generation.
-- When motion must cross the boundary (a run, a fall, a pan), use `seam='reference'` — its tail clip
-  carries the motion vector a still cannot.
-
-**Action sequences INVERT the rest-pose rule.** In a fight or chase, a rest-point seam is the failure
-mode: told to end holdable, the model manufactures one — a fighter falls over, lies there, then the
-next chunk opens with seconds of him getting back up. The pacing dies at every join. For any chain
-`action` applies to:
-
-- Every join inside the fight is `seam='reference'`, never `seam='frame'` — the tail carries the
-  momentum, and motion crosses the seam still in flight.
-- `END ON:` names a motion, not a pose: "END ON: his cross still travelling toward the jaw". The next
-  chunk's ACTION line opens by completing it ("the cross lands —") so frame one is mid-strike.
-- Never write "falls", "collapses", "drops", "staggers back and pauses" at a chunk end unless it is
-  the fight's finish. A body on the floor is a rest point the model will milk.
-- The only legal rest-point seams in a fight: the turn (the one breath `action` §3 allows) and after
-  the finish.
-- Prefer `action`'s native mode — separate 5s clips hard-cut and trimmed on the timeline — over a
-  continue chain at all; chain only when one take must genuinely continue, and trim the seam's dead
-  frames out regardless.
-
-## 4. Generate the chain
-
-1. **Shot 1:** keyframe as an image (bible + shot description), then animate it (`generate_media` kind:
-   video, `first_frame`) — or straight text-to-video if the piece is t2v.
-2. **Every following chunk in the same scene:** `continue_video` with `sourceUrl` = the previous chunk's
-   result URL, the seam from your table, and the sequence's one `model` repeated on every call. Never
-   regenerate the source; the tool reads its end for you.
-3. **On every `seam='reference'` chunk, pass the subject stills from step 2 of the bible in
-   `referenceUrls`.** The tail only carries the last few seconds; the pinned stills are what hold
-   identity together once the opening frames are many chunks behind.
-4. **At a hard cut:** new keyframe with the bible + the new scene, animate with `first_frame`, then
-   resume chaining inside the new scene.
-5. Keep `resolution` identical on every chunk, and pass `aspectRatio` explicitly on every
-   `seam='reference'` chunk of a non-16:9 piece — that path cannot read the shape off the tail.
-
-## 5. Per-chunk prompt (use verbatim, fill the brackets)
+Build the piece as **scenes of about three 5-second clips (~15s)**. Inside a scene, chain. Between
+scenes, cut.
 
 ```
-[LOOK]. [SUBJECT LOCK, repeated character for character].
-BEAT [n] of [N]: [before] → [after].
-[ACTION: what happens in this chunk, one action only].
-[CAMERA: move and framing].
-END ON: [the rest pose this chunk holds, or the motion the next chunk continues].
+SCENE A  clip → clip → clip     chained, seam: frame
+   ══ hard cut ══                new location / time / angle / subject
+SCENE B  clip → clip → clip     chained, seam: frame
+   ══ hard cut ══
+SCENE C  clip → clip → clip
 ```
 
-The bible is pasted verbatim on every chunk — the previous clip's tail shows the model the picture, not
-your words, and unrepeated words drift. Naming the beat and its position (`BEAT 3 of 7`) is what keeps
-the arc from dissolving into "and then more happens": every chunk must move its beat's before to its
-after, and a chunk that moves nothing is cut from the sheet, not padded with adjectives.
+- **Three clips is the natural scene length.** One beat set up, one beat answered, one beat buttoned. Two
+  feels clipped. Five is fine when the beats keep arriving — it is a default, not a ceiling — but the
+  chain only survives it if every seam frame is static (§4).
+- **Start each new scene with a fresh `generate_media` call**, not a continuation. A new scene has no
+  obligation to the last frame of the previous one, and giving it one is how you end up inventing a
+  portal to justify a cut.
+- **The cut between scenes is carried by the story**, not by the picture: the same characters, the same
+  problem, moved on in time or place. That is all a real cut has ever needed.
 
-One action per chunk. Two actions in one prompt is how you get a clip that does neither.
+**At longer chunk lengths this inverts.** A 15-second clip holds a whole four-beat scene on its own, so
+the chunk boundary *is* the scene boundary and the join wants to be a cut (`reference`) rather than a
+chain. At 5s, `frame` is the workhorse and `reference` the exception; at 15s it is the other way round.
+The deciding question is never clip length by itself — it is **whether this boundary is also a scene
+boundary.** Two 10-second clips telling one continuous story are one scene, and chain on `frame`.
 
-## 6. Assemble the cut
+Ask what the piece is made of before you generate anything. "A 60-second ad" is four scenes, not twelve
+chained clips.
 
-Generate chunks in order, reporting the chunk number, the join used, and the URL as each lands. When every
-chunk exists, call `set_timeline` with the full ordered clip list — src, durationSeconds and a short label
-per chunk, plus the music bed. That call IS the edit: send the whole list every time.
+## 1. Pick the seam mode — it is a choice, not a quality ladder
 
-If a chunk breaks continuity, regenerate that chunk only — with the same sourceUrl and seam — then re-send
-the list with the new URL in its place. Never re-run the whole sequence. Use `get_timeline` to read back
-what's on the timeline before you change it. Then tell the user the total runtime and that they can play
-and export it from the cinema frame.
+`continue_video` joins clips two ways. Neither is better; they do different jobs.
 
-## 7. Audio
+| Seam | What it does | Returns | Use for |
+|---|---|---|---|
+| `frame` | Starts the new clip on the previous clip's **exact final frame**. | `h3-max-i2v` | **Inside a scene.** One continuous take, one camera position or one contained move. The default for chaining. |
+| `reference` (+ `tailSeconds: 3`) | Feeds the previous clip's final seconds as a **motion and subject reference** — carries the room, the light and the faces, not the frame. | `h3-max-r2v` | **Across a cut**, when you want a genuinely new angle but the same world. Coverage within one location, and scene breaks. |
 
-If the piece needs a bed, call `generate_music` once for the whole sequence with the mood and the total
-duration, not per chunk — a new track per clip is the fastest way to make eight good chunks sound like
-eight different films.
+Check the returned model string. `-i2v` or `-r2v` means the seam engaged; `-t2v` means the source was
+silently dropped and you have an unrelated clip.
 
-Narration is `generate_voiceover`: one call per line or paragraph, the same voice throughout, so each
-line can be placed against the picture it belongs to. Write the words as they should be heard — the
-punctuation is what paces the read.
+**`reference` does not carry the aspect ratio.** It receives tail seconds, not dimensions, and falls back
+to 16:9 — a 9:16 source will come back landscape even with `aspectRatio: "9:16"` passed, because that
+argument only sizes the canvas placeholder. Until that is fixed, **any non-16:9 piece must chain on
+`frame` seams throughout.** Belt and braces: put the orientation at the very top of the prompt
+(*"Vertical 9:16 portrait frame, tall and narrow"*) and add `horizontal frame, widescreen, 16:9,
+letterbox, black bars, changing aspect ratio` to the negatives.
 
-A cut can carry several audio tracks at once, and `set_timeline`'s `audio` list is how you lay them:
-each entry takes a `track` (0-7), a `startSeconds` and a `volume`. Keep one thing per track — the bed
-on track 0, the voiceover on track 1, effects on track 2 — because two entries on the SAME track play
-one after the other, not together. Place each VO line at the second its shot starts, and duck the bed
-under it (`volume` around 0.25 against the voice's 1.0) or the words disappear into the music. The list
-is declarative like the clips: send every bed you want, every time, or leave the key out to keep what's
-already there.
+**Don't invent a diegetic event to hide a seam you didn't want.** A spreading shadow, a rising object, an
+opening portal placed there only to give the stitch something to hold onto — that is writing the story
+around the stitching mechanism, and it shows. Real coverage just cuts.
 
-## 8. Record the cut
+**But when a seamless join is the actual brief, build the transition and make it the best beat in the
+clip.** Use a `frame` seam and change the world in shot. Three ways, cheapest first:
 
-Once the timeline is set, call `save_cut` with the project slug, the title, a couple of sentences describing
-what the piece looks like, the bible's look and subject locks, and every chunk — its exact prompt, its join
-(seam or cut), its reference URL and its clip URL. That writes one markdown manifest into the user's local,
-git-backed cut history, so the piece can be revisited, varied or rebuilt later without regenerating anything.
+1. **Physical action** — a character is thrown, carried, driven, falls. The new location arrives as a
+   consequence of the story. Always prefer this when the story can supply the motion.
+2. **A medium-native transformation** — clay walls peeling like putty, felt seams unpicking, paper pages
+   turning. The material behaving as the material does is not an invented event.
+3. **An in-world device** — a portal, a beam. Last resort, and the thing rule one above is warning about.
 
-Reuse the same `project` across related cuts — that grouping is what makes the history usable. Before
-starting a follow-up, call `list_cuts` for that project and read the manifest you're continuing from, so
-the new work inherits the same look rather than drifting.
+For a location change on a frame seam: open on the old location, play a beat there, *then* transform, and
+restate the geography chart (§3) as holding **through** the change. The seed frame pins the sculpts and
+the geometry; the prompt is free to rebuild everything behind them. Negatives:
+`cut to a new shot, hard cut, scene change`.
 
-## Save what worked
+For `reference` continuations, open the prompt with:
 
-When the user likes the result, call `save_skill` with the filled-in bible, the beat sheet with its joins,
-and the exact prompts used, so the same world can be revisited later.
+> A NEW SHOT — cut to a completely different camera angle. This is a fresh setup, not a continuation of
+> the previous camera position.
+
+Without that line, reference mode resumes the old camera and you get a jump cut instead of coverage.
+
+**At a scene break, hold the screen sides.** Go wider, go lower, change the setup — but stay on the same
+side of the line so LEFT / CENTRE / RIGHT (§3) survives the cut. Changing setup *and* crossing the line in
+one move is an invitation to swap people.
+
+### Other models
+
+`h3-max` via `continue_video` is the working path and everything above assumes it. Two alternatives
+remain useful:
+
+- **`veo3.1-lite` + `videoReferenceMode: 'first_last_frame'`** — pins a clip at *both* ends between two
+  stills you approved. Highest control, most setup, durations snap to 4/6/8s.
+- **Keyframe-then-animate (`first_frame`)** — generate the opening still, approve it, animate it.
+  Stills are cheap and clips are not, so this is worth it when a shot must look exactly like something.
+
+Keep aspect ratio, resolution and model identical across every clip in a piece. Mixing models mid-sequence
+is the most common cause of a sequence that won't cut together.
+
+## 2. The bible — write it once, restate it verbatim
+
+A short block, repeated **word for word in every single clip prompt**. Not "same as before" and not a
+paraphrase; drift in the words is drift in the picture.
+
+- **Look** — one sentence of stock, light, grade, grain. e.g. *"Shot on 35mm in the flat bright look of a
+  1990s American sitcom: even warm key light, minimal shadow, gentle film grain, television framing."*
+- **World** — location, time of day, era, and 3–4 specific set objects that let you say "same" later
+  (*teal vinyl seats, orange formica table, two white mugs, a big lettered window*).
+- **Subjects** — one locked description per character, 15–25 words: build, hair, wardrobe with colours,
+  one distinguishing detail.
+- **Sound** — what the diegetic bed is, stated every clip so it doesn't restart.
+
+Keep it lean. **Prompt bloat feeds morphing** — an overloaded prompt gives the model more to reinvent at
+every seam. Say each thing once, clearly, and stop.
+
+## 3. Screen geography — the anti-teleport rules
+
+Two or more people in a scene teleport across seams because **off-screen geography is geography the model
+invents.** Four rules, all restated verbatim in every chunk of the scene:
+
+**1. A standing/seating chart, in caps, by SCREEN side.** Left and right *of frame*, never world-side —
+the model composes in frame space.
+
+> SEATING, WHICH NEVER CHANGES: GEORGE sits on the LEFT of the frame — short, stocky, balding, round
+> tortoiseshell glasses, olive-green zip jacket. JERRY sits on the RIGHT of the frame, directly opposite —
+> slim, neat short dark hair, blue button-down. Neither man ever swaps seats, stands up, or crosses the
+> table.
+
+**2. Anchor the silent character in frame.** Design the shot so whoever isn't talking stays physically
+visible — an over-the-shoulder past them, a shoulder held in the foreground. *A character you can see
+cannot be relocated.* This is the strongest of the four.
+
+**3. Every entrance and exit needs a stated route.** Not just exits — *"he enters from the LEFT edge of
+frame and walks in to stand in the CENTRE"*, *"his shoulder slides off the left edge as the shot tightens
+past him — he does not disappear."* An unrouted arrival is an unrouted position. When a new character
+arrives, motivate the camera move by the arrival (a small pull back to take in a third person) so it reads
+as blocking rather than as a camera tic.
+
+**4. One speaker per beat, declared in caps, with an acting note.** Name *how* they talk, not just what
+they say — *fast and conspiratorial* / *dry and unhurried* / *wounded defensive confidence*. Describe the
+other characters as silent **and located**. In a multi-beat clip (§5) the speaker changes between beats,
+but never inside one — declare each beat's speaker in its own timecoded line.
+
+Negative prompt, every clip: `characters swapping seats, a man on the wrong side of the table, [NAME]
+vanishing, [NAME] reappearing, anyone teleporting, empty booth, overlapping dialogue, repeated dialogue`.
+Name every off-camera character as not speaking and not in frame.
+
+## 4. Camera motion — begin at rest, end at rest
+
+**Never leave a camera move in flight at a seam.**
+
+A frame seam hands the next clip a **still image**, and a still has no velocity. Anything mid-move gets
+re-invented by the continuation, and re-invention wobbles: it reverses direction, or it morphs the whole
+frame trying to resolve a motion it can't read.
+
+The rule:
+
+> **One small camera move per clip. It starts at rest, eases to a complete stop before the clip ends, and
+> the final second is held perfectly static.**
+
+- **Vary the move between clips** — a tiny push, then a slight drift, then a tiny push — so it doesn't
+  read as a repeating tic.
+- **Keep it small.** A few inches. Big sustained moves are large geometric transforms and the model
+  resolves them by morphing.
+- **One move per clip, not per beat.** A 15-second clip holds four beats and still gets exactly one
+  camera move. Beats are carried by performance and cutting-in-camera, not by the camera restarting.
+- **Locked-off is stable but dead.** Zero movement across a whole scene reads as a slideshow. The small
+  contained move is the working middle.
+- Let the **performers** carry the energy. A lean-in, a hand thrown out, a mug set down — that is what
+  makes a static frame feel alive, and it costs nothing at the seam.
+
+Add to every negative prompt: `camera still moving at the end of the shot, fast camera movement, pan,
+tilt, arc, orbit, dolly, zoom, handheld, camera shake, morphing, warping geometry, reframing`.
+
+**Never name camera directions in a negative prompt.** "Not panning left" summons panning left. Say what
+the camera *does* in the positive prompt and forbid movement generically in the negative.
+
+*(This supersedes the old rule about ending a clip mid-camera-move for the next one to complete. Tested
+four ways on the same scene: ending mid-arc flipped the direction; re-declaring the vector harder made it
+oscillate and morph; locked-off was inert; begin-at-rest / end-at-rest worked.)*
+
+### Action scenes: the subject never rests at a seam
+
+The at-rest rule above is for the CAMERA, and the rest-pose instinct it encourages is right for
+dialogue and wrong for violence. In a fight or chase, a subject-at-rest seam is the tempo killer: asked
+to hand the seam a clean frame, the model manufactures one — a fighter falls over, lies there, and the
+next clip spends its opening seconds on him getting back up. For any scene the `action` skill applies to:
+
+- **First choice: don't chain the fight at all.** `action`'s native mode — separate 5s single-exchange
+  clips, hard cuts, trimmed to 1–2s on the timeline — has no seams to protect.
+- When one take must genuinely continue, every intra-fight join is **`seam='reference'`, never
+  `seam='frame'`** — the tail carries the momentum a still cannot, so the fighters cross the seam still
+  in flight. The camera still obeys §4 (one small move, easing to rest); it is the SUBJECTS that never
+  settle.
+- Never write "falls", "collapses", "drops", "staggers back and pauses" at the end of a chunk unless it
+  is the fight's finish. A body on the floor is a rest point the model will milk.
+- End each chunk on a named motion — "END ON: his cross still travelling toward the jaw" — and open the
+  next chunk's first timecoded beat by completing it ("0-1s: the cross lands"), so frame one is
+  mid-strike.
+- The only legal rest seams in a fight: the turn (the one breath `action` allows) and after the finish.
+
+## 5. Beats and pacing
+
+### Beat density — write enough story to fill the runtime
+
+Dialogue-led comedy runs at **roughly a beat every three and a half seconds.** That is a proxy for
+sanity-checking a script, not a rate to hit:
+
+| Clip length | Beats, as a floor | Shape |
+|---|---|---|
+| 5s | 1 | line in the first second, reaction held for the last two |
+| 15s | 4 | set up, answer, escalate, button |
+| 10s | 3 | set up, answer, button |
+
+**Faster material carries far more, and should.** A montage, a running argument, a gag reel, a musical
+number, a chase — five seconds of any of those can hold three or four beats and play tight rather than
+rushed. The genre sets the pace; the table is only there to catch the opposite failure. Use it to ask
+*"is there enough here?"*, never *"is there too much?"*
+
+**Work out roughly how many beats the runtime wants before you write a word of prompt.** Two 10-second
+clips is not "two moments," it is closer to **six beats** of story, and the script has to contain six
+things that happen. Multiply first, then write to the number, then let the material push it up.
+
+The failure mode when you don't: the clip plays **hollow.** Not badly generated — correctly generated and
+thinly written, with the model stretching two ideas across ten seconds by adding dead air between them.
+It reads as a pacing problem but it is a **scripting** problem, and no prompt tuning fixes it. The tell
+is a clip where you could remove three seconds and lose nothing.
+
+- **Every beat is a new piece of information**, not a longer version of the last one. A reaction shot to a
+  line already delivered is not a beat. A reply that changes the situation is.
+- **Timecode the beats in the prompt** — `0-3s: ... 3-6s: ... 6-10s: ...` — so the model paces the whole
+  runtime rather than front-loading and drifting. Uneven timecodes are fine and often better: three fast
+  beats and one long held one is a rhythm, four evenly spaced ones is a metronome.
+- **Escalate.** With three or four beats there is room for the situation to get worse before it buttons,
+  and that is what stops the middle sagging. Two-beat writing has no middle to sag, which is why it feels
+  minimal rather than slow.
+- **When the runtime is fixed by the user, the story bends to it, not the other way round.** If the ask
+  is 20 seconds and the idea only has three beats in it, add beats — a complication, an objection, a
+  second attempt — rather than stretching what you have.
+
+### One action at a time, inside each beat
+
+Each **beat** is one point and one action. Two actions in a single beat gets you a beat that does neither.
+
+- **Beat** — the one point it makes.
+- **Close** — how it lands. The line is paid off, the gesture finishes, the reaction registers.
+- **Handoff** — **narrative, not physical.** What the next beat answers: a question asked, a claim made,
+  a look held. Not an object crossing the seam.
+
+A clip that ends in the middle of its own beat is a mistake, even when the next clip picks it up.
+
+### Budget the runtime, or the beats won't land
+
+The camera-at-rest rule (§4) tempts you to spend the first second and a half settling before anything
+happens. Then the first line lands late and everything after it is compressed. **State the budget in the
+prompt:**
+
+> PACING: [NAME] is ALREADY mid-turn as the very first frame begins and the line starts immediately, in
+> the first second — no pause, no settling, no beat of stillness before speaking. [Then the timecoded
+> beats.]
+
+- **The line starts in the first second.** Say "already turning and already talking."
+- **On a 5-second clip, the reaction is the second half, and the reaction IS the beat landing.** A held
+  unimpressed stare after the line is the joke; a held stare before it is dead air. On longer clips only
+  the *final* beat gets that held reaction — the earlier ones hand straight over to the next line.
+- **Camera settling and speaking happen at the same time**, not in sequence. The small move runs
+  underneath the dialogue.
+- Negative prompt: `pause before speaking, silence at the start of the clip, waiting to speak, slow start`.
+
+### Extending a cut that already ended
+
+Grafting new clips onto a finished piece is where pacing goes wrong, because **you are extending from a
+full stop.** The old final clip was written as a resolution — *"this is the end of the scene, it resolves
+fully, the final second is a still held beat"* — and a resolved beat has no forward pressure. The next
+clip has to restart the engine from zero, which is exactly the slack the pacing budget above exists to
+prevent.
+
+When continuing a cut that already ended:
+
+1. **Open the new clip with the character already in motion.** No standstill start. The seam frame is
+   static; the *performance* must not be.
+2. **Apply the pacing budget hard** — first line in the first second, beats on the clock after that.
+3. **Demote the old resolution.** The clip that used to be last is now a middle clip; re-generate it
+   without the "this is the end" language if its held ending is visibly braking the piece.
+4. **Only the true final clip gets the full resolution.** Exactly one clip in the piece ends with a held
+   beat and no handoff.
+
+Regenerate only the clips that need it and re-send the whole list to `set_timeline`.
+
+## 6. Prompt template
+
+```
+PACING: [NAME] is already [in motion] as the first frame begins and the line starts immediately, in the
+first second. [Then the timecoded beats below.]
+
+CAMERA: begins completely still, then [one small move], easing to a complete stop before the end.
+The final second is held perfectly static. No other movement.
+
+[LOOK — verbatim from the bible]. [WORLD — same location, same named objects].
+
+[GEOGRAPHY — caps chart, screen sides, routes for any entrance or exit, never-swaps negative].
+
+[SHOT: framing.] Then the beats, timecoded, one speaker each — as many as the material wants:
+  0-3s   [NAME], [acting note], [action]: "[line]".
+  3-6s   [NAME], [acting note], [action]: "[line]".
+  6-10s  [NAME], [acting note], [action]: "[line]".
+[Other characters] stay [where] and say nothing, [what they do].
+
+[Sound — diegetic bed, "continuous with the previous shot"].
+
+[CLOSE — how the last beat lands. On the true final clip, the full resolution instead.]
+
+Negative prompt: [pacing set], [camera set], [speaker set], [geography set], [look set].
+```
+
+## 7. Assemble
+
+Generate clips in scene order. When they all exist, call `set_timeline` with the **full ordered list** —
+`src`, `durationSeconds`, a short label per clip — plus the music bed. That call *is* the edit: send the
+whole list every time.
+
+There is one cinema timeline. `set_timeline` replaces what is on it and cannot open a second node. Before
+replacing a cut the user may want back, make sure its clip URLs are in a saved manifest (§9) — that is how
+a previous version gets restored.
+
+If one clip breaks, regenerate **that clip only** and re-send the list. Never re-run the sequence. Read
+back with `get_timeline` before changing anything.
+
+**Watch the seams, not the clips.** When a join reads wrong, name which side is at fault: clip N still
+moving at its last frame (§4), a character unaccounted for off-screen (§3), a beat that starts slack
+because it was grafted onto a resolution (§5), or a scene boundary being forced to behave like a chain
+(§0). And when a clip reads flat with nothing wrong at either seam, it is beat density (§5) — the script,
+not the stitch.
+
+## 8. Audio
+
+`continue_video` has no `generateAudio` switch, so every chunk generates its own audio. Keep it diegetic
+and describe the same bed in every prompt — *"room tone, cutlery, low murmur, continuous with the previous
+shot"* — and say **no music, no laugh track, no narration** so nothing tries to start a score mid-scene.
+
+For a scored piece, call `generate_music` **once** for the whole runtime and pass it to `set_timeline` as
+`music` with `muteVideoAudio`. A new track per clip is the fastest way to make good clips sound like
+different films. `set_timeline` takes one bed, so a piece needing continuous VO *and* continuous music
+needs them mixed before they reach the timeline.
+
+## 9. Record the cut
+
+Once the timeline is set, call `save_cut`: project slug, title, a couple of sentences of prose about what
+the piece *looks like* (that sentence is what makes it findable a year later), the bible, and every clip
+with its **exact prompt**, seam mode, reference URL and clip URL. Reuse the same `project` across related
+cuts.
+
+Before starting a follow-up, `list_cuts` for that project and read the manifest you're continuing from, so
+the new work inherits the look instead of drifting.
+
+## Reference: a scene that works
+
+Seven clips, 35s, `h3-max`, 480p, 16:9. Kramer and an alien in a kitchen, Jerry walks in. Scene A is
+clips 1–5 on `frame` seams; clip 6 is a scene break on `reference` (tailSeconds 3) to a wider setup;
+clip 7 chains back on `frame` and resolves. Full prompts in `_cuts/seinfeld-alien/`. The shape — one beat
+per clip, because these are 5-second clips of unhurried sitcom dialogue:
+
+1. Two-shot, KRAMER LEFT / ALIEN RIGHT. **Kramer only**, leaning in, delighted — "So let me get this
+   straight. You crossed nine galaxies — for a bagel."
+2. **Alien only**, flat and matter-of-fact — "We heard things."
+3. **Kramer only**, vindicated, yelling at the door — "JERRY! It's the bagels!"
+4. Jerry enters from the LEFT edge, stops CENTRE; small pull back motivated by the third body.
+   **Jerry only**, unfazed by the alien and annoyed only about the bagel — "That's my bagel."
+5. **Alien only**, no apology in it — "There was no name on it."
+6. ══ scene break, reference seam, wider ══ **Kramer only**, already mid-turn, siding with the alien —
+   "He's got a point, Jerry. You never label anything."
+7. **Jerry only**, already turning, defeated — "Fine. There's cream cheese in the fridge." Held reaction,
+   full resolution.
+
+Note what that costs: seven beats bought seven generations. **The same seven beats fit in two 15-second
+clips** — four beats then three — for a quarter of the seams and none of the drift. Long chunks are the
+better buy whenever the writing can fill them, which is exactly what §5 is about.
