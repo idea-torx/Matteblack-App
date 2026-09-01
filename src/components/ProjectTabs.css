@@ -39,10 +39,10 @@
   app-region: drag;
 }
 
-/* Flat light chrome: the band is plain white rather than the translucent
- * grey, so the top of the window reads as one white strip. */
+/* Flat light chrome: the band takes the icon rail's surface so the whole
+ * left/top frame reads as one colour. */
 [data-theme="light"] .project-tabs {
-  background: #fff;
+  background: var(--rail-bg);
 }
 
 .project-tab,
