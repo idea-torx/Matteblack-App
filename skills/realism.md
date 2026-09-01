@@ -35,7 +35,12 @@ The 2D prompt names yarn, felt, paper grain. A realistic prompt must name its ma
 obsession, or everything renders as the same waxy default:
 
 - **Skin:** "natural skin texture with visible pores, slight asymmetry, faint sheen on forehead and
-  nose" — never "flawless", never "beautiful skin".
+  nose" — never "flawless", never "beautiful skin". The model's beauty prior hits women hardest: it
+  airbrushes them toward a poreless makeup-commercial finish unless the prompt pushes back harder
+  than it does for men. For women, state the texture twice — once in the subject description, once as
+  light interacting with it: "visible pores and fine facial down catching the sidelight, uneven skin
+  tone, faint under-eye shadow, lived-in skin, no retouched look". Words like "gorgeous" or
+  "stunning" re-trigger the airbrush; describe the person, never their rating.
 - **Fabric:** name the actual textile and how it behaves — "a creased cotton work shirt", "heavy wool
   coat that swings with her stride". "Nice clothes" is what produces vinyl.
 - **Environment:** two or three surfaces with wear — "scuffed linoleum", "rain-spotted glass",
@@ -75,7 +80,7 @@ always in motion, so the frame never dies. One business per person; two reads as
 
 ```
 Negative prompt: slow motion, speed ramp, floaty weightless movement, rubbery bending limbs, morphing
-hands, extra fingers, waxy plastic skin, beauty-filter smoothness, airbrushed face, dead glassy eyes,
+hands, extra fingers, waxy plastic skin, beauty-filter smoothness, airbrushed face, poreless doll skin, dead glassy eyes,
 thousand-yard stare, frozen background extras, dreamlike drift, unmotivated camera float, objects
 teleporting or morphing, warped text, gibberish signage, lip-sync mismatch, robotic line delivery,
 narrator, extra voices, silent opening, delayed dialogue, speech crammed into the second half, reverb,
