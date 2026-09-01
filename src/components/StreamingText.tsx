@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import "./StreamingText.css";
 
 /* Words resolve out of blur as they arrive.
@@ -14,10 +15,24 @@ import "./StreamingText.css";
 export function StreamingText({ text }: { text: string }) {
   // Keep the separators so indentation and blank lines survive; pre-wrap does
   // the rest.
-  const parts = text.split(/(\s+)/);
+  const parts = useMemo(() => text.split(/(\s+)/), [text]);
+  // Reveal on our own clock rather than at the model's. Chunks land as whole
+  // paragraphs, so painting them on arrival makes the block appear and then
+  // restyle; a cursor walking the token list turns that back into typing.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (shown >= parts.length) return;
+    // Catch-up: the further behind the cursor is, the more it takes per tick,
+    // so a 200-word chunk drains in about a second while a steady trickle
+    // still lands one word at a time.
+    const step = Math.max(1, Math.ceil((parts.length - shown) / 40));
+    const t = setTimeout(() => setShown((s) => Math.min(parts.length, s + step)), 26);
+    return () => clearTimeout(t);
+  }, [shown, parts.length]);
+
   return (
     <p className="streaming-text">
-      {parts.map((part, i) =>
+      {parts.slice(0, shown).map((part, i) =>
         /^\s+$/.test(part) ? part : (
           <span key={i} className="streaming-text__word">{part}</span>
         ),

@@ -3,7 +3,9 @@
   align-items: center;
   gap: 6px;
   vertical-align: middle;
-  line-height: 1;
+  /* Not line-height:1 — that crops the descender off "Thinking…". The grid and
+   * the timer are centred against the text box, so they follow it. */
+  line-height: 1.35;
 }
 
 /* Pixel-grid loader: 3x3 of 4px cells, each pulsing on its own delay so a
