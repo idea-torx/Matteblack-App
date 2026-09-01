@@ -89,6 +89,22 @@ async function stageAttachments(urls: string[]): Promise<string[]> {
   return paths;
 }
 
+export type GenerationRow = {
+  type: string; model: string | null; status: string;
+  result_url: string | null; prompt: string | null; created_at: string | Date;
+};
+
+/** The "what you actually generated" block. Pure — exported for the test. */
+export function formatGenerationsNote(rows: GenerationRow[], now: number): string {
+  if (rows.length === 0) return "";
+  const lines = rows.map((r) => {
+    const mins = Math.max(0, Math.round((now - new Date(r.created_at).getTime()) / 60000));
+    const prompt = (r.prompt || "").replace(/\s+/g, " ").slice(0, 80);
+    return `- ${mins}m ago — ${r.type} (${r.model || "?"}) ${r.status}${r.result_url ? ` → ${r.result_url}` : ""}${prompt ? ` — "${prompt}"` : ""}`;
+  });
+  return `\n\n[System note: generation jobs you dispatched in the last 30 minutes, from the app's job log. This list is ground truth — if a turn was interrupted, your own history may be missing tool results for jobs that still ran and landed on the canvas. Trust this list over your memory when deciding whether something was already generated; check list_canvas before regenerating.\n${lines.join("\n")}]`;
+}
+
 router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
   res.json(operatorStatus());
 });
@@ -125,6 +141,29 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   const canvasId = typeof body.canvasId === "string" && body.canvasId ? body.canvasId : undefined;
   const viewport = parseViewport(body.viewport);
   if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio });
+
+  // Ground truth about recent generations, injected every turn. The operator's
+  // own history is lossy in exactly the moment it matters: interrupting a turn
+  // kills the claude process mid-tool-call, so the generate_media that was in
+  // flight leaves no tool_result in the transcript — the job still completes
+  // and lands on the canvas, but on resume the agent truthfully "remembers"
+  // generating nothing and denies it. Compaction loses the same records. The
+  // jobs table doesn't forget, so it outranks the transcript.
+  let generationsNote = "";
+  if (req.userId) {
+    try {
+      const jobs = await pool.query(
+        `SELECT type, model, status, result_url, params->>'prompt' AS prompt, created_at
+           FROM jobs
+          WHERE user_id = $1 AND params->>'source' = 'agent'
+            AND created_at > NOW() - INTERVAL '30 minutes'
+          ORDER BY created_at DESC LIMIT 6`,
+        [req.userId],
+      );
+      generationsNote = formatGenerationsNote(jobs.rows as GenerationRow[], Date.now());
+    } catch { /* the note is a nicety; never fail the turn over it */ }
+  }
+  message += generationsNote;
 
   let selectionNote = "";
   // The canvas selection, by node id. Selecting a rendered piece is how the user

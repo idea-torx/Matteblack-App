@@ -56,6 +56,19 @@ Show the bible to the user and get a nod before spending generations on shots.
 
 ## 3. Beat sheet — plan every seam at a rest point
 
+**Shape the arc to the runtime before chunking it.** Give each chunk ONE story function — establish,
+build, turn, payoff — and place the turn at roughly two-thirds of the total runtime, the payoff in the
+final chunk only. In a 4-chunk piece: chunk 1 establishes, chunks 2–3 escalate (the turn lands late in
+3), chunk 4 pays off. A middle chunk raises pressure and *withholds* — it never resolves, reveals, or
+lands the ending early; if the story is over by chunk 2, the remaining chunks are padding and it will
+feel like it. When a chunk's share of story feels thin, that is correct: the clip fills its seconds with
+behavior and texture, the arc only needs one change per chunk.
+
+**Hold screen direction and camera direction inside a scene.** A subject moving left-to-right keeps
+moving left-to-right across every seam; a camera move continues or comes to rest across a join — it never
+reverses. Write the direction into every chunk's CAMERA line. A direction flip reads as a cut even when
+the seam itself is invisible; save flips for the hard cuts, where they belong.
+
 Break the story into chunks of 5–15 seconds. Prefer longer chunks when the beat allows: fewer seams for
 the same runtime. For each chunk write: beat (what changes, as `[before] → [after]`), the one action, the
 camera, the join to the next chunk (from the table above), and **what the chunk ends on**.

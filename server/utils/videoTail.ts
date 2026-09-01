@@ -161,3 +161,46 @@ export async function extractTailClip(videoUrl: string, seconds: number): Promis
     return saveFile(BUCKET, `tails/${randomUUID()}.mp4`, data);
   });
 }
+
+/**
+ * Integrated loudness (EBU R128 "I") of a clip's audio, in LUFS — or null when
+ * the clip has no audio stream or is effectively silent. One decode pass, no
+ * re-encode; the file is never modified.
+ */
+export async function measureLufs(videoUrl: string): Promise<number | null> {
+  return (await probeClip(videoUrl)).lufs;
+}
+
+/**
+ * One pass over a clip: real container duration + integrated loudness.
+ * Generated "15s" clips are actually ~15.1s, so timeline layout needs the
+ * probed duration, not the requested one.
+ */
+export async function probeClip(videoUrl: string): Promise<{ durationSeconds: number | null; lufs: number | null }> {
+  await ensureFfmpeg();
+  return withTempDir(async (dir) => {
+    const src = await fetchToTemp(videoUrl, dir);
+    const durationSeconds = await durationOf(src).catch(() => null);
+    const lufs = await lufsOf(src);
+    return { durationSeconds, lufs };
+  });
+}
+
+async function lufsOf(src: string): Promise<number | null> {
+  {
+    try {
+      // ebur128 prints its summary on stderr; -map a:0 makes a missing audio
+      // stream fail fast instead of measuring nothing.
+      const { stderr } = await run("ffmpeg", ["-i", src, "-map", "a:0", "-af", "ebur128", "-f", "null", "-"]);
+      const matches = [...String(stderr).matchAll(/I:\s*(-?[\d.]+)\s*LUFS/g)];
+      const last = matches.at(-1);
+      if (!last) return null;
+      const lufs = Number(last[1]);
+      // -70 is the meter's silence floor — a "loudness" for a silent track.
+      if (!isFinite(lufs) || lufs <= -69) return null;
+      return lufs;
+    } catch {
+      return null; // no audio stream
+    }
+  }
+}

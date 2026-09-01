@@ -16,6 +16,7 @@ import { getMcpToken } from "../mcpToken.js";
 import { pool } from "../db.js";
 import { broadcastCanvasUpdate } from "./canvas.js";
 import { getOperatorContext } from "../services/operatorCanvasContext.js";
+import { probeClip } from "../utils/videoTail.js";
 
 const router = Router();
 
@@ -196,6 +197,62 @@ async function continuationInfo(srcs: string[]): Promise<Map<string, { from: str
   return out;
 }
 
+/** Different models mix their audio at different levels, so an agent-assembled
+ *  cut jumps in loudness at every clip boundary. Measure each clip's integrated
+ *  loudness once (cached on its job row) and level the cut to its QUIETEST clip
+ *  — attenuate-only, because the player's element volume can't exceed 1 and a
+ *  boost risks clipping. The per-clip `volume` already flows through both the
+ *  live player and export, so the number is the whole feature. */
+async function clipStatsFor(srcs: string[]): Promise<Map<string, { lufs: number | null; duration: number | null }>> {
+  const out = new Map<string, { lufs: number | null; duration: number | null }>();
+  const unique = [...new Set(srcs)];
+  if (unique.length === 0) return out;
+  try {
+    const r = await pool.query(
+      `SELECT result_url, (params->>'lufs')::float AS lufs, (params->>'probedDuration')::float AS duration
+         FROM jobs WHERE result_url = ANY($1)`,
+      [unique],
+    );
+    for (const row of r.rows as { result_url: string; lufs: number | null; duration: number | null }[]) {
+      if (row.duration != null) out.set(row.result_url, { lufs: row.lufs, duration: row.duration });
+    }
+    for (const src of unique) {
+      // ponytail: a cached row with no lufs re-probes silent clips every call;
+      // store a sentinel if that decode ever shows up in set_timeline latency.
+      if (out.get(src)?.lufs != null) continue;
+      const probed = await probeClip(src);
+      if (probed.duration == null && probed.lufs == null) continue;
+      out.set(src, { lufs: probed.lufs, duration: probed.duration });
+      // Cache on the job row so the next set_timeline skips the decode. A clip
+      // with no job row (user upload) just gets re-probed — still correct.
+      pool
+        .query(
+          `UPDATE jobs SET params = params || jsonb_build_object('lufs', $2::float, 'probedDuration', $3::float) WHERE result_url = $1`,
+          [src, probed.lufs, probed.duration],
+        )
+        .catch(() => { /* cache miss next time, nothing lost */ });
+    }
+  } catch { /* probing is a nicety — never fail the cut over it */ }
+  return out;
+}
+
+/** Attenuation floor: never pull a clip down more than ~14 dB toward a freakishly
+ *  quiet neighbour. ponytail: if one clip is that far off, it's broken audio, not
+ *  a level problem — regeneration fixes it, gain doesn't. */
+const MIN_NORMALIZE_GAIN = 0.2;
+
+/** Per-src volume that levels the cut to its quietest measured clip. Pure —
+ *  exported for the test. */
+export function normalizeVolumes(lufs: Map<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  if (lufs.size < 2) return out;
+  const target = Math.min(...lufs.values());
+  for (const [src, l] of lufs) {
+    out.set(src, Math.min(1, Math.max(MIN_NORMALIZE_GAIN, 10 ** ((target - l) / 20))));
+  }
+  return out;
+}
+
 /** Every cinema frame on the canvas, each with its own cut, in play order —
  *  so Claude knows which one to extend and which one to leave alone. */
 router.get("/api/agent/timeline", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
@@ -263,11 +320,19 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
     await pool.query(`UPDATE cinema_tracks SET muted = $3 WHERE canvas_id = $1 AND id = $2`, [canvasId, video, muteVideoAudio]);
     await clearTrack(canvasId, video);
     const continuations = await continuationInfo(incoming.map((c) => c.src));
+    // Real durations, not requested ones: a "15s" generation is ~15.1s on disk,
+    // and laying clips by the requested length chops the end of every clip and
+    // compounds the drift down the cut.
+    const stats = await clipStatsFor(incoming.map((c) => c.src));
+    const lufs = new Map<string, number>();
+    for (const [src, s] of stats) if (s.lufs != null) lufs.set(src, s.lufs);
+    const volumes = muteVideoAudio ? new Map<string, number>() : normalizeVolumes(lufs);
     let at = 0;
     for (const [i, c] of incoming.entries()) {
-      const duration = Number.isFinite(c.durationSeconds) && (c.durationSeconds as number) > 0 ? (c.durationSeconds as number) : 5;
+      const declared = Number.isFinite(c.durationSeconds) && (c.durationSeconds as number) > 0 ? (c.durationSeconds as number) : 5;
+      const duration = stats.get(c.src)?.duration ?? declared;
       const trimStart = seamTrimFor(i, incoming.map((x) => x.src), continuations);
-      await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i, trimStart });
+      await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i, trimStart, volume: volumes.get(c.src) ?? 1 });
       at += duration - trimStart;
     }
     const music = body.music;
