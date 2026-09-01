@@ -1281,7 +1281,11 @@ export function seedBuiltinSkills(): void {
       if (disk === body) continue;
       fs.writeFileSync(p, body, "utf8");
     } else {
-      continue; // the user edited it; it's theirs now
+      // The user edited it; it's theirs — unless it has found its way back to
+      // byte-identical with the factory copy (e.g. the factory adopted their
+      // version), in which case re-adopt so future updates reach it again.
+      if (disk === body) { seeded[slug] = hash(body); changed = true; }
+      continue;
     }
     seeded[slug] = hash(body);
     changed = true;
