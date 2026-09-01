@@ -387,7 +387,7 @@ export function LeftToolbar({
               }}
             >
               <span className="nav-row-icon">{makeIcon}</span>
-              <span className="nav-row-label">Design</span>
+              <span className="nav-row-label">Generative Tools</span>
               <svg className={`nav-row-chevron ${makeExpanded ? "nav-row-chevron--open" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" onClick={(e) => { e.stopPropagation(); setMakeExpanded((v) => !v); }}><polyline points="6 9 12 15 18 9" /></svg>
             </button>
 
