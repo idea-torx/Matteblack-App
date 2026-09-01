@@ -397,7 +397,7 @@
   padding: 12px;
   margin: 6px 0 18px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(17, 24, 39, 0.015);
 }
 
@@ -450,7 +450,7 @@
 .operator-streak__cell {
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 4px;
   background: rgba(37, 99, 235, 0.09);
 }
 
@@ -467,7 +467,7 @@
   transform: translate(-50%, -100%);
   margin-top: -6px;
   padding: 4px 7px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(17, 24, 39, 0.92);
   color: #fff;
   font-size: 10px;
@@ -489,12 +489,22 @@
 .operator-streak__legend span:first-child { margin-right: 2px; }
 .operator-streak__legend span:last-child { margin-left: 2px; }
 
+.operator-resume-tag {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .operator-resume {
   display: block;
   width: 100%;
   padding: 12px 14px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 12px;
+  border-radius: 4px;
   background: rgba(17, 24, 39, 0.02);
   color: var(--text-primary, #111827);
   font-size: 13px;

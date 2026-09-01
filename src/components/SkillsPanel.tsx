@@ -50,6 +50,22 @@ function slugFrom(body: string, fallback: string): string {
     || "untitled-skill";
 }
 
+/** Read the `label:` line out of the frontmatter, if there is one. */
+function labelOf(body: string): string {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(body);
+  return fm ? (/^label:\s*(.*)$/m.exec(fm[1])?.[1] ?? "").trim().replace(/^["']|["']$/g, "") : "";
+}
+
+/** Set or clear `label:` in the frontmatter, adding a header if the file has
+ *  none. The server reads the same line, so this is the whole marking. */
+function withLabel(body: string, label: string): string {
+  const fm = /^(---\r?\n)([\s\S]*?)(\r?\n---)/.exec(body);
+  if (!fm) return label ? `---\nlabel: ${label}\n---\n\n${body}` : body;
+  const lines = fm[2].split(/\r?\n/).filter((l) => !/^label:/.test(l.trim()));
+  if (label) lines.push(`label: ${label}`);
+  return `${fm[1]}${lines.join("\n")}${fm[3]}${body.slice(fm[0].length)}`;
+}
+
 function relativeDate(iso: string): string {
   const d = new Date(iso).getTime();
   if (!Number.isFinite(d)) return "";
@@ -61,8 +77,11 @@ function relativeDate(iso: string): string {
 }
 
 /** Sections, in the order they read. Anything the server labels with something
- *  else lands in "Your Skills" — the panel never hides a skill it can't place. */
-const SECTIONS = ["System", "Your Skills", "Video", "Image", "Writing"] as const;
+ *  else lands in "Creative" — the panel never hides a skill it can't place.
+ *  "Your Skills" is never inferred: it is the `label:` the user sets by hand
+ *  from the editor. */
+const USER_LABEL = "Your Skills";
+const SECTIONS = ["System", USER_LABEL, "Video", "Image", "Writing", "Creative"] as const;
 
 const SORTS = {
   recent: { label: "Newest", cmp: (a: SkillMeta, b: SkillMeta) => b.updatedAt.localeCompare(a.updatedAt) },
@@ -74,7 +93,7 @@ type SortKey = keyof typeof SORTS;
 
 function sectionOf(s: SkillMeta): string {
   if (s.system) return "System";
-  return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Your Skills";
+  return SECTIONS.includes(s.label as (typeof SECTIONS)[number]) ? (s.label as string) : "Creative";
 }
 
 /** The file glyph on every card. Dog-eared page, ruled lines. */
@@ -293,10 +312,7 @@ export function SkillsPanel({ onClose, onUseSkill }: {
                   <div key={s.slug} className="skills-card">
                     <div className="skills-card-head">
                       <span className="skills-card-title" title={s.description || s.title}>{s.title}</span>
-                      {/* Anything the app didn't ship is the user's own file —
-                          worth marking, because system skills are the only ones
-                          with a factory version to reset back to. */}
-                      {!s.system && <span className="skills-card-tag">User skill</span>}
+                      {sectionOf(s) === USER_LABEL && <span className="skills-card-tag">User skill</span>}
                       <span className="skills-card-date">{relativeDate(s.updatedAt)}</span>
                     </div>
                     <button
@@ -365,6 +381,20 @@ export function SkillsPanel({ onClose, onUseSkill }: {
             />
 
             <div className="skills-editor-footer">
+              {!editing.system && (
+                <label className="skills-usertag-toggle">
+                  <input
+                    type="checkbox"
+                    checked={labelOf(editing.body) === USER_LABEL}
+                    onChange={(e) => setEditing({
+                      ...editing,
+                      body: withLabel(editing.body, e.target.checked ? USER_LABEL : ""),
+                      dirty: true,
+                    })}
+                  />
+                  User skill
+                </label>
+              )}
               {editing.slug && (editing.system ? (
                 <button type="button" className="skills-btn" onClick={() => void reset(editing.slug)}>
                   Reset to default

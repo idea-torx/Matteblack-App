@@ -209,6 +209,17 @@
 
 /* Sits between the title and the date, so the title's ellipsis gives way
  * to it rather than the tag wrapping. */
+.skills-usertag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
 .skills-card-tag {
   flex: none;
   font-size: 9px;

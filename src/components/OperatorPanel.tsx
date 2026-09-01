@@ -1044,9 +1044,12 @@ export function OperatorPanel({
               </div>
 
               {lastChat && (
-                <button type="button" className="operator-resume" onClick={() => openChat(lastChat.id)}>
-                  {lastChat.title}
-                </button>
+                <>
+                  <span className="operator-resume-tag">Continue project</span>
+                  <button type="button" className="operator-resume" onClick={() => openChat(lastChat.id)}>
+                    {lastChat.title}
+                  </button>
+                </>
               )}
             </div>
           ) : (
