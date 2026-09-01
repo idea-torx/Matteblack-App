@@ -9,7 +9,8 @@ import { requireAuth, type AuthRequest } from "../sessions.js";
 import { getMcpToken } from "../mcpToken.js";
 import {
   ghStatus, ghApi, ghLoginStart, readStore, writeStore, cloneOrPull, removeClone,
-  repoStats, REPOS_DIR, type Repo,
+  repoStats, REPOS_DIR, gitInfo, listBranches, checkoutBranch, unshallow, commitAndPush,
+  type Repo,
 } from "../github/ghCli.js";
 
 const router = Router();
@@ -60,9 +61,77 @@ router.get("/api/github/available", requireAuth, async (req: AuthRequest, res) =
 });
 
 /** The repos the user attached, in their chosen order. */
-router.get("/api/github/repos", allowMcpOrUser, (_req: AuthRequest, res) => {
-  const repos = readStore().map((r) => ({ ...r, ...repoStats(r.dir) }));
+router.get("/api/github/repos", allowMcpOrUser, async (_req: AuthRequest, res) => {
+  const repos = await Promise.all(
+    readStore().map(async (r) => ({ ...r, ...repoStats(r.dir), git: await gitInfo(r.dir) })),
+  );
   res.json({ repos, dir: REPOS_DIR });
+});
+
+/** One attached repo, by name. Small helper so every mutating route below
+ *  fails the same way on a repo that isn't attached. */
+function find(name: string): { store: Repo[]; i: number } {
+  const store = readStore();
+  return { store, i: store.findIndex((r) => r.nameWithOwner === name) };
+}
+
+/** Remote branches, so the user can point the agent at a PR branch. */
+router.get("/api/github/repos/branches", allowMcpOrUser, async (req: AuthRequest, res) => {
+  const name = typeof req.query.name === "string" ? req.query.name : "";
+  const { i } = find(name);
+  if (i < 0) { res.status(404).json({ error: "Not attached." }); return; }
+  try { res.json({ branches: await listBranches(name) }); } catch (e) { fail(res, e, 400); }
+});
+
+/** Check a clone out onto a branch — this is what "work from this branch" means. */
+router.post("/api/github/repos/branch", allowMcpOrUser, async (req: AuthRequest, res) => {
+  const name = typeof req.body?.nameWithOwner === "string" ? req.body.nameWithOwner : "";
+  const branch = typeof req.body?.branch === "string" ? req.body.branch.trim() : "";
+  const { store, i } = find(name);
+  if (i < 0) { res.status(404).json({ error: "Not attached." }); return; }
+  if (!/^[\w.\-/]{1,120}$/.test(branch)) { res.status(400).json({ error: "Invalid branch name." }); return; }
+  const { error } = await checkoutBranch(store[i].dir, branch);
+  if (error) { res.status(400).json({ error }); return; }
+  res.json({ ...store[i], git: await gitInfo(store[i].dir) });
+});
+
+/** Grant or revoke authoring. Granting deepens the clone, because GitHub
+ *  rejects a push from a shallow history — better to pay that once here than
+ *  to fail at the moment the agent tries to commit. */
+router.post("/api/github/repos/write", requireAuth, async (req: AuthRequest, res) => {
+  const name = typeof req.body?.nameWithOwner === "string" ? req.body.nameWithOwner : "";
+  const writable = req.body?.writable === true;
+  const { store, i } = find(name);
+  if (i < 0) { res.status(404).json({ error: "Not attached." }); return; }
+  if (writable) {
+    const { error } = await unshallow(store[i].dir);
+    if (error) { res.status(400).json({ error }); return; }
+  }
+  store[i] = { ...store[i], writable };
+  writeStore(store);
+  res.json({ ...store[i], git: await gitInfo(store[i].dir) });
+});
+
+/** Commit + push + open a PR. The single write path back to GitHub, and the
+ *  place every rule is enforced: authoring must be granted, the default branch
+ *  is refused, and merging is not implemented at all. */
+router.post("/api/github/repos/commit", allowMcpOrUser, async (req: AuthRequest, res) => {
+  const name = typeof req.body?.nameWithOwner === "string" ? req.body.nameWithOwner : "";
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  const branch = typeof req.body?.branch === "string" ? req.body.branch.trim() : "";
+  const { store, i } = find(name);
+  if (i < 0) { res.status(404).json({ error: "Not attached." }); return; }
+  if (!store[i].writable) { res.status(403).json({ error: `Authoring isn't enabled for ${name}. The user turns it on per repo in the GitHub panel.` }); return; }
+  if (!message) { res.status(400).json({ error: "A commit message is required." }); return; }
+  const out = await commitAndPush({
+    dir: store[i].dir,
+    nameWithOwner: name,
+    defaultBranch: store[i].defaultBranch || "main",
+    message,
+    branch: branch || undefined,
+  });
+  if (out.error) { res.status(400).json(out); return; }
+  res.json(out);
 });
 
 /** Attach a repo: record it, then clone. Responds only once the clone settles

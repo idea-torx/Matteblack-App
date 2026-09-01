@@ -63,9 +63,14 @@ const MCP_SERVER_KEY = "falforge";
 
 /** Claude's own read-only file tools. Granted so an attached GitHub repo can be
  *  used as real context — the spawned claude runs with cwd pinned to REPOS_DIR,
- *  so this reaches the user's checked-out repos and nothing else. No Write, no
- *  Edit, no Bash: the operator reads code, it does not change it. */
+ *  so this reaches the user's checked-out repos and nothing else. */
 const FILE_TOOLS = ["Read", "Grep", "Glob"];
+
+/** Editing, granted per run and only while at least one attached repo has
+ *  authoring turned on by the user. Bash is never granted: no installs, no
+ *  builds, no `git merge` — the only way anything leaves this machine is
+ *  `commit_repo`, which refuses the default branch and cannot merge. */
+const AUTHOR_TOOLS = ["Write", "Edit"];
 
 /** The web, read-only. A link the user pastes is context — a brand page, a
  *  product listing, a reference article — and without these the operator has to
@@ -86,6 +91,8 @@ export const OPERATOR_MCP_TOOLS = [
   "get_skill",
   "save_skill",
   "list_repos",
+  "checkout_branch",
+  "commit_repo",
   // Programmatic HTML/CSS art. Left out of this list when they were added, so
   // every render_html call came back unpermitted no matter what the user
   // approved — the prompt never reaches a tool the operator was not granted.
@@ -105,6 +112,12 @@ export const OPERATOR_MCP_TOOLS = [
 ].map((t) => `mcp__${MCP_SERVER_KEY}__${t}`);
 
 export const OPERATOR_ALLOWED_TOOLS = [...OPERATOR_MCP_TOOLS, ...FILE_TOOLS, ...WEB_TOOLS];
+
+/** The grant for one run. Editing appears only when the user has opted a repo
+ *  in, so a read-only library keeps exactly the permissions it had before. */
+export function allowedToolsFor(writable: boolean): string[] {
+  return writable ? [...OPERATOR_ALLOWED_TOOLS, ...AUTHOR_TOOLS] : OPERATOR_ALLOWED_TOOLS;
+}
 
 /** Path + command to run the bundled MCP server. Electron main passes these via
  *  env (MB_APP_EXEC / MB_MCP_SCRIPT); dev falls back to this process + cwd. */
@@ -266,8 +279,15 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
   // are attached, so claude's session store stays stable across turns.
   fs.mkdirSync(REPOS_DIR, { recursive: true });
   const repos = readRepoStore();
+  const writable = repos.filter((r) => r.writable);
   const repoNote = repos.length
-    ? ` The user has attached these repos, in priority order: ${repos.map((r) => `${r.nameWithOwner} (./${path.basename(r.dir || r.nameWithOwner)})`).join(", ")}.`
+    ? ` The user has attached these repos, in priority order: ${repos
+        .map((r) => `${r.nameWithOwner} (./${path.basename(r.dir || r.nameWithOwner)}${r.writable ? ", authoring enabled" : ", read-only"})`)
+        .join(", ")}.${
+        writable.length
+          ? " On the authoring-enabled repos you may Write/Edit files and then call commit_repo, which commits to a working branch and opens a PR. Never commit to the default branch, never merge, and never install or run the project — you have no shell. On every other repo you are read-only."
+          : " All of them are read-only: read the code, do not attempt to change it."
+      }`
     : " The user has not attached any repos yet.";
 
   const args = [
@@ -276,7 +296,7 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
     "--verbose", // required for stream-json to emit intermediate events
     "--mcp-config", mcpConfigPath,
     "--strict-mcp-config",
-    "--allowedTools", OPERATOR_ALLOWED_TOOLS.join(","),
+    "--allowedTools", allowedToolsFor(writable.length > 0).join(","),
     "--append-system-prompt", operatorSystemPrompt() + repoNote + pinnedInstructions() + memoryInstructions(),
   ];
   if (opts.sessionId) args.push("--resume", opts.sessionId);

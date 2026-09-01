@@ -27,6 +27,9 @@ export type Repo = {
   dir: string;
   addedAt: string;
   syncedAt: string;
+  /** User-granted authoring. Off by default; the only thing that lets the
+   *  agent commit and open a PR. Never enables merging. */
+  writable?: boolean;
   /** Last clone/pull failure, surfaced in the panel. */
   error?: string;
 };
@@ -197,4 +200,151 @@ export function repoStats(dir: string): { files: number; bytes: number } {
   };
   if (dir) walk(dir, 0);
   return { files, bytes };
+}
+
+// ---------------------------------------------------------------------------
+// Git — real status, branch switching, and the one authoring path
+// ---------------------------------------------------------------------------
+
+/** Same PATH problem as gh: a GUI app doesn't inherit the login shell. */
+export function resolveGitBinary(): string | null {
+  const win = process.platform === "win32";
+  for (const c of [
+    process.env.MB_GIT_PATH || "",
+    win ? "C:\\Program Files\\Git\\cmd\\git.exe" : "/opt/homebrew/bin/git",
+    win ? "" : "/usr/bin/git",
+    win ? "" : "/usr/local/bin/git",
+  ]) {
+    if (!c) continue;
+    try { if (fs.existsSync(c)) return c; } catch { /* unreadable */ }
+  }
+  return null;
+}
+
+export type GitInfo = {
+  branch: string;
+  sha: string;
+  subject: string;
+  author: string;
+  committedAt: string;
+  /** Uncommitted files in the working tree. */
+  dirty: number;
+  ahead: number;
+  behind: number;
+  shallow: boolean;
+};
+
+async function git(dir: string, args: string[], timeoutMs = 60_000) {
+  const bin = resolveGitBinary();
+  if (!bin) return { code: -1, stdout: "", stderr: "git isn't installed." };
+  return run(bin, args, { cwd: dir, timeoutMs });
+}
+
+/** Live git state for one clone. null when the dir isn't a checkout. */
+export async function gitInfo(dir: string): Promise<GitInfo | null> {
+  if (!dir || !fs.existsSync(path.join(dir, ".git"))) return null;
+  // One log call for the commit, one status for the tree — %x1f separated so a
+  // commit subject containing anything can't break the split.
+  const log = await git(dir, ["log", "-1", "--format=%h%x1f%s%x1f%an%x1f%cI"]);
+  const [sha = "", subject = "", author = "", committedAt = ""] = log.stdout.trim().split("\x1f");
+  const branch = (await git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim();
+  const dirty = (await git(dir, ["status", "--porcelain"])).stdout.trim().split("\n").filter(Boolean).length;
+  // No upstream (a fresh local branch) → git errors; 0/0 is the honest answer.
+  const counts = (await git(dir, ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])).stdout.trim().split(/\s+/);
+  const shallow = fs.existsSync(path.join(dir, ".git", "shallow"));
+  return {
+    branch, sha, subject, author, committedAt,
+    dirty,
+    behind: Number(counts[0]) || 0,
+    ahead: Number(counts[1]) || 0,
+    shallow,
+  };
+}
+
+/** Remote branches, newest-committed first. Straight from GitHub, so it lists
+ *  branches this shallow clone has never fetched. */
+export async function listBranches(nameWithOwner: string): Promise<string[]> {
+  const rows = await ghApi<{ name: string }[]>(`repos/${nameWithOwner}/branches?per_page=100`);
+  return rows.map((b) => b.name);
+}
+
+/**
+ * Point a clone at a branch. Refuses on a dirty tree rather than discarding the
+ * agent's uncommitted work — the caller commits or resets first.
+ */
+export async function checkoutBranch(dir: string, branch: string): Promise<{ error?: string }> {
+  const info = await gitInfo(dir);
+  if (!info) return { error: "Not a checkout." };
+  if (info.dirty) return { error: `${info.dirty} uncommitted change(s) on ${info.branch}. Commit or discard them first.` };
+  const f = await git(dir, ["fetch", "origin", branch], 300_000);
+  if (f.code !== 0) return { error: f.stderr.trim() || "fetch failed" };
+  const c = await git(dir, ["checkout", "-B", branch, "FETCH_HEAD"]);
+  if (c.code !== 0) return { error: c.stderr.trim() || "checkout failed" };
+  // Track the remote branch so ahead/behind means something afterwards.
+  await git(dir, ["branch", "--set-upstream-to", `origin/${branch}`, branch]);
+  return {};
+}
+
+/** Deepen a shallow clone. Authoring needs it: GitHub rejects a push whose
+ *  history stops at a shallow boundary. */
+export async function unshallow(dir: string): Promise<{ error?: string }> {
+  if (!fs.existsSync(path.join(dir, ".git", "shallow"))) return {};
+  const r = await git(dir, ["fetch", "--unshallow"], 900_000);
+  return r.code === 0 ? {} : { error: r.stderr.trim() || "fetch --unshallow failed" };
+}
+
+/**
+ * The ONLY path from this app back to GitHub: stage everything, commit, push
+ * the branch, and open a PR if one isn't already open.
+ *
+ * Hard rules, enforced here rather than in a prompt:
+ *  - the repo must be marked writable by the user (checked by the caller),
+ *  - never on the default branch — a working branch or nothing,
+ *  - merging is not implemented anywhere, deliberately. No `gh pr merge`, no
+ *    `git merge`, no push to the default branch. A human merges the PR.
+ */
+export async function commitAndPush(opts: {
+  dir: string; nameWithOwner: string; defaultBranch: string; message: string; branch?: string;
+}): Promise<{ branch: string; sha: string; pushed: boolean; prUrl?: string; error?: string }> {
+  const bin = resolveGhBinary();
+  const { dir, nameWithOwner, defaultBranch, message } = opts;
+  const info = await gitInfo(dir);
+  if (!info) return { branch: "", sha: "", pushed: false, error: "Not a checkout." };
+
+  const branch = (opts.branch || info.branch).trim();
+  if (!/^[\w.\-/]{1,120}$/.test(branch)) return { branch, sha: "", pushed: false, error: "Invalid branch name." };
+  if (branch === defaultBranch) {
+    return { branch, sha: "", pushed: false, error: `Refusing to commit to ${defaultBranch}. Work on a branch; a human merges the PR.` };
+  }
+  if (branch !== info.branch) {
+    const c = await git(dir, ["checkout", "-B", branch]);
+    if (c.code !== 0) return { branch, sha: "", pushed: false, error: c.stderr.trim() || "checkout failed" };
+  }
+
+  const un = await unshallow(dir);
+  if (un.error) return { branch, sha: "", pushed: false, error: un.error };
+
+  await git(dir, ["add", "-A"]);
+  const staged = await git(dir, ["diff", "--cached", "--name-only"]);
+  if (!staged.stdout.trim()) return { branch, sha: info.sha, pushed: false, error: "Nothing to commit." };
+
+  const { login } = await ghStatus();
+  const who = login || "falforge";
+  const c = await git(dir, [
+    "-c", `user.name=${who}`, "-c", `user.email=${who}@users.noreply.github.com`,
+    "commit", "-m", message,
+  ]);
+  if (c.code !== 0) return { branch, sha: "", pushed: false, error: c.stderr.trim() || "commit failed" };
+  const sha = (await git(dir, ["rev-parse", "--short", "HEAD"])).stdout.trim();
+
+  const p = await git(dir, ["push", "-u", "origin", branch], 600_000);
+  if (p.code !== 0) {
+    return { branch, sha, pushed: false, error: `${p.stderr.trim() || "push failed"} (if this is an auth error, run \`gh auth setup-git\` once).` };
+  }
+
+  if (!bin) return { branch, sha, pushed: true };
+  const view = await run(bin, ["pr", "view", branch, "--json", "url", "-q", ".url"], { cwd: dir, timeoutMs: 60_000 });
+  if (view.code === 0 && view.stdout.trim()) return { branch, sha, pushed: true, prUrl: view.stdout.trim() };
+  const pr = await run(bin, ["pr", "create", "--base", defaultBranch, "--head", branch, "--title", message.split("\n")[0], "--body", message], { cwd: dir, timeoutMs: 120_000 });
+  return { branch, sha, pushed: true, prUrl: pr.code === 0 ? pr.stdout.trim().split("\n").pop() : undefined };
 }

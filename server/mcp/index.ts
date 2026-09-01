@@ -256,8 +256,35 @@ const READ_TOOLS: Tool[] = [
   {
     name: "list_repos",
     description:
-      "List the GitHub repositories the user attached, in their priority order, with the absolute path each is checked out at. Call this when the user refers to a repo (\"from my site repo\", \"match the brand in X\"), then read the files yourself with Read/Grep/Glob to get real context before writing prompts.",
+      "List the GitHub repositories the user attached, in their priority order, with the absolute path each is checked out at. Call this when the user refers to a repo (\"from my site repo\", \"match the brand in X\"), then read the files yourself with Read/Grep/Glob to get real context before writing prompts. It also reports each repo's live git state — branch, last commit, uncommitted changes — and whether the user has enabled authoring on it.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "checkout_branch",
+    description:
+      "Point one attached repo's local checkout at a branch, so everything you read afterwards is that branch's code — use it when the user says \"work from the redesign branch\" or names a PR branch. Refuses if the checkout has uncommitted changes; commit them with `commit_repo` first. This only moves the local clone.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: { type: "string", description: "owner/name, exactly as `list_repos` reports it." },
+        branch: { type: "string", description: "Branch name on the remote, e.g. feat/new-hero." },
+      },
+      required: ["repo", "branch"],
+    },
+  },
+  {
+    name: "commit_repo",
+    description:
+      "Commit everything you changed in an attached repo, push the branch, and open a pull request if one isn't open yet. Only works on repos where the user explicitly enabled authoring — otherwise it is refused, and that is the user's call, not something to work around. Never commits to the default branch: pass a working `branch` (or check one out first). You cannot merge, and nothing here installs or runs the project — a human reviews and merges the PR.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: { type: "string", description: "owner/name, exactly as `list_repos` reports it." },
+        message: { type: "string", description: "Commit message. The first line also titles the PR, so write it as a real summary of the change." },
+        branch: { type: "string", description: "Branch to commit on. Defaults to whatever is checked out; required if that is the default branch." },
+      },
+      required: ["repo", "message"],
+    },
   },
   {
     name: "get_timeline",
@@ -926,7 +953,11 @@ async function runListSkills(): Promise<CallToolResult> {
   }
 }
 
-type RepoRow = { nameWithOwner: string; description: string; dir: string; files?: number; syncedAt?: string; error?: string };
+type RepoRow = {
+  nameWithOwner: string; description: string; dir: string; files?: number; syncedAt?: string; error?: string;
+  writable?: boolean;
+  git?: { branch: string; sha: string; subject: string; author: string; committedAt: string; dirty: number; ahead: number; behind: number } | null;
+};
 
 async function runListRepos(): Promise<CallToolResult> {
   const ep = readEndpoint();
@@ -937,9 +968,44 @@ async function runListRepos(): Promise<CallToolResult> {
     const lines = ["Attached repos, highest priority first:"];
     for (const r of repos) {
       lines.push(`• ${r.nameWithOwner} — ${r.dir || "(not cloned)"}${r.files ? ` (${r.files} files)` : ""}${r.description ? ` — ${r.description}` : ""}${r.error ? ` [sync error: ${r.error}]` : ""}`);
+      if (r.git) {
+        const state = [r.git.dirty ? `${r.git.dirty} uncommitted` : "clean", r.git.ahead ? `${r.git.ahead} ahead` : "", r.git.behind ? `${r.git.behind} behind` : ""].filter(Boolean).join(", ");
+        lines.push(`    on ${r.git.branch} · ${state} · last commit ${r.git.sha} ${r.git.subject} (${r.git.author})`);
+      }
+      lines.push(`    authoring: ${r.writable ? "ENABLED — you may edit files here and call commit_repo" : "off (read-only)"}`);
     }
     lines.push("", "Read these with your own Read/Grep/Glob tools.");
     return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runCheckoutBranch(a: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const repo = typeof a.repo === "string" ? a.repo : "";
+  const branch = typeof a.branch === "string" ? a.branch : "";
+  if (!repo || !branch) return fail("Both `repo` (owner/name) and `branch` are required.");
+  try {
+    const r = (await httpJson(ep, "POST", "/api/github/repos/branch", { nameWithOwner: repo, branch })) as RepoRow;
+    return ok(`${repo} is now on ${r.git?.branch ?? branch} (${r.git?.sha ?? "?"} ${r.git?.subject ?? ""}). Re-read the files — they changed.`);
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runCommitRepo(a: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const repo = typeof a.repo === "string" ? a.repo : "";
+  const message = typeof a.message === "string" ? a.message : "";
+  const branch = typeof a.branch === "string" ? a.branch : undefined;
+  if (!repo || !message) return fail("Both `repo` (owner/name) and `message` are required.");
+  try {
+    const r = (await httpJson(ep, "POST", "/api/github/repos/commit", { nameWithOwner: repo, message, branch }, 900_000)) as
+      { branch: string; sha: string; pushed: boolean; prUrl?: string };
+    return ok(`Committed ${r.sha} on ${r.branch} and pushed.${r.prUrl ? ` PR: ${r.prUrl}` : " No PR URL came back — check the repo on GitHub."} A human reviews and merges it; you cannot.`);
   } catch (err) {
     return errToFail(err);
   }
@@ -1245,7 +1311,7 @@ const INSTRUCTIONS = [
   "",
   "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
-  "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply.",
+  "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths, live git state and authoring flag, and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply. `checkout_branch` moves a clone onto the branch the user names. On repos where the user enabled authoring you may edit files and call `commit_repo`, which commits to a working branch and opens a PR: never the default branch, never a merge, and never installing or running the project. On every other repo you are read-only — say so rather than trying another route.",
   "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
   "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
   "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
@@ -1291,6 +1357,8 @@ async function main(): Promise<void> {
     if (name === "list_skills") return runListSkills();
     if (name === "get_skill") return runGetSkill(args);
     if (name === "list_repos") return runListRepos();
+    if (name === "checkout_branch") return runCheckoutBranch(args);
+    if (name === "commit_repo") return runCommitRepo(args);
     if (name === "get_timeline") return runGetTimeline();
     if (name === "set_timeline") return runSetTimeline(args);
     if (name === "render_html") return runRenderHtml(args);
