@@ -2308,7 +2308,14 @@ function App() {
               // docks (html.is-mac), and a hardcoded total leaves the canvas —
               // and the zoom pill anchored to it — floating off the rail edge.
               settingsOpen ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--qs-settings-gap) + 4px)" :
-              railView === "library" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 672px + var(--canvas-inset-pad))" :
+              // Mirrors .lib-panel's own `left` + width rather than a baked 672:
+              // the middle --panel-float-gap collapses to 0 on mac, so the flat
+              // total left a 12px sliver of canvas showing past the panel. And
+              // the 360px content column only exists while a libraryView is
+              // picked — without that arm, closing it left the tabs pushed over.
+              railView === "library" ? (libraryView
+                ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--panel-float-gap) + 360px + var(--canvas-inset-pad))"
+                : "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))") :
               railView === "quick-settings" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--canvas-inset-pad))" :
               railView === "skills" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--skills-panel-width) + var(--canvas-inset-pad))" :
               railView === "toolkit" || railView === "layers" || railView === "github" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))" :
