@@ -112,16 +112,16 @@ export function useCinemaExport(timeline: TimelineState | null) {
         signal: serverExport.signal,
       });
       if (r.ok) {
-        const blob = await r.blob();
+        // Plain same-origin attachment URL, no blob: the one download path
+        // iOS Safari honors, and no in-memory copy of the MP4 anywhere.
+        const { url } = (await r.json()) as { url: string };
         const outputName = config.filename.endsWith(".mp4") ? config.filename : `${config.filename}.mp4`;
-        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = outputName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 0);
         setExportState({ progress: 1, stage: "done", isExporting: false });
         return;
       }

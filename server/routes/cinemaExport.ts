@@ -44,6 +44,11 @@ async function probe(file: string): Promise<StreamInfo> {
   };
 }
 
+router.get("/api/cinema/exports/:name", requireAuth, (req: AuthRequest, res) => {
+  const file = path.join(UPLOADS_DIR, "exports", path.basename(req.params.name));
+  res.download(file, req.params.name.replace(/^\d+-/, ""));
+});
+
 router.post("/api/cinema/export", requireAuth, async (req: AuthRequest, res) => {
   const { timeline, config } = (req.body ?? {}) as { timeline?: TimelineState; config?: ExportConfig };
   if (!timeline?.tracks || !config?.filename) {
@@ -98,7 +103,16 @@ router.post("/api/cinema/export", requireAuth, async (req: AuthRequest, res) => 
     await run("ffmpeg", ["-y", ...args], { cwd: dir, maxBuffer: 64 * 1024 * 1024 });
 
     const out = path.join(dir, safeName.endsWith(".mp4") ? safeName : `${safeName}.mp4`);
-    res.download(out, path.basename(out), () => { void cleanup(); });
+    // Move the result into a served exports dir and hand back a GET URL
+    // instead of streaming bytes in the POST response: a plain attachment URL
+    // is the only download path iOS Safari honors (a post-fetch blob +
+    // synthetic click is silently dropped), and it skips the in-memory blob.
+    const exportsDir = path.join(UPLOADS_DIR, "exports");
+    await fsp.mkdir(exportsDir, { recursive: true });
+    const servedName = `${Date.now()}-${path.basename(out)}`;
+    await fsp.copyFile(out, path.join(exportsDir, servedName));
+    await cleanup();
+    res.json({ url: `/api/cinema/exports/${encodeURIComponent(servedName)}` });
   } catch (err) {
     await cleanup();
     console.error("[cinema/export] native export failed:", err);
