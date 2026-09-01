@@ -68,6 +68,52 @@ Order matters; H3 weights the front of the prompt hardest. Always this order:
   choose a move, name it in the ACTION beat as well as the CAMERA line, because H3 weights the front of
   the prompt hardest and a move named only at the back arrives weak.
 
+## What makes a frame stunning — not optional
+
+Structure makes a clip watchable; these four make it worth looking at. Every H3 prompt carries all
+four or the shot defaults to a flat, evenly-lit, centered medium — the model's resting state.
+
+1. **Three depth layers, named.** Write something into the foreground, midground and background
+   every time: "rain-streaked glass in the foreground, she stands in the midground, blurred neon
+   signage deep behind her". A subject against one plane is a passport photo. If the location has
+   nothing to layer, put the camera behind something.
+2. **Atmosphere.** Haze, smoke, dust, steam, rain — something in the air for light to hit. This is
+   the single cheapest upgrade from "rendered" to "photographed": "thin haze catching the shafts of
+   light" earns more than any grade word. Interiors get practical sources IN frame (a lamp, a sign,
+   a doorway of light) so the light has a visible origin.
+3. **One dominant light with falloff.** One key source, named by direction, and let it die: "single
+   hard tungsten from the doorway frame right, falling off to near-black across the room". Even,
+   sourceless brightness is the look of a phone photo; darkness in most of the frame is what makes
+   the lit part stunning.
+4. **Deliberate negative space.** Subject off-center with the empty side doing a job — looking room,
+   dread, scale. Centered is a choice you make occasionally, not a default you accept.
+
+**Grade / stock — fill the slot with real words.** Not "cinematic": "shot on 35mm film, Kodak
+Portra palette, soft halation on highlights, fine grain" / "Kodak 2383 print look, teal shadows,
+warm skin highlights" / "clean digital, Alexa-style soft highlight rolloff, low saturation". Pick
+one per piece and repeat it verbatim in every shot.
+
+**Composition negative block** (append when a sequence keeps coming back flat):
+
+```
+Negative prompt: subject centered in frame, flat even lighting, no shadows, empty sterile
+background, single depth plane, gray colorless grade, aimless drifting camera.
+```
+
+## Two complete prompts to imitate
+
+**Realistic, 10s:** "Medium shot, 35mm lens. A woman in a creased linen shirt waits at a bus stop,
+foreground traffic blurring past close to the lens, sodium streetlamps deep behind her in light
+rain. She checks her phone, then looks up as headlights wash across her face. Locked-off camera.
+Single sodium key from frame left, falling off fast; thin drizzle haze in the air. Shot on 35mm
+film, fine grain, low saturation."
+
+**Dramatic, 10s:** "Close-up, 85mm lens, shallow focus. A man sits in a dark kitchen, framed
+through the doorway, face half-lit by a single practical lamp on the counter, the rest of the room
+falling to black; steam rises from an untouched cup in the foreground. He turns the phone over in
+his hand, then sets it face-down. Slow 4-second push-in. Kodak 2383 print look, teal shadows, warm
+skin highlights."
+
 ## The three registers
 
 The register changes the camera and the cutting length, not just the adjectives.
