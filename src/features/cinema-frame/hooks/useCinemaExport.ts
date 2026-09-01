@@ -33,7 +33,7 @@ async function probeStreamInfo(ffmpeg: FFmpegInstance, filename: string): Promis
 
   ffmpeg.on("log", logHandler);
   try {
-    await ffmpeg.exec(["-i", filename, "-f", "null", "-"]);
+    await ffmpeg.exec(["-i", filename, "-t", "0.1", "-f", "null", "-"]);
   } catch {}
   ffmpeg.off("log", logHandler);
 
@@ -64,6 +64,7 @@ async function probeStreamInfo(ffmpeg: FFmpegInstance, filename: string): Promis
 type ExportState = { progress: number; stage: ExportStage; isExporting: boolean; error: string | null };
 let exportState: ExportState = { progress: 0, stage: "idle", isExporting: false, error: null };
 let running: FFmpegInstance | null = null;
+let serverExport: AbortController | null = null;
 let cancelled = false;
 const listeners = new Set<() => void>();
 
@@ -82,6 +83,8 @@ export function useCinemaExport(timeline: TimelineState | null) {
 
   const cancelExport = useCallback(() => {
     cancelled = true;
+    serverExport?.abort();
+    serverExport = null;
     if (running) {
       try { running.terminate(); } catch {}
       running = null;
@@ -95,6 +98,41 @@ export function useCinemaExport(timeline: TimelineState | null) {
     if (exportState.isExporting) return;
     cancelled = false;
     setExportState({ isExporting: true, error: null, progress: 0 });
+
+    // Native export first: the server runs the system ffmpeg (same command
+    // builder), which is an order of magnitude faster than ffmpeg.wasm. Any
+    // failure falls through to the wasm path below.
+    try {
+      setExportState({ stage: "encoding", progress: 0.4 });
+      serverExport = new AbortController();
+      const r = await fetch("/api/cinema/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeline, config }),
+        signal: serverExport.signal,
+      });
+      if (r.ok) {
+        const blob = await r.blob();
+        const outputName = config.filename.endsWith(".mp4") ? config.filename : `${config.filename}.mp4`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = outputName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setExportState({ progress: 1, stage: "done", isExporting: false });
+        return;
+      }
+      console.warn("[CinemaExport] native export unavailable, falling back to wasm:", r.status);
+    } catch (err) {
+      if (cancelled) { setExportState({ stage: "cancelled", isExporting: false, progress: 0 }); return; }
+      console.warn("[CinemaExport] native export failed, falling back to wasm:", err);
+    } finally {
+      serverExport = null;
+    }
+    setExportState({ progress: 0 });
 
     let ffmpeg: FFmpegInstance | null = null;
     const writtenFiles: string[] = [];
@@ -172,13 +210,10 @@ export function useCinemaExport(timeline: TimelineState | null) {
         if (cached) {
           streamInfoMap.set(clip.id, cached);
         } else {
-          let info: StreamInfo;
-          if (clip.type === "audio") {
-            info = { hasAudio: true, isH264: false };
-          } else {
-            info = await probeStreamInfo(ffmpeg, vfsName);
-            if (cancelled) return;
-          }
+          // Probe audio clips too — a mirror clip on the audio track can point
+          // at a silent video, and assuming hasAudio breaks the filter graph.
+          const info: StreamInfo = await probeStreamInfo(ffmpeg, vfsName);
+          if (cancelled) return;
 
           streamInfoMap.set(clip.id, info);
           probedSrcs.set(clip.src, info);

@@ -216,7 +216,10 @@ export function buildFFmpegCommand(
         thisIdx = inputIdx++;
       }
 
-      if (isVideoClipUsedAsAudio && !(info?.hasAudio)) {
+      // Covers mirror clips too: an audio-track clip whose src is a SILENT
+      // video would otherwise put a nonexistent [N:a] stream in the filter
+      // graph and fail the whole encode.
+      if (!(info?.hasAudio)) {
         continue;
       }
 

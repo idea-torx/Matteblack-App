@@ -17,6 +17,7 @@ import { pool } from "../db.js";
 import { broadcastCanvasUpdate } from "./canvas.js";
 import { getOperatorContext } from "../services/operatorCanvasContext.js";
 import { probeClip, seamDuplicatesFrame } from "../utils/videoTail.js";
+import { placeNext, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 
 const router = Router();
 
@@ -71,21 +72,27 @@ async function cinemaNodes(canvasId: string): Promise<{ id: string; label: strin
   return r.rows as { id: string; label: string }[];
 }
 
-async function createCinemaNode(canvasId: string): Promise<string> {
+async function createCinemaNode(canvasId: string, userId?: string): Promise<string> {
   const z = await pool.query(`SELECT COALESCE(MAX(z_index), 0) + 1 AS z FROM canvas_nodes WHERE canvas_id = $1`, [canvasId]);
-  // Stack below whatever cinema frames already exist rather than landing on
-  // top of one at 0,0.
-  const below = await pool.query(
-    `SELECT COALESCE(MAX(y + height), -200) + 200 AS y FROM canvas_nodes
-      WHERE canvas_id = $1 AND node_type = 'cinema'
+  // Same placement rules as every generated node: avoid everything occupied,
+  // prefer the viewport the user is looking at (operator context).
+  const size = { w: 1920, h: 1700 };
+  const existing = await pool.query(
+    `SELECT x, y, width, height, node_type FROM canvas_nodes
+      WHERE canvas_id = $1
         AND id NOT IN (SELECT node_id FROM canvas_node_tombstones WHERE canvas_id = $1)`,
     [canvasId],
   );
+  const occupied: Rect[] = existing.rows
+    .filter((r) => r.node_type !== "frame" && r.node_type !== "group")
+    .map((r) => ({ x: Number(r.x), y: Number(r.y), w: Number(r.width), h: Number(r.height) }));
+  const viewport = (userId ? getOperatorContext(userId)?.viewport : undefined) ?? fallbackViewport(occupied, size);
+  const rect = placeNext({ viewport, occupied, size });
   const nodeId = uuidv4();
   await pool.query(
     `INSERT INTO canvas_nodes (id, canvas_id, node_type, x, y, width, height, rotation, z_index, locked, visible, label, src, gradient, metadata, asset_id, job_id)
-     VALUES ($1, $2, 'cinema', 0, $4, 1920, 1700, 0, $3, true, true, 'Cinema Frame', '', '', '{}', NULL, NULL)`,
-    [nodeId, canvasId, z.rows[0]?.z ?? 1, below.rows[0]?.y ?? 0],
+     VALUES ($1, $2, 'cinema', $4, $5, $6, $7, 0, $3, true, true, 'Cinema Frame', '', '', '{}', NULL, NULL)`,
+    [nodeId, canvasId, z.rows[0]?.z ?? 1, rect.x, rect.y, rect.w, rect.h],
   );
   return nodeId;
 }
@@ -99,7 +106,7 @@ async function createCinemaNode(canvasId: string): Promise<string> {
  */
 async function targetCinemaNode(
   canvasId: string,
-  opts: { nodeId?: string; newNode?: boolean },
+  opts: { nodeId?: string; newNode?: boolean; userId?: string },
 ): Promise<string> {
   const nodes = await cinemaNodes(canvasId);
   if (opts.nodeId) {
@@ -111,7 +118,7 @@ async function targetCinemaNode(
   if (!opts.newNode) {
     for (const n of nodes) if ((await clipCount(canvasId, n.id)) === 0) return n.id;
   }
-  return createCinemaNode(canvasId);
+  return createCinemaNode(canvasId, opts.userId);
 }
 
 /** One cinema frame's video + audio tracks, created on first use. */
@@ -311,7 +318,7 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
   // ponytail: 120-clip ceiling — a sane cap for an ad, not a real editor limit.
   if (incoming.length > 120) { res.status(400).json({ error: "That's more than 120 clips." }); return; }
   try {
-    const nodeId = await targetCinemaNode(canvasId, { nodeId: body.nodeId, newNode: body.newNode === true });
+    const nodeId = await targetCinemaNode(canvasId, { nodeId: body.nodeId, newNode: body.newNode === true, userId: req.userId });
     const { video, audio } = await ensureTracks(canvasId, nodeId);
     // Always written, not only when true, so a later call without the flag
     // unmutes — `set_timeline` is declarative everywhere else and a mute you
