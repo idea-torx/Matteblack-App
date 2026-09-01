@@ -80,7 +80,7 @@
   padding: 0 6px 0 10px;
   /* Rounded at the top only, square at the bottom: a tab is a shape that runs
    * INTO the canvas, not a chip floating above it. */
-  border-radius: 9px 9px 0 0;
+  border-radius: 4px 4px 0 0;
   /* The canvas colour, not a white-alpha wash. The old fill was tuned for the
    * dark panel and rendered as near-white-on-near-white in light mode, which is
    * what made the whole rail disappear. A token tracks both themes for free. */
