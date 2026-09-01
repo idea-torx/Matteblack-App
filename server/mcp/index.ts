@@ -202,6 +202,21 @@ const EMBEDDED_TOOLS: Tool[] = [
     },
   },
   {
+    name: "generate_voiceover",
+    description:
+      "Speak a line of script aloud (narration, voiceover, dialogue). Blocks until ready and returns the audio URL, which you can lay on a cut's audio track with set_timeline. Connect the running Fal Forge app for the full schema.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "The exact words to speak." },
+        voice: { type: "string", description: "Voice id, e.g. \"Friendly_Person\", \"Deep_Voice_Man\"." },
+        speed: { type: "number", description: "0.5-2.0, default 1.0." },
+        emotion: { type: "string", enum: ["neutral", "happy", "sad", "angry"] },
+      },
+      required: ["text"],
+    },
+  },
+  {
     name: "transform_media",
     description:
       "Transform an existing image by URL (edit / upscale / background-remove / etc.). Requires a reference image URL in referenceUrls. Blocks until ready and returns the result URL. Connect the running Fal Forge app for the full schema.",
@@ -333,9 +348,26 @@ const READ_TOOLS: Tool[] = [
           description:
             "Mute the video track, so only the music bed is heard. Generated clips carry their own audio (dialogue, room tone, effects) which fights a music bed laid under them. Pass true when the user asks for music over the picture, or for a silent cut; leave unset to keep the clips' own sound. Reversible — send the list again without it.",
         },
+        audio: {
+          type: "array",
+          description:
+            "The cut's audio, laid on as many parallel audio tracks as you use — a music bed, a voiceover, effects, all playing together and mixed on export. Declarative like the clips: sending this replaces every audio track on the frame, so include the beds already there plus the new ones. Leave the key out entirely to keep the existing audio untouched. Durations are measured off the file, so omit durationSeconds unless you want a bed deliberately cut short.",
+          items: {
+            type: "object",
+            properties: {
+              src: { type: "string", description: "Audio URL from generate_music / generate_voiceover / generate_media." },
+              track: { type: "number", description: "Which audio track, 0-7 (default 0). Put the music bed on one track and the voiceover on another so they play at once — two beds on the SAME track play one after the other." },
+              startSeconds: { type: "number", description: "When it starts, in seconds from the top of the cut (default 0). This is how a voiceover is cut to picture." },
+              volume: { type: "number", description: "0-1, default 0.8. Duck the music (~0.25) when a voiceover plays over it." },
+              durationSeconds: { type: "number", description: "Optional. Measured off the file when omitted." },
+              label: { type: "string", description: 'What it is, e.g. "VO — line 2".' },
+            },
+            required: ["src"],
+          },
+        },
         music: {
           type: "object",
-          description: "Optional music bed, laid at t=0 under the whole sequence.",
+          description: "Shorthand for a single music bed at t=0 — same thing as one entry in `audio`. Ignored when `audio` is given.",
           properties: {
             src: { type: "string" },
             durationSeconds: { type: "number" },
@@ -1026,6 +1058,7 @@ async function runGetTimeline(): Promise<CallToolResult> {
     const t = (await httpJson(ep, "GET", "/api/agent/timeline")) as {
       timelines: {
         nodeId: string; label: string; clips: TimelineClipRow[];
+        audio?: { src: string; durationSeconds: number; startsAt: number; label: string; track: number }[];
         music: { src: string; durationSeconds: number } | null; muteVideoAudio?: boolean;
       }[];
     };
@@ -1042,7 +1075,10 @@ async function runGetTimeline(): Promise<CallToolResult> {
       const total = f.clips.reduce((n, c) => n + (c.durationSeconds || 0), 0);
       lines.push(`${f.label} (nodeId: ${f.nodeId}) — ${f.clips.length} clips, ${total.toFixed(1)}s:`);
       f.clips.forEach((c, i) => lines.push(`  ${i + 1}. ${c.startsAt.toFixed(1)}s +${c.durationSeconds}s — ${c.label || "(unnamed)"} — ${c.src}`));
-      if (f.music) lines.push(`  Music: ${f.music.src}`);
+      for (const a of f.audio ?? []) {
+        lines.push(`  Audio track ${a.track}: ${a.startsAt.toFixed(1)}s +${a.durationSeconds.toFixed(1)}s — ${a.label || "(unnamed)"} — ${a.src}`);
+      }
+      if (!f.audio && f.music) lines.push(`  Music: ${f.music.src}`);
       if (f.muteVideoAudio) lines.push("  Video track is MUTED — only the music bed is audible.");
     }
     lines.push("Pass a nodeId to set_timeline to extend that cut; omit it to start a new one.");
@@ -1060,12 +1096,21 @@ async function runSetTimeline(args: Record<string, unknown>): Promise<CallToolRe
   try {
     const r = (await httpJson(
       ep, "POST", "/api/agent/timeline",
-      { clips, music: args.music ?? null, muteVideoAudio: args.muteVideoAudio === true,
+      { clips,
+        // Only forward the keys the caller actually sent: on this route the
+        // presence of `audio`/`music` is what says "rewrite the audio tracks",
+        // so passing `music: null` unconditionally would wipe the bed on every
+        // clip-only call.
+        ...("audio" in args ? { audio: args.audio } : {}),
+        ...("music" in args ? { music: args.music } : {}),
+        muteVideoAudio: args.muteVideoAudio === true,
         nodeId: typeof args.nodeId === "string" ? args.nodeId : undefined, newNode: args.newNode === true },
       60000,
-    )) as { clips: number; totalSeconds: number; muteVideoAudio: boolean; nodeId: string };
+    )) as { clips: number; audioClips?: number; totalSeconds: number; muteVideoAudio: boolean; nodeId: string };
     return ok(
-      `Timeline set on cinema frame ${r.nodeId}: ${r.clips} clips, ${r.totalSeconds.toFixed(1)}s${r.muteVideoAudio ? ", video audio muted" : ""}. ` +
+      `Timeline set on cinema frame ${r.nodeId}: ${r.clips} clips, ${r.totalSeconds.toFixed(1)}s` +
+        (r.audioClips ? `, ${r.audioClips} audio clip(s)` : "") +
+        `${r.muteVideoAudio ? ", video audio muted" : ""}. ` +
         "Pass that nodeId back to set_timeline to extend this same cut. The user can play it in the cinema frame and export from there.",
     );
   } catch (err) {
@@ -1315,7 +1360,7 @@ function runListLocalDir(args: Record<string, unknown>): CallToolResult {
 const INSTRUCTIONS = [
   "Matteblack generates images, video, and music locally using the user's own fal.ai key; every result lands on the user's Fal Forge canvas (a separate window they keep open beside this chat).",
   "",
-  "TOOLS: `generate_media` (image or short video), `generate_music` (audio), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
+  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths, live git state and authoring flag, and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply. `checkout_branch` moves a clone onto the branch the user names. On repos where the user enabled authoring you may edit files and call `commit_repo`, which commits to a working branch and opens a PR: never the default branch, never a merge, and never installing or running the project. On every other repo you are read-only — say so rather than trying another route.",
   "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
@@ -1372,7 +1417,8 @@ async function main(): Promise<void> {
     if (name === "save_cut") return runSaveCut(args);
     if (name === "list_cuts") return runListCuts(args);
     if (name === "save_skill") return runSaveSkill(args);
-    if (name !== "generate_media" && name !== "generate_music" && name !== "transform_media" && name !== "continue_video") {
+    if (name !== "generate_media" && name !== "generate_music" && name !== "generate_voiceover"
+        && name !== "transform_media" && name !== "continue_video") {
       return fail(`Unknown tool: ${name}`);
     }
     // If the client passed a progress token, stream progress during the block-and-

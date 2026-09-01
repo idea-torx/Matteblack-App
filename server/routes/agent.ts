@@ -1839,6 +1839,95 @@ const GENERATE_MUSIC_TOOL: Tool = {
   },
 };
 
+const VOICE_IDS = [
+  "Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man", "Calm_Woman",
+  "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight", "Determined_Man",
+  "Lovely_Girl", "Decent_Boy", "Imposing_Manner", "Elegant_Man", "Abbess",
+  "Sweet_Girl_2", "Exuberant_Girl",
+] as const;
+
+const GENERATE_VOICEOVER_TOOL: Tool = {
+  name: "generate_voiceover",
+  description:
+    "Speak a line of script aloud — narration, voiceover, dialogue, an announcer read. Returns an audio URL you can lay on a cut's audio track with set_timeline. This is spoken words only: use generate_music for a music bed and generate_media for sound effects. Write the text the way it should be heard, punctuation and all — commas and full stops are what pace the read.",
+  input_schema: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description:
+          "The exact words to speak, 1-3000 characters. Punctuate for delivery: a full stop is a beat, a comma is a breath. Don't include stage directions or speaker labels — everything here is read aloud.",
+      },
+      voice: {
+        type: "string",
+        enum: [...VOICE_IDS],
+        description: "Which voice reads it. Defaults to Friendly_Person. Keep one voice per character across a whole piece.",
+      },
+      speed: {
+        type: "number",
+        description: "Delivery speed, 0.5-2.0 (default 1.0). Below 1 is slower and weightier; above 1 is brisk. A voiceover cut to picture usually wants 0.9-1.1.",
+      },
+      emotion: {
+        type: "string",
+        enum: ["neutral", "happy", "sad", "angry"],
+        description: "Emotional colour of the read. Defaults to neutral.",
+      },
+    },
+    required: ["text"],
+  },
+};
+
+// ---------- generate_voiceover tool ----------
+
+type AgentVoiceoverUse = {
+  blockId: string;
+  text: string;
+  voice: string;
+  speed: number;
+  emotion: string;
+};
+
+function parseGenerateVoiceoverInput(
+  block: ToolUseBlock,
+): AgentVoiceoverUse | { error: string } {
+  const input = (block.input ?? {}) as Record<string, unknown>;
+  const text = typeof input.text === "string" ? input.text.trim().slice(0, 3000)
+    : typeof input.prompt === "string" ? (input.prompt as string).trim().slice(0, 3000) : "";
+  if (text.length < 1) return { error: "generate_voiceover needs `text` — the words to speak." };
+  const voice = typeof input.voice === "string" && (VOICE_IDS as readonly string[]).includes(input.voice)
+    ? input.voice : "Friendly_Person";
+  const rawSpeed = Number(input.speed);
+  const speed = isFinite(rawSpeed) && rawSpeed > 0 ? Math.max(0.5, Math.min(2, rawSpeed)) : 1;
+  const emotion = typeof input.emotion === "string" && ["neutral", "happy", "sad", "angry"].includes(input.emotion)
+    ? input.emotion : "neutral";
+  return { blockId: block.id, text, voice, speed, emotion };
+}
+
+function buildVoiceoverBody(
+  tool: AgentVoiceoverUse,
+  canvasId: string,
+  workspaceId: string | undefined,
+): { type: string; body: Record<string, unknown>; resolvedModel: string } {
+  return {
+    type: "audio_tts",
+    resolvedModel: "minimax-tts",
+    body: {
+      type: "audio_tts",
+      model: "minimax-tts",
+      // `prompt` is what the job row and the canvas card display; `text` is
+      // what the model actually speaks.
+      prompt: tool.text.slice(0, 300),
+      text: tool.text,
+      voice: tool.voice,
+      speed: tool.speed,
+      emotion: tool.emotion,
+      canvas_id: canvasId,
+      workspace_id: workspaceId,
+      params: { source: "agent" },
+    },
+  };
+}
+
 // Static portion of the system prompt — identical across turns for a given
 // (outputMode, includeMusicTool) combination, so Anthropic can cache it.
 // Excludes the per-turn reference catalog and the brand/product blocks
@@ -4527,7 +4616,7 @@ async function placeAgentGenerationOnCanvas(
 // Schema discovery: framework-neutral shape (MCP wants `inputSchema`; Anthropic
 // wants `input_schema`). The MCP server fetches this to register its tools.
 router.get("/api/agent/tools", requireMcpToken, requireAuth, (_req: AuthRequest, res) => {
-  const tools = [GENERATE_MEDIA_TOOL, CONTINUE_VIDEO_TOOL, GENERATE_MUSIC_TOOL, TRANSFORM_MEDIA_TOOL].map((t) => ({
+  const tools = [GENERATE_MEDIA_TOOL, CONTINUE_VIDEO_TOOL, GENERATE_MUSIC_TOOL, GENERATE_VOICEOVER_TOOL, TRANSFORM_MEDIA_TOOL].map((t) => ({
     name: t.name,
     description: t.description,
     inputSchema: t.input_schema,
@@ -4866,7 +4955,16 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
       return;
     }
-    res.status(400).json({ error: `Unknown tool: ${toolName ?? "(none)"}. Expected generate_media, continue_video, transform_media, or generate_music.` });
+    if (toolName === "generate_voiceover") {
+      const parsed = parseGenerateVoiceoverInput(mkBlock("generate_voiceover"));
+      if ("error" in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const built = buildVoiceoverBody(parsed, canvasId, workspaceId);
+      const dispatch = await dispatchAgentGeneration(req, built.body);
+      if (!dispatch.ok) { res.status(dispatch.status).json({ error: dispatch.error }); return; }
+      res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
+      return;
+    }
+    res.status(400).json({ error: `Unknown tool: ${toolName ?? "(none)"}. Expected generate_media, continue_video, transform_media, generate_music, or generate_voiceover.` });
   } catch (err) {
     console.error("[agent/tool] error:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });

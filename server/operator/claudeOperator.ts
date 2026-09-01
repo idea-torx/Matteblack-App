@@ -83,6 +83,7 @@ export const OPERATOR_MCP_TOOLS = [
   "generate_media",
   "continue_video",
   "generate_music",
+  "generate_voiceover",
   "transform_media",
   "list_models",
   "list_canvas",

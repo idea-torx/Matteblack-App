@@ -137,6 +137,18 @@ If the piece needs a bed, call `generate_music` once for the whole sequence with
 duration, not per chunk — a new track per clip is the fastest way to make eight good chunks sound like
 eight different films.
 
+Narration is `generate_voiceover`: one call per line or paragraph, the same voice throughout, so each
+line can be placed against the picture it belongs to. Write the words as they should be heard — the
+punctuation is what paces the read.
+
+A cut can carry several audio tracks at once, and `set_timeline`'s `audio` list is how you lay them:
+each entry takes a `track` (0-7), a `startSeconds` and a `volume`. Keep one thing per track — the bed
+on track 0, the voiceover on track 1, effects on track 2 — because two entries on the SAME track play
+one after the other, not together. Place each VO line at the second its shot starts, and duck the bed
+under it (`volume` around 0.25 against the voice's 1.0) or the words disappear into the music. The list
+is declarative like the clips: send every bed you want, every time, or leave the key out to keep what's
+already there.
+
 ## 8. Record the cut
 
 Once the timeline is set, call `save_cut` with the project slug, the title, a couple of sentences describing

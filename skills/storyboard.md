@@ -116,8 +116,10 @@ look, regenerate that shot alone — never restart the sequence.
 ## 5. Assemble
 
 When every shot exists, call `set_timeline` with the full ordered clip list (src, durationSeconds,
-short label) plus a single music bed from one `generate_music` call sized to the whole runtime — not
-one per scene. Then `save_cut` with the project slug, the title, the style block verbatim, the board,
+short label) plus its audio: a single music bed from one `generate_music` call sized to the whole
+runtime — not one per scene — and, if the piece is narrated, each `generate_voiceover` line on its own
+track at the second its shot starts, with the bed ducked under it. Then `save_cut` with the
+project slug, the title, the style block verbatim, the board,
 and every shot's exact prompt and URL. The style block in the manifest is what lets a sequel be shot in
 the same world a month later.
 

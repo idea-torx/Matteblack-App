@@ -121,26 +121,31 @@ async function targetCinemaNode(
   return createCinemaNode(canvasId, opts.userId);
 }
 
-/** One cinema frame's video + audio tracks, created on first use. */
-async function ensureTracks(canvasId: string, nodeId: string): Promise<{ video: string; audio: string }> {
+/** One cinema frame's video track plus `audioCount` audio tracks, created on
+ *  first use. More than one audio track is what lets a cut carry a music bed,
+ *  a voiceover and effects at once — the player and the ffmpeg export already
+ *  mix every audio track they find, so the count is the whole feature. */
+async function ensureTracks(
+  canvasId: string, nodeId: string, audioCount = 1,
+): Promise<{ video: string; audio: string[] }> {
   const rows = await pool.query(
     `SELECT id, track_type FROM cinema_tracks WHERE canvas_id = $1 AND node_id = $2 ORDER BY sort_order ASC`,
     [canvasId, nodeId],
   );
-  const pick = (t: string) => rows.rows.find((r: { track_type: string }) => r.track_type === t)?.id as string | undefined;
-  let video = pick("video");
-  let audio = pick("audio");
-  for (const [type, sort] of [["video", 0], ["audio", 1]] as const) {
-    const have = type === "video" ? video : audio;
-    if (have) continue;
+  type Row = { id: string; track_type: string };
+  let video = (rows.rows as Row[]).find((r) => r.track_type === "video")?.id;
+  const audio = (rows.rows as Row[]).filter((r) => r.track_type === "audio").map((r) => r.id);
+  const add = async (type: "video" | "audio", sort: number): Promise<string> => {
     const id = uuidv4();
     await pool.query(
       `INSERT INTO cinema_tracks (id, canvas_id, node_id, track_type, sort_order) VALUES ($1, $2, $3, $4, $5)`,
       [id, canvasId, nodeId, type, sort],
     );
-    if (type === "video") video = id; else audio = id;
-  }
-  return { video: video!, audio: audio! };
+    return id;
+  };
+  if (!video) video = await add("video", 0);
+  while (audio.length < audioCount) audio.push(await add("audio", audio.length + 1));
+  return { video, audio };
 }
 
 /** Clear a track, tombstoning ids so a queued client sync can't resurrect them. */
@@ -174,6 +179,10 @@ async function insertClip(
  *  ponytail: ~1 frame at 24fps; read the real fps off the clip if a model
  *  ever ships something slower. */
 export const SEAM_TRIM_SECONDS = 0.05;
+
+// ponytail: sane ceilings for an assembled cut, not real editor limits.
+const MAX_AUDIO_TRACKS = 8;
+const MAX_AUDIO_CLIPS = 60;
 
 /** Trim for clip i of the cut: one frame off the head iff it is a seam='frame'
  *  continuation of the clip it actually follows in this list. */
@@ -228,14 +237,14 @@ async function clipStatsFor(srcs: string[]): Promise<Map<string, { lufs: number 
       // store a sentinel if that decode ever shows up in set_timeline latency.
       if (out.get(src)?.lufs != null) continue;
       const probed = await probeClip(src);
-      if (probed.duration == null && probed.lufs == null) continue;
-      out.set(src, { lufs: probed.lufs, duration: probed.duration });
+      if (probed.durationSeconds == null && probed.lufs == null) continue;
+      out.set(src, { lufs: probed.lufs, duration: probed.durationSeconds });
       // Cache on the job row so the next set_timeline skips the decode. A clip
       // with no job row (user upload) just gets re-probed — still correct.
       pool
         .query(
           `UPDATE jobs SET params = params || jsonb_build_object('lufs', $2::float, 'probedDuration', $3::float) WHERE result_url = $1`,
-          [src, probed.lufs, probed.duration],
+          [src, probed.lufs, probed.durationSeconds],
         )
         .catch(() => { /* cache miss next time, nothing lost */ });
     }
@@ -260,6 +269,44 @@ export function normalizeVolumes(lufs: Map<string, number>): Map<string, number>
   return out;
 }
 
+export type AudioBed = {
+  src: string; startSeconds: number; durationSeconds?: number;
+  volume?: number; label: string; track: number;
+};
+
+/** The `audio` list, cleaned: unusable srcs dropped, tracks clamped into range,
+ *  starts and volumes sane. `music` is the one-bed shorthand for the same thing
+ *  and is used only when `audio` carries nothing. Pure — exported for the test.
+ *
+ *  Both keys are declarative: a call carrying either rewrites the frame's audio
+ *  tracks, a call carrying neither leaves them alone (checked by the caller, so
+ *  an empty list can still clear the audio). */
+export function normalizeBeds(body: {
+  audio?: unknown;
+  music?: { src?: string; durationSeconds?: number; volume?: number } | null;
+}): AudioBed[] {
+  const vol = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : undefined);
+  const raw = Array.isArray(body.audio) ? (body.audio as Record<string, unknown>[]) : [];
+  const beds: AudioBed[] = raw
+    .filter((a) => usableSrc(a?.src))
+    .slice(0, MAX_AUDIO_CLIPS)
+    .map((a, i) => ({
+      src: a.src as string,
+      startSeconds: typeof a.startSeconds === "number" && a.startSeconds > 0 ? a.startSeconds : 0,
+      durationSeconds: typeof a.durationSeconds === "number" && a.durationSeconds > 0 ? a.durationSeconds : undefined,
+      volume: vol(a.volume),
+      label: typeof a.label === "string" && a.label ? a.label : `Audio ${i + 1}`,
+      track: Math.max(0, Math.min(MAX_AUDIO_TRACKS - 1, Math.trunc(Number(a.track) || 0))),
+    }));
+  if (beds.length === 0 && body.music && usableSrc(body.music.src)) {
+    beds.push({
+      src: body.music.src, startSeconds: 0, durationSeconds: body.music.durationSeconds,
+      volume: vol(body.music.volume), label: "Music", track: 0,
+    });
+  }
+  return beds;
+}
+
 /** Every cinema frame on the canvas, each with its own cut, in play order —
  *  so Claude knows which one to extend and which one to leave alone. */
 router.get("/api/agent/timeline", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
@@ -267,7 +314,7 @@ router.get("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Auth
   if (!canvasId) { res.json({ timelines: [], canvasId: null }); return; }
   try {
     const nodes = await cinemaNodes(canvasId);
-    const tracks = await pool.query(`SELECT id, node_id, track_type, muted FROM cinema_tracks WHERE canvas_id = $1`, [canvasId]);
+    const tracks = await pool.query(`SELECT id, node_id, track_type, muted FROM cinema_tracks WHERE canvas_id = $1 ORDER BY sort_order ASC`, [canvasId]);
     const tombs = await pool.query(`SELECT clip_id FROM cinema_clip_tombstones WHERE canvas_id = $1`, [canvasId]);
     const dead = new Set((tombs.rows as { clip_id: string }[]).map((r) => r.clip_id));
     const clips = await pool.query(
@@ -283,12 +330,19 @@ router.get("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Auth
       timelines: nodes.map((n) => {
         const mine = trackRows.filter((t) => t.node_id === n.id);
         const typeOf = new Map(mine.map((t) => [t.id, t.track_type]));
+        const audioIndex = new Map(mine.filter((t) => t.track_type === "audio").map((t, i) => [t.id, i]));
         const ours = live.filter((c) => typeOf.has(c.track_id));
         return {
           nodeId: n.id,
           label: n.label || "Cinema Frame",
           clips: ours.filter((c) => typeOf.get(c.track_id) !== "audio")
             .map((c) => ({ src: c.src, durationSeconds: c.duration, startsAt: c.start_offset, label: c.label })),
+          audio: ours.filter((c) => typeOf.get(c.track_id) === "audio")
+            .map((c) => ({
+              src: c.src, durationSeconds: c.duration, startsAt: c.start_offset, label: c.label,
+              track: audioIndex.get(c.track_id) ?? 0,
+            })),
+          // Kept alongside `audio` so an older reader still sees the bed.
           music: ours.filter((c) => typeOf.get(c.track_id) === "audio")
             .map((c) => ({ src: c.src, durationSeconds: c.duration }))[0] ?? null,
           muteVideoAudio: mine.some((t) => t.track_type === "video" && t.muted),
@@ -308,6 +362,10 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
   const body = (req.body ?? {}) as {
     clips?: { src?: string; durationSeconds?: number; label?: string }[];
     music?: { src?: string; durationSeconds?: number; volume?: number } | null;
+    audio?: {
+      src?: string; startSeconds?: number; durationSeconds?: number;
+      volume?: number; label?: string; track?: number;
+    }[] | null;
     muteVideoAudio?: boolean;
     nodeId?: string;
     newNode?: boolean;
@@ -317,9 +375,12 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
   if (incoming.length === 0) { res.status(400).json({ error: "Expected a `clips` array of {src, durationSeconds}." }); return; }
   // ponytail: 120-clip ceiling — a sane cap for an ad, not a real editor limit.
   if (incoming.length > 120) { res.status(400).json({ error: "That's more than 120 clips." }); return; }
+  const rewriteAudio = "audio" in body || "music" in body;
+  const beds = normalizeBeds(body);
   try {
     const nodeId = await targetCinemaNode(canvasId, { nodeId: body.nodeId, newNode: body.newNode === true, userId: req.userId });
-    const { video, audio } = await ensureTracks(canvasId, nodeId);
+    const audioTracksNeeded = Math.max(1, ...beds.map((b) => b.track + 1));
+    const { video, audio } = await ensureTracks(canvasId, nodeId, audioTracksNeeded);
     // Always written, not only when true, so a later call without the flag
     // unmutes — `set_timeline` is declarative everywhere else and a mute you
     // can set but not clear is a trap.
@@ -345,17 +406,24 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
       await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i, trimStart, volume: volumes.get(c.src) ?? 1 });
       at += duration - trimStart;
     }
-    const music = body.music;
-    if (music && usableSrc(music.src)) {
-      await clearTrack(canvasId, audio);
-      await insertClip(canvasId, audio, {
-        src: music.src,
-        duration: Number.isFinite(music.durationSeconds) && (music.durationSeconds as number) > 0 ? (music.durationSeconds as number) : at,
-        startOffset: 0, label: "Music", sortOrder: 0, volume: music.volume ?? 0.8,
-      });
+    if (rewriteAudio) {
+      for (const trackId of audio) await clearTrack(canvasId, trackId);
+      // Real durations again: a voiceover's length is whatever the model spoke,
+      // and the agent has no way to know it before laying it down.
+      const bedStats = await clipStatsFor(beds.map((b) => b.src));
+      const perTrack = new Map<number, number>();
+      for (const b of beds) {
+        const sortOrder = perTrack.get(b.track) ?? 0;
+        perTrack.set(b.track, sortOrder + 1);
+        await insertClip(canvasId, audio[b.track], {
+          src: b.src,
+          duration: bedStats.get(b.src)?.duration ?? b.durationSeconds ?? at,
+          startOffset: b.startSeconds, label: b.label, sortOrder, volume: b.volume ?? 0.8,
+        });
+      }
     }
     broadcastCanvasUpdate(canvasId, "");
-    res.json({ clips: incoming.length, totalSeconds: at, canvasId, nodeId, muteVideoAudio });
+    res.json({ clips: incoming.length, audioClips: rewriteAudio ? beds.length : undefined, totalSeconds: at, canvasId, nodeId, muteVideoAudio });
   } catch (err) {
     console.error("[agent/timeline] write failed:", err);
     const msg = err instanceof Error && err.message.startsWith("No cinema frame")
