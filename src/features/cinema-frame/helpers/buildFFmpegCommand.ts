@@ -105,6 +105,9 @@ export function buildFFmpegCommand(
     const args: string[] = ["-i", entry.filename];
 
     args.push("-c:v", "copy");
+    // Fal source clips can carry an absurd SPS level (6.2) that iOS download
+    // paths reject even though playback works; rewrite it without re-encoding.
+    args.push("-bsf:v", "h264_metadata=level=5.1");
 
     if (config.includeAudio) {
       const info = streamInfoMap.get(entry.clip.id);
@@ -129,6 +132,7 @@ export function buildFFmpegCommand(
       "-safe", "0",
       "-i", "concat_list.txt",
       "-c:v", "copy",
+      "-bsf:v", "h264_metadata=level=5.1",
     ];
 
     if (config.includeAudio) {
