@@ -13,6 +13,10 @@
   justify-content: space-between;
   padding: 8px 0 12px;
   border: var(--panel-float-border);
+  /* The rail is flush against the canvas on mac (--panel-radius 0), so its
+   * right edge needs a visible seam rather than the near-invisible float
+   * border. Same 1px width, so nothing re-lays-out. */
+  border-right: 1px solid rgba(var(--tint-rgb), 0.10);
   border-radius: var(--panel-radius);
   box-shadow: var(--panel-float-shadow);
   z-index: 20;

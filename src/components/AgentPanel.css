@@ -96,7 +96,7 @@
    * continuous surface even though the card itself has rounded
    * corners and a faint border. */
   width: 360px;
-  background: #F0F0F3;
+  background: var(--agent-surface);
   z-index: -1;
   pointer-events: none;
 }
