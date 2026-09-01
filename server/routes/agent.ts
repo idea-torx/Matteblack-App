@@ -4792,6 +4792,9 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         duration,
         resolution: typeof input.resolution === "string" ? input.resolution : undefined,
         aspect_ratio: aspectRatio,
+        // fal.ts checks generateAudio === true strictly; leaving it unset made
+        // every continuation chunk silent. Default on, like generate_media.
+        generateAudio: input.generateAudio !== false,
         canvas_id: canvasId,
         workspace_id: workspaceId,
         // seam recorded so set_timeline can auto-trim the duplicated frame a

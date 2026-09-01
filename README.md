@@ -10,7 +10,8 @@ AI providers directly using **your own API keys**.
 - **Frontend:** React 19 + TypeScript + Vite
 - **Backend:** Express (Node) + embedded Postgres ([PGlite](https://pglite.dev))
 - **Generation:** [fal.ai](https://fal.ai) (bring your own key)
-- **Agent / Brand IQ:** Anthropic (optional, bring your own key)
+- **Agent:** your **Claude subscription**, driven through Claude Code + MCP locally (no API key)
+- **Brand IQ:** Anthropic API key (optional fallback path)
 
 > **Just want to use the app?** See **[INSTALL.md](INSTALL.md)** — either
 > `npm run electron:dev` from a clone, or the installer from
@@ -37,8 +38,19 @@ Generation needs a fal.ai key. In the app, open **Settings ▸ API keys** (the k
 icon at the bottom of the left rail) and paste:
 
 - **fal.ai key** — required for all generation. Get one at https://fal.ai/dashboard/keys
-- **Anthropic key** — optional, enables the AI Agent and Brand IQ. Get one at
-  https://console.anthropic.com/settings/keys
+
+The AI Agent does **not** need an API key — it runs on your **Claude
+subscription** by driving Claude Code locally over MCP (the default and
+recommended path; see [INSTALL.md](INSTALL.md) step 4 and
+[OPERATOR.md](OPERATOR.md)):
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude   # sign in once, then quit
+```
+
+- **Anthropic API key** — absolute fallback only (Brand IQ, or the agent when
+  Claude Code isn't available). Get one at https://console.anthropic.com/settings/keys
 
 Keys are stored locally at `~/.matteblack/config.json` and used only to call
 those providers directly. You can also set `FAL_KEY` / `ANTHROPIC_API_KEY` in a

@@ -163,6 +163,34 @@ export async function extractTailClip(videoUrl: string, seconds: number): Promis
 }
 
 /**
+ * True when `nextUrl`'s first frame is (a re-encode of) `prevUrl`'s last frame.
+ * Decides whether the timeline trims the seam frame: a model that genuinely
+ * restarts on the handoff frame duplicates it, and a model that doesn't must
+ * NOT be trimmed — trimming real motion skips the cut forward, obvious on
+ * fast moves. Any failure (missing file, dimension mismatch) returns true,
+ * i.e. falls back to the old always-trim behavior.
+ */
+export async function seamDuplicatesFrame(prevUrl: string, nextUrl: string): Promise<boolean> {
+  await ensureFfmpeg();
+  return withTempDir(async (dir) => {
+    const [a, b] = [path.join(dir, "a"), path.join(dir, "b")];
+    await fsp.mkdir(a); await fsp.mkdir(b);
+    const prev = await fetchToTemp(prevUrl, a);
+    const next = await fetchToTemp(nextUrl, b);
+    const last = path.join(dir, "last.png");
+    const first = path.join(dir, "first.png");
+    await run("ffmpeg", ["-sseof", "-1", "-i", prev, "-update", "1", "-y", last]);
+    await run("ffmpeg", ["-i", next, "-frames:v", "1", "-y", first]);
+    const { stderr } = await run("ffmpeg", ["-i", last, "-i", first, "-lavfi", "ssim", "-f", "null", "-"]);
+    const m = String(stderr).match(/All:([\d.]+)/);
+    // ponytail: 0.92 SSIM threshold — re-encoded duplicates score ~0.97+,
+    // adjacent frames of fast motion land well below. Tune here if a model
+    // ever duplicates with heavier compression.
+    return m ? Number(m[1]) >= 0.92 : true;
+  }).catch(() => true);
+}
+
+/**
  * Integrated loudness (EBU R128 "I") of a clip's audio, in LUFS — or null when
  * the clip has no audio stream or is effectively silent. One decode pass, no
  * re-encode; the file is never modified.

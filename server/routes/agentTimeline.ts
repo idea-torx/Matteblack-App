@@ -16,7 +16,7 @@ import { getMcpToken } from "../mcpToken.js";
 import { pool } from "../db.js";
 import { broadcastCanvasUpdate } from "./canvas.js";
 import { getOperatorContext } from "../services/operatorCanvasContext.js";
-import { probeClip } from "../utils/videoTail.js";
+import { probeClip, seamDuplicatesFrame } from "../utils/videoTail.js";
 
 const router = Router();
 
@@ -331,7 +331,10 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
     for (const [i, c] of incoming.entries()) {
       const declared = Number.isFinite(c.durationSeconds) && (c.durationSeconds as number) > 0 ? (c.durationSeconds as number) : 5;
       const duration = stats.get(c.src)?.duration ?? declared;
-      const trimStart = seamTrimFor(i, incoming.map((x) => x.src), continuations);
+      // Trim only when the continuation really duplicates the seam frame —
+      // some models don't, and trimming real motion skips the cut forward.
+      let trimStart = seamTrimFor(i, incoming.map((x) => x.src), continuations);
+      if (trimStart > 0 && !(await seamDuplicatesFrame(incoming[i - 1].src, c.src))) trimStart = 0;
       await insertClip(canvasId, video, { src: c.src, duration, startOffset: at, label: c.label ?? `Shot ${i + 1}`, sortOrder: i, trimStart, volume: volumes.get(c.src) ?? 1 });
       at += duration - trimStart;
     }
