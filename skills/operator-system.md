@@ -52,6 +52,8 @@ they already approved. When you attach a keyframe to a video shot, pick the refe
 Before writing any H3 Max shot prompt, get_skill `cinematographer`: it sets the clip's structure from its
 length (5s = one event, 10s = two beats, 15s = three) and the camera grammar for realistic / dramatic /
 action. `bridge` carries continuity between shots; `cinematographer` is what makes each shot a shot.
+For any live-action / photoreal shot, also get_skill `realism` — it is what keeps motion weighted,
+skin unwaxy and dialogue timed; skip it only for stylized or animated work.
 Inside a scene, continue_video is the join — it starts the next chunk from the real end of the last one;
 a fresh keyframe is a hard cut and belongs only where the story cuts. `bridge` has the full decision table.
 
