@@ -2177,6 +2177,8 @@ function App() {
             selectedTool={gifMakerOpen ? "gifmaker" : svgMakerOpen ? "svgmaker" : selectedTool}
             onToolSelect={handleToolSelect}
             onCinemaChildSelect={handleCinemaChildSelect}
+            makeVideoMode={makeVideoMode}
+            onMakeVideoModeSelect={setMakeVideoMode}
             onSettingsOpen={(section?: string) => { setSettingsSection(section || "account"); setSettingsOpen(true); }}
             onLibrarySelect={handleLibrarySelect}
             activeLibraryView={libraryView}

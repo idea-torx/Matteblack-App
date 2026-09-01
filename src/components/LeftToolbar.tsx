@@ -12,6 +12,9 @@ type LeftToolbarProps = {
   selectedTool: ToolId | null;
   onToolSelect: (tool: ToolId) => void;
   onCinemaChildSelect?: (tool: ToolId) => void;
+  /* The Make panel's image/video toggle, surfaced as two nav rows. */
+  makeVideoMode?: boolean;
+  onMakeVideoModeSelect?: (video: boolean) => void;
   onSettingsOpen?: (section?: string) => void;
   onLibrarySelect?: (view: string) => void;
   activeLibraryView?: string | null;
@@ -28,16 +31,30 @@ const makeIcon = (
   </svg>
 );
 
-const MAKE_CHILDREN: NavItem[] = [
+/* Both rows open the same Make panel — they only differ by which side of its
+ * image/video toggle they land on, so they are not ToolIds. */
+const MAKE_MODES = [
   {
-    id: "create",
-    label: "Image & Video",
+    video: false,
+    label: "Generative Image",
     icon: (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
       </svg>
     ),
   },
+  {
+    video: true,
+    label: "Generative Video",
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="5" width="14" height="14" rx="2" /><polygon points="22 7 16 11 22 15 22 7" />
+      </svg>
+    ),
+  },
+];
+
+const MAKE_CHILDREN: NavItem[] = [
   {
     id: "upscale",
     label: "Upscale",
@@ -307,6 +324,8 @@ export function LeftToolbar({
   selectedTool,
   onToolSelect: rawOnToolSelect,
   onCinemaChildSelect,
+  makeVideoMode = false,
+  onMakeVideoModeSelect,
   onSettingsOpen,
   onLibrarySelect,
   activeLibraryView,
@@ -396,6 +415,21 @@ export function LeftToolbar({
               className={`nav-children ${makeExpanded ? "nav-children--open" : ""}`}
               aria-hidden={!makeExpanded}
             >
+              {MAKE_MODES.map(({ video, label, icon }) => (
+                <button
+                  key={label}
+                  type="button"
+                  tabIndex={makeExpanded ? 0 : -1}
+                  className={`nav-row nav-row--child ${selectedTool === "create" && makeVideoMode === video ? "nav-row--active" : ""}`}
+                  onClick={() => {
+                    onMakeVideoModeSelect?.(video);
+                    onToolSelect("create");
+                  }}
+                >
+                  <span className="nav-row-icon">{icon}</span>
+                  <span className="nav-row-label">{label}</span>
+                </button>
+              ))}
               {MAKE_CHILDREN.map(({ id, label, icon }) => (
                 <button
                   key={id}

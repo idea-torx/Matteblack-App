@@ -22,7 +22,7 @@
   /* The panel's own surface colour, exposed as a token so inverted controls
    * (a pill filled with --text-primary) can use it as their text colour and
    * stay legible when the dark override below flips both. */
-  --agent-surface: #F0F0F3;
+  --agent-surface: #e9e9ee;
 
   position: fixed;
   /* Floating card inside the right reserved area (--canvas-right-inset
