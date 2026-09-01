@@ -12,11 +12,8 @@
    * bottom edge sits on the same line as .rpanel-top-tabs__divider (top: 50px)
    * instead of one pixel below it. */
   box-sizing: border-box;
-  /* The band is the canvas card's first child, so ITS top-right corner is the
-   * card's top-right corner — a square one here filled the card's 8px radius
-   * back in. Left stays square: the icon rail butts against it, and a curve
-   * there would open a notch. */
-  border-top-right-radius: 8px;
+  /* Mirrors the canvas card's top-right corner, which is now square. */
+  border-top-right-radius: 0;
   /* The same inset every other thing on the canvas honours (App.tsx sets it
    * per open panel), so the tabs slide over when a left panel opens instead of
    * disappearing under it. Not transitioned — see the white-flash note in
