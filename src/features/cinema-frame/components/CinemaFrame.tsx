@@ -320,19 +320,6 @@ export const CinemaFrame = memo(function CinemaFrame({
     <div className="cinema-frame" ref={frameRef}>
       <div className="cinema-frame__titlebar" onPointerDown={onNodePointerDown} onClick={onNodeClick} onDoubleClick={handleTitlebarDoubleClick} title={isLocked ? "Double-click to unlock (allow repositioning)" : "Double-click to lock position"}>
         <span className="cinema-frame__titlebar-text">Cinema</span>
-        <button
-          type="button"
-          className="cinema-frame__export-btn"
-          onClick={handleExportClick}
-          title="Export MP4"
-          aria-label="Export MP4"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        </button>
         <span className={`cinema-frame__lock-icon ${isLocked ? "" : "cinema-frame__lock-icon--unlocked"}`}>
           {isLocked ? (
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -346,6 +333,20 @@ export const CinemaFrame = memo(function CinemaFrame({
             </svg>
           )}
         </span>
+        <button
+          type="button"
+          className="cinema-frame__export-btn"
+          onClick={handleExportClick}
+          title="Export MP4"
+          aria-label="Export MP4"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download
+        </button>
       </div>
       <CinemaViewer
         videoMuted={timeline.tracks.some(

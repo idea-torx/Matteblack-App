@@ -2372,7 +2372,7 @@ function App() {
                 display: "flex",
                 flexDirection: "column",
                 zIndex: 10,
-                background: "var(--app-bg, #0e0e12)",
+                background: "var(--bg-base, #0e0e12)",
                 borderRadius: "inherit",
               }}
             >

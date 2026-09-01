@@ -37,7 +37,7 @@
    * TRACK_GUTTER in CinemaTimeline.tsx. */
   zoom: 2.2;
   flex: 0 0 auto;
-  height: 28px;
+  height: 40px;
   background: #141418;
   display: flex;
   align-items: center;
@@ -59,21 +59,31 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 5px;
+  padding: 5px 12px;
   border: none;
-  background: none;
-  color: #6b6b78;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: #fff;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: background 0.15s;
 }
 
 .cinema-frame__export-btn:hover {
-  color: #3b82f6;
+  background: #2f6fe0;
 }
 
 .cinema-frame__lock-icon {
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  background: #1c1c22;
   color: #6b6b78;
   transition: color 0.15s;
 }
@@ -861,15 +871,9 @@
   border-bottom-color: #e2e2e8;
 }
 
-[data-theme="light"] .cinema-frame__export-btn {
-  color: #71717a;
-}
-
-[data-theme="light"] .cinema-frame__export-btn:hover {
-  color: #3b82f6;
-}
-
 [data-theme="light"] .cinema-frame__lock-icon {
+  border-color: #e2e2e8;
+  background: #fff;
   color: #71717a;
 }
 
