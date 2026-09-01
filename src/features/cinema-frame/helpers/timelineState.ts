@@ -364,7 +364,7 @@ export function setClipVolume(
     return {
       ...track,
       clips: track.clips.map((c) =>
-        c.id === clipId ? { ...c, volume: Math.max(0, Math.min(1, volume)) } : c
+        c.id === clipId ? { ...c, volume: Math.max(0, Math.min(10, volume)) } : c
       ),
     };
   });

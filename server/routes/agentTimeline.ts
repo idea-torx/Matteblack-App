@@ -252,20 +252,18 @@ async function clipStatsFor(srcs: string[]): Promise<Map<string, { lufs: number 
   return out;
 }
 
-/** Attenuation floor: never pull a clip down more than ~14 dB toward a freakishly
- *  quiet neighbour. ponytail: if one clip is that far off, it's broken audio, not
- *  a level problem — regeneration fixes it, gain doesn't. */
-const MIN_NORMALIZE_GAIN = 0.2;
+/** Every clip is levelled to one loudness target. The export applies gains above
+ *  1 through ffmpeg; the in-app player clamps at 1, so a quiet clip previews quieter
+ *  than it exports. Clamped to ±20 dB so a near-silent decode can't become noise. */
+const TARGET_LUFS = -16;
+export const gainFor = (lufs: number | null | undefined): number =>
+  lufs == null ? 1 : Math.min(10, Math.max(0.1, 10 ** ((TARGET_LUFS - lufs) / 20)));
 
-/** Per-src volume that levels the cut to its quietest measured clip. Pure —
+/** Per-src volume that levels each measured clip to TARGET_LUFS. Pure —
  *  exported for the test. */
 export function normalizeVolumes(lufs: Map<string, number>): Map<string, number> {
   const out = new Map<string, number>();
-  if (lufs.size < 2) return out;
-  const target = Math.min(...lufs.values());
-  for (const [src, l] of lufs) {
-    out.set(src, Math.min(1, Math.max(MIN_NORMALIZE_GAIN, 10 ** ((target - l) / 20))));
-  }
+  for (const [src, l] of lufs) out.set(src, gainFor(l));
   return out;
 }
 
@@ -418,7 +416,8 @@ router.post("/api/agent/timeline", requireMcpToken, requireAuth, async (req: Aut
         await insertClip(canvasId, audio[b.track], {
           src: b.src,
           duration: Math.min(bedStats.get(b.src)?.duration ?? b.durationSeconds ?? at, at - b.startSeconds),
-          startOffset: b.startSeconds, label: b.label, sortOrder, volume: b.volume ?? 0.8,
+          startOffset: b.startSeconds, label: b.label, sortOrder,
+          volume: (b.volume ?? 0.8) * gainFor(bedStats.get(b.src)?.lufs),
         });
       }
     }

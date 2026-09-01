@@ -61,10 +61,10 @@ chained clips.
 Check the returned model string. `-i2v` or `-r2v` means the seam engaged; `-t2v` means the source was
 silently dropped and you have an unrelated clip.
 
-**Who is moving at the seam decides the seam.** `frame` is for a camera that has settled; it carries no
-velocity, so a subject caught mid-stride restarts in whatever direction the model guesses. If the *subject*
-is still moving where the chunk ends — a chase, a walk, a dance — use `reference` and repeat the MOTION line
-word for word, with its screen direction, in the next prompt. Never stop a runner so a frame seam can hold.
+**A 30-second piece is one continuous take: chain it on `frame`.** A reference seam is a cut to a new
+setup, and there is no room for a new setup inside thirty seconds. When the brief says *continuous*,
+*one take*, *seamless*, or the piece is under a minute, every join is `frame`. Reference seams earn
+their place in longer pieces, at scene breaks and for coverage inside a scene that runs for minutes.
 
 **`tailSeconds` defaults to 6 and costs nothing extra.** Use 3 at a scene break, where the camera changes
 and you want the old setup to have as little pull as possible; keep 6 for coverage inside one location,
@@ -360,7 +360,7 @@ audible even when the picture joins cleanly.
 For the score, call `generate_music` **once** for the whole runtime — a new track per clip is the fastest
 way to make good clips sound like different films. `set_timeline` takes an `audio` list on up to eight
 parallel tracks: the music bed on one track, voiceover (`generate_voiceover`) on another with
-`startSeconds` to cut it to picture, and `volume` to duck the music (~0.25) under the spoken line. Pass
+`startSeconds` to cut it to picture, and `volume` to duck the music (~0.25) under the spoken line. Every clip and bed is levelled to -16 LUFS on export; the in-app preview can only turn clips down, so a quiet clip previews quieter than it exports. Pass
 `muteVideoAudio` when the clips' own sound would fight the bed.
 
 ## 9. Record the cut

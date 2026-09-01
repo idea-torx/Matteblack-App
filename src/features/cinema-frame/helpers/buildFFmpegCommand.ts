@@ -245,9 +245,9 @@ export function buildFFmpegCommand(
   }
 
   if (config.includeAudio && mixAudioLabels.length > 1) {
-    filterComplex += `;\n${mixAudioLabels.join("")}amix=inputs=${mixAudioLabels.length}:duration=longest:dropout_transition=0:normalize=0[outa]`;
+    filterComplex += `;\n${mixAudioLabels.join("")}amix=inputs=${mixAudioLabels.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.891[outa]`;
   } else if (config.includeAudio && mixAudioLabels.length === 1) {
-    filterComplex += `;\n${mixAudioLabels[0]}anull[outa]`;
+    filterComplex += `;\n${mixAudioLabels[0]}alimiter=limit=0.891[outa]`;
   }
 
   const args: string[] = [...inputArgs];

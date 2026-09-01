@@ -801,7 +801,7 @@ async function runTool(
       "Keep going until the sequence you and the user agreed on is complete. Then call set_timeline " +
         "with every chunk in play order — a chain is a single continuous piece, and leaving it as loose " +
         "cards on the canvas means the user has to assemble by hand what you already know the order of. " +
-        "Only after that, stop and say what you made. " +
+        "Then say in one line that the cut is on the timeline BEFORE you write save_cut — the user is waiting on that line, not the manifest. " +
         "Do NOT call get_asset or list_canvas to check this chunk — it is already on the user's canvas.",
     );
   } else {
@@ -809,7 +809,7 @@ async function runTool(
       "",
       "Done — the user can already see this on their canvas. Nothing further is required for this " +
         "generation: do NOT call get_asset, list_canvas or any other tool to verify or look at it, and do " +
-        "not regenerate it unless the user asks. Say one short line about what you made and stop.",
+        "not regenerate it unless the user asks. If this is one shot of a sequence you agreed with the user, go straight on to the next shot; otherwise say one short line about what you made and stop.",
     );
   }
   return ok(lines.join("\n"));

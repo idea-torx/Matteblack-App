@@ -76,7 +76,7 @@ action. \`bridge\` carries continuity between shots; \`cinematographer\` is what
 For any live-action / photoreal shot, also get_skill \`realism\` — it is what keeps motion weighted,
 skin unwaxy and dialogue timed; skip it only for stylized or animated work.
 For any fight, chase or stunt beat, also get_skill \`action\` — it owns the choreography: one
-exchange per 5s clip cut on the timeline, hits written as cause \u2192 contact \u2192 consequence, damage that persists.
+exchange per 5s clip cut on the timeline, hits written as cause → contact → consequence, damage that persists.
 When action must CHAIN via continue_video (a continuous take, a kaiju rampage), get_skill
 \`action-bridge\` instead of following bridge's chaining flow — it is what stops chained action from
 opening on a pause, reversing its motion, or changing camera mid-take.
@@ -92,8 +92,8 @@ Finished sequences are kept in the user's own cut history: one markdown manifest
 local git repo per project, under \`_cuts/<project>/\` in your working directory. Before work that continues
 or resembles something they've made before, call list_cuts (or just read \`_cuts/<project>/INDEX.md\`) so the
 follow-up matches the original instead of drifting — the manifest holds the exact prompts and settings that
-produced it. When a multi-shot piece is done, call save_cut right after set_timeline, reusing the same
-project slug across related cuts. Write the description as prose about what the piece looks like; that
+produced it. When a multi-shot piece is done, tell the user in one line that the cut is on the timeline, then call
+save_cut, reusing the same project slug across related cuts. Write the description as prose about what the piece looks like; that
 sentence is what makes it findable a year later.
 
 ## References
@@ -165,10 +165,10 @@ chained clips.
 Check the returned model string. \`-i2v\` or \`-r2v\` means the seam engaged; \`-t2v\` means the source was
 silently dropped and you have an unrelated clip.
 
-**Who is moving at the seam decides the seam.** \`frame\` is for a camera that has settled; it carries no
-velocity, so a subject caught mid-stride restarts in whatever direction the model guesses. If the *subject*
-is still moving where the chunk ends — a chase, a walk, a dance — use \`reference\` and repeat the MOTION line
-word for word, with its screen direction, in the next prompt. Never stop a runner so a frame seam can hold.
+**A 30-second piece is one continuous take: chain it on \`frame\`.** A reference seam is a cut to a new
+setup, and there is no room for a new setup inside thirty seconds. When the brief says *continuous*,
+*one take*, *seamless*, or the piece is under a minute, every join is \`frame\`. Reference seams earn
+their place in longer pieces, at scene breaks and for coverage inside a scene that runs for minutes.
 
 **\`tailSeconds\` defaults to 6 and costs nothing extra.** Use 3 at a scene break, where the camera changes
 and you want the old setup to have as little pull as possible; keep 6 for coverage inside one location,
@@ -464,7 +464,7 @@ audible even when the picture joins cleanly.
 For the score, call \`generate_music\` **once** for the whole runtime — a new track per clip is the fastest
 way to make good clips sound like different films. \`set_timeline\` takes an \`audio\` list on up to eight
 parallel tracks: the music bed on one track, voiceover (\`generate_voiceover\`) on another with
-\`startSeconds\` to cut it to picture, and \`volume\` to duck the music (~0.25) under the spoken line. Pass
+\`startSeconds\` to cut it to picture, and \`volume\` to duck the music (~0.25) under the spoken line. Every clip and bed is levelled to -16 LUFS on export; the in-app preview can only turn clips down, so a quiet clip previews quieter than it exports. Pass
 \`muteVideoAudio\` when the clips' own sound would fight the bed.
 
 ## 9. Record the cut
