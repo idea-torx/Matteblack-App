@@ -22,7 +22,10 @@
   /* The panel's own surface colour, exposed as a token so inverted controls
    * (a pill filled with --text-primary) can use it as their text colour and
    * stay legible when the dark override below flips both. */
-  --agent-surface: #e9e9ee;
+  --agent-surface: #F0F0F3;
+  /* The paper behind and around the card — a shade under the card so the
+   * card reads as floating on the same tone as the top band. */
+  --agent-backdrop: #e9e9ee;
 
   position: fixed;
   /* Floating card inside the right reserved area (--canvas-right-inset
@@ -46,7 +49,7 @@
   width: 336px;
   background: var(--agent-surface);
   border-radius: 4px;
-  border: 1px solid rgba(15, 17, 21, 0.05);
+  border: 1px solid rgba(15, 17, 21, 0.10);
   display: flex;
   flex-direction: column;
   font-size: 14px;
@@ -96,7 +99,7 @@
    * continuous surface even though the card itself has rounded
    * corners and a faint border. */
   width: 360px;
-  background: var(--agent-surface);
+  background: var(--agent-backdrop);
   z-index: -1;
   pointer-events: none;
 }
@@ -2421,11 +2424,12 @@
   --text-muted: #9a9aa6;
   --tint-rgb: 255, 255, 255;
   --agent-surface: #131316;
+  --agent-backdrop: #0e0e12;
   background: var(--agent-surface);
   border-color: rgba(255, 255, 255, 0.06);
 }
 [data-theme="dark"] .agent-panel::before {
-  background: #131316;
+  background: var(--agent-backdrop, #131316);
 }
 
 /* Header chips (History pill, New chat (+), Close ×) — flip the
