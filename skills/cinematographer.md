@@ -61,6 +61,12 @@ Order matters; H3 weights the front of the prompt hardest. Always this order:
 - Present tense, active verbs, no adjective stacks. "Rain hammers the windscreen" beats "a beautiful,
   cinematic, dramatic rainy scene".
 - Never write what is NOT in frame. Negatives put the thing in the shot.
+- **A locked frame and a moving camera are equally valid — decide, per shot, and vary it.** Stillness is
+  a choice when the subject or the light carries the frame; a move is a choice when the shot needs
+  something to change. What reads as cheap is a whole set at one setting: six locked-off shots is a
+  slideshow, and six pushes is seasickness. Across a sequence, mix them deliberately — and when you
+  choose a move, name it in the ACTION beat as well as the CAMERA line, because H3 weights the front of
+  the prompt hardest and a move named only at the back arrives weak.
 
 ## The three registers
 
@@ -109,7 +115,8 @@ Never run three 15s clips back to back. Equal-length shots read as a slideshow; 
 what the audience feels as rhythm.
 
 Hold constant across every clip in one piece: model, `aspectRatio`, `resolution`, register, lens family,
-light direction and grade. Change only shot size, camera move and duration. That is the difference
+light direction and grade. Change shot size, camera move and duration — and change the camera at least
+once in any set of three, whether that is a locked shot among moves or the one move among locked shots. That is the difference
 between a sequence and a folder of clips.
 
 ## Before you generate

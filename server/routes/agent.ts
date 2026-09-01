@@ -1659,7 +1659,7 @@ function nearestAspectLabel(width: number, height: number): string {
 const CONTINUE_VIDEO_TOOL: Tool = {
   name: "continue_video",
   description:
-    "Continue an existing video clip with a new clip that picks up where it ended, using MiniMax H3 Max. Call this repeatedly — feeding each result's URL back in as the next `sourceUrl` — to build long-form video past the 15s per-clip limit. Use it whenever the user wants a video longer than 15 seconds, a multi-shot sequence, or 'what happens next' from a clip already on the canvas. The result lands on the canvas like any other generation.",
+    "Continue an existing video clip with a new clip that picks up where it ended, using MiniMax H3 Max (default) or Seedance 2.5. Call this repeatedly — feeding each result's URL back in as the next `sourceUrl` — to build long-form video past the 15s per-clip limit. Use it whenever the user wants a video longer than 15 seconds, a multi-shot sequence, or 'what happens next' from a clip already on the canvas. The result lands on the canvas like any other generation.",
   input_schema: {
     type: "object",
     properties: {
@@ -1671,6 +1671,11 @@ const CONTINUE_VIDEO_TOOL: Tool = {
         type: "string",
         description: "What happens in THIS chunk only. Open with the sequence's look and locked subject description repeated verbatim (the previous clip's tail shows the model the picture, not your words), name which beat of the arc this chunk serves, give ONE action, and end with what the chunk ends on — a holdable rest pose for seam='frame', or the motion the next chunk continues for seam='reference'. A changed adjective is how a sequence drifts.",
       },
+      model: {
+        type: "string",
+        enum: ["h3-max", "seedance-2.5"],
+        description: "Model family for this chunk. 'h3-max' (default) or 'seedance-2.5' — seedance takes chunks up to 30s (fewer seams) and does native audio; keep the SAME model across every chunk of one sequence, mixing families drifts the look.",
+      },
       seam: {
         type: "string",
         enum: ["frame", "reference"],
@@ -1678,9 +1683,9 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       durationSeconds: {
         type: "integer",
-        minimum: 5,
-        maximum: 15,
-        description: "Length of this chunk in seconds (5-15, default 5). Longer chunks mean fewer seams for the same runtime.",
+        minimum: 4,
+        maximum: 30,
+        description: "Length of this chunk in seconds (default 5). h3-max takes 5-15; seedance-2.5 takes 4-30. Out-of-range values snap. Longer chunks mean fewer seams for the same runtime.",
       },
       tailSeconds: {
         type: "number",
@@ -1696,8 +1701,8 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       resolution: {
         type: "string",
-        enum: ["480p", "768p"],
-        description: "Output resolution. Defaults to 768p. Keep it the same across every chunk of one sequence.",
+        enum: ["480p", "720p", "768p", "1080p"],
+        description: "Output resolution (h3-max: 480p/768p; seedance-2.5: 480p/720p/1080p — each model snaps to its nearest). Keep it the same across every chunk of one sequence.",
       },
       aspectRatio: {
         type: "string",
@@ -4736,7 +4741,10 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       if (!src) { res.status(400).json({ error: "continue_video requires `sourceUrl` — the clip to continue from." }); return; }
       if (!prompt) { res.status(400).json({ error: "continue_video requires a `prompt` describing what happens next." }); return; }
       const seam = input.seam === "reference" ? "reference" : "frame";
-      const duration = snapDurationForModel("h3-max", Number(input.durationSeconds) || 5);
+      // seam='frame' rides each family's i2v endpoint (the seed frame is the
+      // link); seam='reference' rides its r2v endpoint (tail clip + stills).
+      const family = input.model === "seedance-2.5" ? "seedance-2.5" : "h3-max";
+      const duration = snapDurationForModel(family, Number(input.durationSeconds) || 5);
 
       // Pull the handoff off the previous clip. This is the whole technique:
       // the next chunk is an ordinary H3 generation whose reference IS the end
@@ -4779,7 +4787,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
 
       const body: Record<string, unknown> = {
         type: "video_gen",
-        model: seam === "reference" ? "h3-max-r2v" : "h3-max-i2v",
+        model: seam === "reference" ? `${family}-r2v` : `${family}-i2v`,
         prompt,
         duration,
         resolution: typeof input.resolution === "string" ? input.resolution : undefined,

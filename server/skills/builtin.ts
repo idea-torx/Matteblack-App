@@ -114,8 +114,11 @@ Every join is a place the piece can break. Before planning any chain, take the h
    (up to 30s, native audio). If the whole ask fits in one clip, chain nothing.
 2. **\`continue_video\` for everything inside a scene.** It reads the real end of the previous clip — its
    exact last frame (\`seam='frame'\`) or its final seconds (\`seam='reference'\`) — and feeds it into the
-   next H3 Max generation. This is the strongest join in the toolbox: the model literally starts from
-   where the picture left off.
+   next generation. This is the strongest join in the toolbox: the model literally starts from where the
+   picture left off. It runs on H3 Max (default, 5–15s chunks) or \`model='seedance-2.5'\` (4–30s chunks,
+   native audio) — seedance's longer chunks mean fewer seams for the same runtime, so prefer it for long
+   pieces with dialogue or sound. Pick ONE model for the whole sequence and never mix families mid-chain;
+   each family has its own look and a switch reads as a grade change.
 3. **Keyframe + \`generate_media\` for hard cuts only.** A fresh still animated with \`first_frame\` is how
    you start a NEW scene — it is a cut, and it should only appear where the story cuts.
 
@@ -187,7 +190,8 @@ in the middle of fast motion halts or reverses that motion on screen. So:
 1. **Shot 1:** keyframe as an image (bible + shot description), then animate it (\`generate_media\` kind:
    video, \`first_frame\`) — or straight text-to-video if the piece is t2v.
 2. **Every following chunk in the same scene:** \`continue_video\` with \`sourceUrl\` = the previous chunk's
-   result URL and the seam from your table. Never regenerate the source; the tool reads its end for you.
+   result URL, the seam from your table, and the sequence's one \`model\` repeated on every call. Never
+   regenerate the source; the tool reads its end for you.
 3. **On every \`seam='reference'\` chunk, pass the subject stills from step 2 of the bible in
    \`referenceUrls\`.** The tail only carries the last few seconds; the pinned stills are what hold
    identity together once the opening frames are many chunks behind.
@@ -244,7 +248,8 @@ the new work inherits the same look rather than drifting.
 ## Save what worked
 
 When the user likes the result, call \`save_skill\` with the filled-in bible, the beat sheet with its joins,
-and the exact prompts used, so the same world can be revisited later.`;
+and the exact prompts used, so the same world can be revisited later.
+`;
 
 const STORYBOARD = `---
 name: Storyboard — long-form scenes

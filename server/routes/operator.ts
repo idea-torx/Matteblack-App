@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
-import { setOperatorContext, takeOperatorJobs } from "../services/operatorCanvasContext.js";
+import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
 import fs from "node:fs";
@@ -149,6 +149,15 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // and lands on the canvas, but on resume the agent truthfully "remembers"
   // generating nothing and denies it. Compaction loses the same records. The
   // jobs table doesn't forget, so it outranks the transcript.
+  // Told-to-abort path: the previous turn was interrupted (Stop), its jobs
+  // were cancelled, but the resumed transcript ends in dangling tool calls
+  // that read as unfinished work. Without this note the agent helpfully picks
+  // the task back up — the opposite of what Stop meant.
+  if (req.userId && takeOperatorInterrupted(req.userId)) {
+    message +=
+      "\n\n[System note: your previous turn was interrupted by the user pressing Stop, and its queued generations were cancelled. Treat that task as aborted — do not resume, retry, or re-dispatch any of it unless THIS message explicitly asks you to continue.]";
+  }
+
   let generationsNote = "";
   if (req.userId) {
     try {
@@ -255,16 +264,25 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   req.on("close", () => {
     ac.abort();
     if (finished) return;
-    const ids = req.userId ? takeOperatorJobs(req.userId) : [];
-    if (ids.length === 0) return;
-    pool
-      .query(
-        `UPDATE jobs SET status = 'cancelled'
-          WHERE id = ANY($1::uuid[]) AND user_id = $2
-            AND status IN ('queued', 'pending', 'processing')`,
-        [ids, req.userId],
-      )
-      .catch((err) => console.error("[operator] failed to cancel in-flight jobs:", err));
+    if (req.userId) noteOperatorInterrupted(req.userId);
+    const sweep = () => {
+      const ids = req.userId ? takeOperatorJobs(req.userId) : [];
+      if (ids.length === 0) return;
+      pool
+        .query(
+          `UPDATE jobs SET status = 'cancelled'
+            WHERE id = ANY($1::uuid[]) AND user_id = $2
+              AND status IN ('queued', 'pending', 'processing')`,
+          [ids, req.userId],
+        )
+        .catch((err) => console.error("[operator] failed to cancel in-flight jobs:", err));
+    };
+    sweep();
+    // Killing claude doesn't abort a /api/agent/tool call it already made —
+    // that handler keeps running and can dispatch its job AFTER this close
+    // fires, past the first sweep. One delayed sweep catches the straggler.
+    // ponytail: single fixed re-sweep; poll a few times if jobs still slip through.
+    setTimeout(sweep, 5000);
   });
 
   try {

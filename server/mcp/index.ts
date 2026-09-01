@@ -168,14 +168,15 @@ const EMBEDDED_TOOLS: Tool[] = [
   {
     name: "continue_video",
     description:
-      "Continue an existing video clip with a new clip that picks up where it ended (MiniMax H3 Max). Call repeatedly, feeding each result URL back as the next sourceUrl, to build video past the 15s per-clip limit. Connect the running Fal Forge app for the full, tuned schema.",
+      "Continue an existing video clip with a new clip that picks up where it ended (MiniMax H3 Max or Seedance 2.5). Call repeatedly, feeding each result URL back as the next sourceUrl, to build video past the 15s per-clip limit. Connect the running Fal Forge app for the full, tuned schema.",
     inputSchema: {
       type: "object",
       properties: {
         sourceUrl: { type: "string", description: "URL of the clip to continue from." },
         prompt: { type: "string", description: "What happens in this chunk only." },
+        model: { type: "string", enum: ["h3-max", "seedance-2.5"], description: "Model family (default h3-max). seedance-2.5 takes chunks up to 30s and does native audio; keep one family per sequence." },
         seam: { type: "string", enum: ["frame", "reference"], description: "'frame' (default) starts on the source's exact last frame; 'reference' uses its final seconds as a motion reference." },
-        durationSeconds: { type: "integer", description: "Chunk length, 5-15s (default 5)." },
+        durationSeconds: { type: "integer", description: "Chunk length (default 5). h3-max 5-15s, seedance-2.5 4-30s." },
         tailSeconds: { type: "number", description: "seam='reference' only: seconds of tail to reference, 2-15 (default 6)." },
         referenceUrls: {
           type: "array",

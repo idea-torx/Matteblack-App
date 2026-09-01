@@ -71,3 +71,16 @@ export function takeOperatorJobs(userId: string): string[] {
   ctx.jobIds.clear();
   return ids;
 }
+
+// Users whose last turn was interrupted (stream closed mid-run). The NEXT turn
+// reads and clears this so the resumed agent is told its task was aborted
+// instead of picking it back up from a transcript with dangling tool calls.
+const interruptedUsers = new Set<string>();
+
+export function noteOperatorInterrupted(userId: string): void {
+  interruptedUsers.add(userId);
+}
+
+export function takeOperatorInterrupted(userId: string): boolean {
+  return interruptedUsers.delete(userId);
+}

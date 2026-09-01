@@ -1178,8 +1178,11 @@ const MODEL_MAP: Record<string, ModelConfig> = {
         if (cleaned.length > 0) input.image_urls = cleaned.slice(0, 30);
       }
       // 2.5 takes LISTS where 2.0 took a single video_url / audio_url.
-      const videoUrl = sanitizeUrl(params.video_url);
-      if (videoUrl) input.video_urls = [videoUrl];
+      // referenceVideoUrls is how continue_video hands over the tail clip —
+      // it arrives already absolutized/hosted by the /api/generate plumbing.
+      const videoUrls = [params.video_url, ...(Array.isArray(params.referenceVideoUrls) ? params.referenceVideoUrls : [])]
+        .map(sanitizeUrl).filter((u): u is string => !!u);
+      if (videoUrls.length > 0) input.video_urls = videoUrls;
       if (params.audio_url) {
         let audioUrl = params.audio_url as string;
         if (audioUrl.startsWith("data:")) audioUrl = await ensureHostedUrl(audioUrl);
