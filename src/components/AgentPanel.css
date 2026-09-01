@@ -825,6 +825,10 @@
 
 .agent-panel__thinking--inline {
   margin-left: 4px;
+  /* Sits under the streaming text, not on its baseline — it needs air or it
+     reads as another line of the reply. */
+  display: flex;
+  margin-top: 8px;
 }
 
 .agent-panel__msg-images {
