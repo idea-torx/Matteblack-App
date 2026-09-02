@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
+import { CodexMark } from "./CodexMark";
 import { ThinkingPill } from "./ThinkingPill";
 import { StreamingText } from "./StreamingText";
 import { renderMarkdown } from "../utils/markdown";
@@ -952,7 +953,10 @@ export function OperatorPanel({
   };
 
   const ready = status?.binaryFound === true;
-  const aliveLabel = streaming ? "Claude is thinking" : "Claude is online";
+  // The header brands the route that's actually running, not the app's default.
+  const isCodex = runner === "codex";
+  const brand = isCodex ? "Codex" : "Claude";
+  const aliveLabel = streaming ? `${brand} is thinking` : `${brand} is online`;
 
   return (
     <aside className="agent-panel">
@@ -960,12 +964,14 @@ export function OperatorPanel({
         <div
           className={`agent-panel__alive${streaming ? " agent-panel__alive--busy" : ""}`}
           aria-label={aliveLabel}
-          title={streaming ? "Claude is thinking…" : "Claude is online"}
+          title={streaming ? `${brand} is thinking…` : `${brand} is online`}
         >
-          <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />
+          {isCodex
+            ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
+            : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
         </div>
         <div className="operator-brand">
-          <span className="operator-brand__name">Claude</span>
+          <span className="operator-brand__name">{brand}</span>
         </div>
         <div className="agent-panel__header-actions">
           <button

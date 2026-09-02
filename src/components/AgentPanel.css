@@ -3008,3 +3008,8 @@
 .agent-step--thinking[open] summary::before { content: "▾ "; }
 .agent-step__text { padding: 4px 8px 6px; white-space: pre-wrap; font-size: 11px; line-height: 1.4; opacity: 0.75; }
 
+
+@keyframes codex-mark-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  [style*="codex-mark-spin"] { animation: none !important; }
+}

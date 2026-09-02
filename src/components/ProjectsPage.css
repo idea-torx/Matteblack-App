@@ -675,3 +675,17 @@
  * them reads the same at any width. */
 .proj-card-meta { justify-content: flex-start; gap: 6px; }
 .proj-card-meta > span + span::before { content: "·"; margin-right: 6px; }
+
+/* Hover actions sat on a 55%-black tile with a tinted glyph — fine over a dark
+ * cover, a black blob over a light one. In light mode they become a frosted
+ * white tile with a dark glyph, which stays legible over artwork either way. */
+[data-theme="light"] .proj-card-action {
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(0, 0, 0, 0.62);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+[data-theme="light"] .proj-card-action:hover {
+  background: #fff;
+  color: rgba(0, 0, 0, 0.88);
+}
+[data-theme="light"] .proj-card-action--delete:hover { color: #dc2626; }

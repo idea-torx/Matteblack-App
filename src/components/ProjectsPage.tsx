@@ -46,7 +46,7 @@ function compareProjects(a: Project, b: Project, key: SortKey): number {
 }
 
 const CATEGORY_LABELS: Record<ProjectCategory, string> = {
-  make: "Make Projects",
+  make: "Projects",
   nodes: "Node Workflows",
   audio: "Audio Projects",
   cinema: "Cinema Projects",
