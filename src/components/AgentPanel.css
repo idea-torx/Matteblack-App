@@ -1371,15 +1371,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  /* The armed send travels THROUGH the ramp rather than displaying it. A
-   * scrolled gradient puts every stop inside a 36px window at once, which
-   * averages out to mud no matter how the stops are spaced — the button is
-   * simply too small to hold nine colours. So the fill is one solid stop at a
-   * time, cycling, with a fixed sheen on top for depth. Full saturation at
-   * every frame, and the tween between adjacent stops is the smooth part. */
-  background-color: #7B8CE8;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, rgba(0, 0, 0, 0.10) 100%);
-  animation: agent-send-ramp 18s linear infinite;
+  /* A horizontal ramp scrolling through the button. The size is the whole
+   * trick: 2000% stretches the seventeen stops to ~700px, so each stop spans
+   * roughly two button widths and the 36px window only ever holds one
+   * colour easing into the next. At 300% all nine were inside the window at
+   * once and averaged out to mud. --gradient-brand-loop mirrors the ramp so
+   * the scroll never crosses a seam. */
+  background: var(--gradient-brand-loop);
+  background-size: 2000% 100%;
+  animation: agent-send-ramp 24s linear infinite;
   border: none;
   color: #fff;
   cursor: pointer;
@@ -1389,16 +1389,8 @@
 }
 
 @keyframes agent-send-ramp {
-  0%      { background-color: #7B8CE8; }
-  11.11%  { background-color: #63C2DC; }
-  22.22%  { background-color: #7FD3A0; }
-  33.33%  { background-color: #C6D673; }
-  44.44%  { background-color: #F3CB5C; }
-  55.56%  { background-color: #EE9A52; }
-  66.67%  { background-color: #E8795F; }
-  77.78%  { background-color: #DE7B96; }
-  88.89%  { background-color: #A874D2; }
-  100%      { background-color: #7B8CE8; }
+  0%   { background-position:   0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 .agent-panel__send:hover:not(:disabled) {
@@ -1415,58 +1407,21 @@
    * blue CTA gradient blooms in over it on a slow loop and recedes —
    * "grey → blue → grey" — so the empty state still announces itself
    * as the call to action without permanently advertising as armed. */
-  background: #c7c8cc;
-  background-image: none;
+  /* Inactive keeps the same running ramp, just dimmed. It used to fade a
+   * gradient in and out over a grey chip, which is the pulsing the button
+   * should not do. */
   color: #fff;
   cursor: not-allowed;
-  isolation: isolate;
-  animation: none;
+  opacity: 0.45;
   box-shadow: none;
-}
-
-/* The blue gradient lives on a pseudo-element so we can fade its
- * opacity independently from the base grey. Layered behind the icon
- * via stacking order set on .agent-panel__send:disabled > *. */
-.agent-panel__send:disabled::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-color: #7B8CE8;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, rgba(0, 0, 0, 0.10) 100%);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 0;
-  animation:
-    agent-send-cta-fade 5.5s ease-in-out infinite,
-    agent-send-ramp    18s linear      infinite;
-}
-
-/* Keep the arrow icon above the blue overlay. */
-.agent-panel__send:disabled > * {
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes agent-send-cta-fade {
-  0%, 100% { opacity: 0; }
-  50%      { opacity: 1; }
 }
 
 /* Honor reduced-motion: hold the quiet grey resting state and skip
  * the blue bloom so the button doesn't pulse. */
 @media (prefers-reduced-motion: reduce) {
-  .agent-panel__send,
-  .agent-panel__send:disabled,
-  .agent-panel__send:disabled::after {
-    animation: none;
-  }
-  /* Armed still shows a ramp colour, just a fixed one — losing the colour
-   * entirely would make the armed and inactive states look alike. */
-  .agent-panel__send { background-color: #7B8CE8; }
-  .agent-panel__send:disabled::after {
-    opacity: 0;
-  }
+  /* Hold the ramp still rather than dropping it; a colourless button would
+   * lose the distinction from every other control in the composer. */
+  .agent-panel__send { animation: none; background-position: 50% 50%; }
 }
 
 /* Grey, not red: stopping a turn is a normal thing to do — you interrupt to
@@ -2505,20 +2460,6 @@
 [data-theme="dark"] .agent-panel__textarea:focus {
   border-color: transparent;
   box-shadow: none;
-}
-
-/* Disabled send button in dark mode — swap the resting grey for an
- * inert dark grey that reads on the deep panel surface. The blue
- * bloom and shadow pulse continue to animate from the base rule;
- * we just bump the halo so the glow has presence in dark theme. */
-[data-theme="dark"] .agent-panel__send:disabled {
-  background: #3a3a40;
-  animation: agent-send-cta-shadow-dark 5.5s ease-in-out infinite;
-}
-
-@keyframes agent-send-cta-shadow-dark {
-  0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.40); }
-  50%      { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px rgba(var(--accent-rgb), 0.50); }
 }
 
 /* Alive (online) spinner — base rule uses a low-alpha grey ring that
