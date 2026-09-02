@@ -49,20 +49,24 @@
 
 /* Each rail destination owns one stop of the brand ramp, top to bottom in the
  * same order the gradient runs. Keyed off aria-label rather than nth-child so
- * reordering the rail doesn't silently reshuffle the colours. --c-*-fg is the
- * theme-aware form: the raw stops are 1.4:1 on the light rail and would leave
- * half these icons invisible. */
-.icon-rail-btn { --rail-color: var(--c-periwinkle-fg); }
-.icon-rail-btn[aria-label="Matte Agent"] { --rail-color: var(--c-cyan-fg); }
-.icon-rail-btn[aria-label="Toolkit"] { --rail-color: var(--c-mint-fg); }
-.icon-rail-btn[aria-label="Skills"] { --rail-color: var(--c-chartreuse-fg); }
-.icon-rail-btn[aria-label="GitHub"] { --rail-color: var(--c-amber-fg); }
-.icon-rail-btn[aria-label="Library"] { --rail-color: var(--c-orange-fg); }
-.icon-rail-btn[aria-label="Design"] { --rail-color: var(--c-coral-fg); }
+ * reordering the rail doesn't silently reshuffle the colours.
+ *
+ * These are the RAW stops, at full saturation, in both themes — a tinted wash
+ * or the darkened -fg form turns the ramp to mud, and the ramp is the point.
+ * Legibility comes from flipping the glyph dark against a solid chip instead
+ * of desaturating the colour: every stop is light enough to carry near-black
+ * (5.6:1 at the worst, periwinkle; 12.5:1 at the best, amber). */
+.icon-rail-btn { --rail-color: var(--c-periwinkle); }
+.icon-rail-btn[aria-label="Matte Agent"] { --rail-color: var(--c-cyan); }
+.icon-rail-btn[aria-label="Toolkit"] { --rail-color: var(--c-mint); }
+.icon-rail-btn[aria-label="Skills"] { --rail-color: var(--c-chartreuse); }
+.icon-rail-btn[aria-label="GitHub"] { --rail-color: var(--c-amber); }
+.icon-rail-btn[aria-label="Library"] { --rail-color: var(--c-orange); }
+.icon-rail-btn[aria-label="Design"] { --rail-color: var(--c-coral); }
 
 .icon-rail-btn:hover {
-  color: var(--rail-color);
-  background: color-mix(in srgb, var(--rail-color) 10%, transparent);
+  color: #101014;
+  background: var(--rail-color);
 }
 
 .icon-rail-btn--active,
@@ -71,8 +75,8 @@
    * brand blue so the current section is unmistakable. The :hover
    * companion keeps the blue stable on hover (otherwise the base
    * .icon-rail-btn:hover rule reverts the colour to text-primary). */
-  color: var(--rail-color);
-  background: color-mix(in srgb, var(--rail-color) 13%, transparent);
+  color: #101014;
+  background: var(--rail-color);
 }
 
 .icon-rail-btn--active::before {
@@ -177,12 +181,6 @@
 /* Light-theme overrides. The rail's full border + shadow already come
  * from theme tokens (--panel-float-border / --panel-float-shadow), so
  * no per-theme override is needed for the shell itself. */
-[data-theme="light"] .icon-rail-btn--active,
-[data-theme="light"] .icon-rail-btn--active:hover {
-  /* --rail-color already darkens itself for this theme; only the tint needs
-   * to come up, since a 13% wash reads weaker on a light rail. */
-  background: color-mix(in srgb, var(--rail-color) 16%, transparent);
-}
 [data-theme="light"] .icon-rail-btn::after {
   background: var(--bg-tooltip);
   color: var(--text-tooltip);
