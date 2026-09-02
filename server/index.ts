@@ -46,7 +46,7 @@ import { setMcpToken } from "./mcpToken.js";
 import { estimateFalCost, falPricedModelKeys, falEndpointFor } from "./config/falCost.js";
 import { unitPriceFor, falPricingStatus, scheduleFalPricingRefresh } from "./services/falPricing.js";
 import fs from "node:fs";
-import { getUserConfig, setUserConfig, maskKey, getFalKey, getAnthropicKey } from "./config/userConfig.js";
+import { getUserConfig, setUserConfig, maskKey, getFalKey } from "./config/userConfig.js";
 import { ensureLocalUser } from "./seedLocal.js";
 import { createNotification } from "./notifications.js";
 import { checkAndDebit, refundCredits, refundCreditsWithFallback, retryPendingRefunds, calculateModelCost } from "./credits/creditGate.js";
@@ -153,17 +153,16 @@ app.get("/api/auth/mode", (_req, res) => {
 });
 
 // --- User-provided API keys (local desktop build) --------------------------
-// Keys are stored on the local device (userConfig) and used to call fal.ai /
-// Anthropic directly. GET reports only masked status; the real values are
-// never returned to the client. In cloud mode these endpoints still work but
-// keys usually come from env vars, so they report as env-provided.
+// The fal.ai key is stored on the local device (userConfig) and used to call
+// fal directly. GET reports only masked status; the real value is never
+// returned to the client. In cloud mode this still works but the key usually
+// comes from an env var, so it reports as env-provided. (An Anthropic key is
+// env-only now — Settings → Providers has no field for it.)
 function settingsStatus() {
   const cfg = getUserConfig();
   const fal = getFalKey();
-  const anthropic = getAnthropicKey();
   return {
     falKey: { set: !!fal, masked: maskKey(fal), source: cfg.falKey ? "local" : (fal ? "env" : null) },
-    anthropicKey: { set: !!anthropic, masked: maskKey(anthropic), source: cfg.anthropicKey ? "local" : (anthropic ? "env" : null) },
   };
 }
 
@@ -172,10 +171,9 @@ app.get("/api/settings", requireAuth, (_req, res) => {
 });
 
 app.post("/api/settings", requireAuth, (req, res) => {
-  const body = (req.body ?? {}) as { falKey?: unknown; anthropicKey?: unknown };
-  const patch: { falKey?: string; anthropicKey?: string } = {};
+  const body = (req.body ?? {}) as { falKey?: unknown };
+  const patch: { falKey?: string } = {};
   if (typeof body.falKey === "string") patch.falKey = body.falKey;
-  if (typeof body.anthropicKey === "string") patch.anthropicKey = body.anthropicKey;
   setUserConfig(patch);
   if ("falKey" in patch) ensureFalConfigured(); // pick up the new key immediately
   res.json(settingsStatus());

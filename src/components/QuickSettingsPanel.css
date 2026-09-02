@@ -742,3 +742,42 @@
  * rounded now meets the panel edge. */
 body:has(.settings-panel) .qs-close { display: none; }
 body:has(.settings-panel) .qs-panel { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+
+/* ─── Card surface, shared with Settings ───
+ * The quick panel's cards were tinted grey on a grey ground, so they read as
+ * dents rather than cards. Same white surface, border, shadow and 4px corner
+ * as a settings card. */
+[data-theme="light"] .qs-grid-card,
+[data-theme="light"] .qs-utility-btn,
+[data-theme="light"] .qs-account-card,
+[data-theme="light"] .qs-credits-card,
+[data-theme="light"] .qs-signout-card {
+  background: #ffffff;
+  border-color: rgba(15, 17, 21, 0.06);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.06),
+    0 4px 12px rgba(15, 17, 21, 0.08);
+}
+[data-theme="light"] .qs-grid-card:hover,
+[data-theme="light"] .qs-utility-btn:hover {
+  background: #ffffff;
+  border-color: rgba(15, 17, 21, 0.12);
+  box-shadow:
+    0 1px 2px rgba(15, 17, 21, 0.08),
+    0 6px 16px rgba(15, 17, 21, 0.10);
+}
+
+.qs-grid-card,
+.qs-utility-btn,
+.qs-account-card,
+.qs-credits-card,
+.qs-signout-card,
+.qs-open-all-btn,
+.qs-grid-icon,
+.qs-utility-icon,
+.qs-row,
+.qs-buy-btn,
+.qs-guest-btn {
+  border-radius: 4px;
+}
