@@ -726,6 +726,11 @@ export async function initDB() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    -- Personality: an emoji the user picks in the panel, and a description the
+    -- bot is told about itself on every turn (its brief, in its own words).
+    ALTER TABLE bots ADD COLUMN IF NOT EXISTS icon TEXT DEFAULT NULL;
+    ALTER TABLE bots ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL;
+
     CREATE INDEX IF NOT EXISTS idx_bots_user ON bots(user_id);
 
     CREATE TABLE IF NOT EXISTS credit_config (

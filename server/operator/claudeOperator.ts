@@ -278,6 +278,9 @@ export interface RunOperatorOptions {
    *  memory, both in the system prompt and in the recall/remember/forget tools.
    *  Validated by the route against the caller's bots. */
   botId?: string;
+  /** Who this bot is, in the user's words — prepended to the system prompt so
+   *  the bot answers as itself rather than as the generic operator. */
+  botPersona?: { name: string; description: string };
 }
 
 /**
@@ -307,7 +310,12 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
       }`
     : " The user has not attached any repos yet.";
 
-  const systemPrompt = operatorSystemPrompt() + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId);
+  const persona = opts.botPersona
+    ? `\n\nYOU ARE "${opts.botPersona.name}", a named collaborator this user created.`
+      + (opts.botPersona.description ? ` They describe you as: ${opts.botPersona.description}` : "")
+      + " Work as that collaborator — it is your brief, and it outranks your generic defaults where they disagree."
+    : "";
+  const systemPrompt = operatorSystemPrompt() + persona + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId);
   // Codex reads AGENTS.md out of its cwd; Claude keeps --append-system-prompt
   // (it reads CLAUDE.md, and duplicating the doc into its context helps nobody).
   // Rewritten every turn — memory and the skill index move. Safe to drop in

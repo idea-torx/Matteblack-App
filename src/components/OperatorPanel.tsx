@@ -242,7 +242,11 @@ type ChatSession = { id: string; title: string; sessionId?: string; messages: Ch
    *  project switches the agent's context with it — one canvas's conversation
    *  is noise in another. Undefined only on threads written before scoping;
    *  those are adopted by whichever project is open when they're first seen. */
-  projectId?: string };
+  projectId?: string;
+  /** Archived threads stay in the store but leave the panel: they're hidden
+   *  from the scoped list (and so from the activity grid and the empty-state
+   *  card) and only surface under History's Archived filter. */
+  archived?: boolean };
 type ChatStore = { activeId: string; sessions: ChatSession[] };
 
 function chatTitle(messages: ChatMessage[]): string {
@@ -413,9 +417,26 @@ let msgSeq = 0;
 const nextId = () => `op-${Date.now()}-${msgSeq++}`;
 
 type PanelMode = "sessions" | "bots";
-/** A named, persistent collaborator: its own durable memory and monthly budget.
- *  Budget is recorded server-side only; nothing spends against it yet. */
-type Bot = { id: string; name: string; budgetCents: number };
+/** A named, persistent collaborator: its own durable memory, its own face, and
+ *  a brief it works to. Budget is recorded server-side only; nothing spends
+ *  against it yet, and it is no longer asked for up front. */
+type Bot = { id: string; name: string; budgetCents: number; icon?: string; description?: string };
+
+/** The icon set. Emoji rather than bespoke artwork: it renders everywhere, needs
+ *  no asset pipeline, and the user picks a face in one tap. */
+const BOT_ICONS = [
+  "🤖", "👾", "🧠", "🪄", "🎬", "🎨", "📷", "🎧",
+  "✨", "🔮", "🚀", "📈", "🗞", "🧵", "🌱", "🐙",
+  "🦊", "🐝", "🦉", "🐳", "🍊", "🌊", "🔥", "🌙",
+];
+
+/** A stable tint per bot, so two bots with the same emoji still read apart.
+ *  Hue off the id, not a stored column — one less thing to pick. */
+function botTint(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+  return `hsl(${h} 70% 62%)`;
+}
 
 const MODE_STORAGE_KEY = "matteblack.operator.mode";
 const BOT_STORAGE_KEY = "matteblack.operator.botId";
@@ -427,6 +448,7 @@ export function OperatorPanel({
   canvasReferenceImages,
   seedPrompt,
   projectId,
+  projects,
 }: {
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
@@ -441,6 +463,8 @@ export function OperatorPanel({
   seedPrompt?: { text: string; nonce: number } | null;
   /** The open project. Threads are filtered and stamped with it. */
   projectId?: string;
+  /** Every project in the workspace — History groups threads under their names. */
+  projects?: { id: string; name: string }[];
 }) {
   const [status, setStatus] = useState<OperatorStatus | null>(null);
   // Both of these have to come from the SAME store read. Seeding `messages`
@@ -481,6 +505,7 @@ export function OperatorPanel({
   const [dismissedCanvasRefs, setDismissedCanvasRefs] = useState<Set<string>>(() => new Set());
   const [chats, setChats] = useState<ChatStore>(initialChats);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [pins, setPins] = useState<{ slug: string; title: string }[]>([]);
   const [pinError, setPinError] = useState("");
   const chatIdRef = useRef<string>(chats.activeId);
@@ -497,7 +522,9 @@ export function OperatorPanel({
   });
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [newBotName, setNewBotName] = useState("");
-  const [newBotBudget, setNewBotBudget] = useState("");
+  const [newBotDesc, setNewBotDesc] = useState("");
+  const [newBotIcon, setNewBotIcon] = useState(BOT_ICONS[0]);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [botError, setBotError] = useState("");
   const activeBot = bots.find((b) => b.id === botId);
 
@@ -509,7 +536,7 @@ export function OperatorPanel({
   // so a bot's scope can never collide with a project id.
   const pid = mode === "bots" ? `bot:${botId || "none"}` : projectId || undefined;
   const sessions = useMemo(
-    () => chats.sessions.filter((s) => s.projectId === pid),
+    () => chats.sessions.filter((s) => s.projectId === pid && !s.archived),
     [chats.sessions, pid],
   );
   const sessionIdRef = useRef<string | undefined>(
@@ -903,6 +930,10 @@ export function OperatorPanel({
   messagesRef.current = messages;
   const pidRef = useRef(pid);
   pidRef.current = pid;
+  // The scope of the *open* thread. Usually `pid`, but History can open a
+  // thread belonging to another project, and saving it must not silently
+  // re-file it under whatever is open now.
+  const chatPidRef = useRef(pid);
   const commitChats = useCallback(() => {
     setChats((prev) => {
       const id = chatIdRef.current;
@@ -914,10 +945,10 @@ export function OperatorPanel({
             // The cap is per project: a global slice would let a busy canvas
             // evict a quiet one's history.
             sessions: [
-              { id, title: chatTitle(msgs), sessionId: sessionIdRef.current, messages: msgs.slice(-CHAT_MAX_MESSAGES), updatedAt: Date.now(), projectId: pidRef.current },
-              ...rest.filter((s) => s.projectId === pidRef.current),
+              { ...prev.sessions.find((s) => s.id === id), id, title: chatTitle(msgs), sessionId: sessionIdRef.current, messages: msgs.slice(-CHAT_MAX_MESSAGES), updatedAt: Date.now(), projectId: chatPidRef.current },
+              ...rest.filter((s) => s.projectId === chatPidRef.current),
             ].slice(0, CHAT_MAX_SESSIONS)
-              .concat(rest.filter((s) => s.projectId !== pidRef.current))
+              .concat(rest.filter((s) => s.projectId !== chatPidRef.current))
           }
         // An empty draft must never erase what's stored: only switch the
         // pointer. Deleting is an explicit user action (deleteChat).
@@ -962,6 +993,7 @@ export function OperatorPanel({
     abortRef.current?.abort();
     const mine = store.sessions.filter((s) => s.projectId === pid).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     chatIdRef.current = mine?.id ?? newChatId();
+    chatPidRef.current = pid;
     sessionIdRef.current = mine?.sessionId;
     setMessages(mine?.messages ?? []);
     setHistoryOpen(false);
@@ -977,8 +1009,9 @@ export function OperatorPanel({
       const list = data.bots ?? [];
       setBots(list);
       // A remembered pick that no longer exists (deleted elsewhere) would send a
-      // botId the server rejects, so fall back to the first bot.
-      setBotId((prev) => (list.some((b) => b.id === prev) ? prev : list[0]?.id ?? ""));
+      // botId the server rejects — drop back to the list rather than silently
+      // opening someone else's bot.
+      setBotId((prev) => (list.some((b) => b.id === prev) ? prev : ""));
     } catch { /* the panel still works in Sessions mode */ }
   }, []);
   useEffect(() => { void loadBots(); }, [loadBots]);
@@ -988,26 +1021,24 @@ export function OperatorPanel({
   const createBot = useCallback(async () => {
     const name = newBotName.trim();
     if (!name) { setBotError("Name your bot."); return; }
-    // USD in, cents stored — money never goes near a float in the database.
-    const dollars = Number(newBotBudget.replace(/[$,\s]/g, "") || "0");
-    if (!Number.isFinite(dollars) || dollars < 0) { setBotError("Budget must be a number."); return; }
     setBotError("");
     try {
       const res = await fetch("/api/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name, budgetCents: Math.round(dollars * 100) }),
+        body: JSON.stringify({ name, icon: newBotIcon, description: newBotDesc.trim() }),
       });
       if (!res.ok) { setBotError("Couldn't create that bot."); return; }
       const { bot } = (await res.json()) as { bot: Bot };
       setBots((prev) => [...prev, bot]);
-      setBotId(bot.id);
       setNewBotOpen(false);
+      setIconPickerOpen(false);
       setNewBotName("");
-      setNewBotBudget("");
+      setNewBotDesc("");
+      setNewBotIcon(BOT_ICONS[0]);
     } catch { setBotError("Couldn't create that bot."); }
-  }, [newBotName, newBotBudget]);
+  }, [newBotName, newBotDesc, newBotIcon]);
 
   const deleteBot = useCallback(async (id: string) => {
     try {
@@ -1026,6 +1057,7 @@ export function OperatorPanel({
     if (streaming) return;
     setHistoryOpen(false);
     chatIdRef.current = newChatId();
+    chatPidRef.current = pidRef.current;
     setMessages([]);
     sessionIdRef.current = undefined;
     setUploads((prev) => {
@@ -1039,15 +1071,18 @@ export function OperatorPanel({
    *  A turn in flight is aborted rather than blocking the switch — a run that
    *  never finishes used to lock the user out of their own history. */
   const openChat = useCallback((id: string) => {
-    const s = sessions.find((x) => x.id === id);
+    // Searched across the whole store, not just the open scope: History lists
+    // every project's threads, and picking one has to actually open it.
+    const s = chats.sessions.find((x) => x.id === id);
     if (!s) return;
     if (streaming) { commitChats(); abortRef.current?.abort(); }
     setHistoryOpen(false);
     chatIdRef.current = s.id;
+    chatPidRef.current = s.projectId;
     sessionIdRef.current = s.sessionId;
     setMessages(s.messages);
     setChats((prev) => { const next = { ...prev, activeId: s.id }; saveChats(next); return next; });
-  }, [sessions, streaming, commitChats]);
+  }, [chats.sessions, streaming, commitChats]);
 
   const { user } = useAuth();
   const firstName = (user?.displayName || "").trim().split(/\s+/)[0] || "";
@@ -1058,6 +1093,35 @@ export function OperatorPanel({
 
   const activity = useMemo(() => activityGrid(sessions), [sessions]);
 
+  /** History is the whole app's threads, not the open scope's: grouped under
+   *  the project (or bot) each belongs to, newest group first. */
+  const historyGroups = useMemo(() => {
+    const label = (key: string | undefined) => {
+      if (!key) return "Unassigned";
+      if (key.startsWith("bot:")) {
+        const b = bots.find((x) => x.id === key.slice(4));
+        return b ? `${b.name} (bot)` : "Bot";
+      }
+      return projects?.find((p) => p.id === key)?.name || "Project";
+    };
+    const by = new Map<string, { key: string; label: string; items: ChatSession[] }>();
+    for (const sn of chats.sessions) {
+      if (!!sn.archived !== showArchived) continue;
+      if (sn.messages.length === 0) continue;
+      const key = sn.projectId ?? "";
+      let g = by.get(key);
+      if (!g) by.set(key, (g = { key, label: label(sn.projectId), items: [] }));
+      g.items.push(sn);
+    }
+    const groups = [...by.values()];
+    for (const g of groups) g.items.sort((a, b) => b.updatedAt - a.updatedAt);
+    // The scope the user is in sits on top; everything else by recency.
+    groups.sort((a, b) =>
+      (a.key === (pid ?? "") ? -1 : 0) - (b.key === (pid ?? "") ? -1 : 0)
+      || b.items[0].updatedAt - a.items[0].updatedAt);
+    return groups;
+  }, [chats.sessions, showArchived, bots, projects, pid]);
+
   // Own tooltip rather than the native title attribute: title waits about a
   // second before it shows and is easy to miss on an 11px square.
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -1066,17 +1130,20 @@ export function OperatorPanel({
     .filter((s) => s.id !== chats.activeId && s.messages.length > 0)
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
-  // Back / forward walk the thread list (newest first), so ← is "older".
-  const chatIndex = sessions.findIndex((s) => s.id === chatIdRef.current);
-  const step = useCallback((delta: number) => {
-    const i = sessions.findIndex((s) => s.id === chatIdRef.current);
-    const target = sessions[(i < 0 ? -1 : i) + delta];
-    if (target) openChat(target.id);
-  }, [sessions, openChat]);
-
   const deleteChat = useCallback((id: string) => {
     setChats((prev) => { const next = { ...prev, sessions: prev.sessions.filter((s) => s.id !== id) }; saveChats(next); return next; });
     if (id === chatIdRef.current) newChat();
+  }, [newChat]);
+
+  /** Out of the way, still recoverable — the middle ground between keeping a
+   *  finished thread in the list forever and deleting it. */
+  const archiveChat = useCallback((id: string, archived: boolean) => {
+    setChats((prev) => {
+      const next = { ...prev, sessions: prev.sessions.map((s) => (s.id === id ? { ...s, archived } : s)) };
+      saveChats(next);
+      return next;
+    });
+    if (archived && id === chatIdRef.current) newChat();
   }, [newChat]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1089,9 +1156,6 @@ export function OperatorPanel({
   const isOpenCode = runner === "opencode";
   const brand = isCodex ? "Codex" : isOpenCode ? "OpenCode" : "Claude";
   const aliveLabel = streaming ? `${brand} is thinking` : `${brand} is online`;
-  // In Bots mode the line names the collaborator, not the CLI behind it — the
-  // sprite and its tooltip still brand the runner that's actually running.
-  const headerName = mode === "bots" ? activeBot?.name || "Bots" : brand;
 
   return (
     <aside className="agent-panel">
@@ -1107,39 +1171,49 @@ export function OperatorPanel({
               ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
               : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
         </div>
+        {/* Sessions | Bots rides the header line: the runner's name came out of
+            here (the sprite already brands it), and the back/forward thread
+            chevrons went with it — History does that job properly now. */}
         <div className="operator-brand">
-          <span className="operator-brand__name" title={headerName}>{headerName}</span>
+          {ready && (mode === "bots" && activeBot ? (
+            <button
+              type="button"
+              className="operator-crumb"
+              onClick={() => setBotId("")}
+              title="All bots"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              <span className="operator-crumb__name">{activeBot.name}</span>
+            </button>
+          ) : (
+            <div className="operator-seg" role="group" aria-label="Agent mode">
+              <button
+                type="button"
+                className="operator-seg__btn"
+                aria-pressed={mode === "sessions"}
+                onClick={() => { setMode("sessions"); setHistoryOpen(false); }}
+              >
+                Sessions
+              </button>
+              <button
+                type="button"
+                className="operator-seg__btn"
+                aria-pressed={mode === "bots"}
+                onClick={() => { setMode("bots"); setBotId(""); setHistoryOpen(false); }}
+              >
+                Bots
+              </button>
+            </div>
+          ))}
         </div>
         <div className="agent-panel__header-actions">
           <button
             type="button"
-            className="agent-panel__new agent-panel__new--icon"
-            onClick={() => step(1)}
-            disabled={chatIndex < 0 || chatIndex >= sessions.length - 1}
-            aria-label="Older chat"
-            title="Older chat"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="agent-panel__new agent-panel__new--icon"
-            onClick={() => step(-1)}
-            disabled={chatIndex <= 0}
-            aria-label="Newer chat"
-            title="Newer chat"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-          <button
-            type="button"
             className={`agent-panel__new agent-panel__new--icon${historyOpen ? " agent-panel__new--on" : ""}`}
             onClick={() => setHistoryOpen((v) => !v)}
-            disabled={sessions.length === 0}
+            disabled={chats.sessions.length === 0}
             aria-label="Chat history"
             title="Chat history"
           >
@@ -1167,109 +1241,177 @@ export function OperatorPanel({
         </div>
       </div>
 
-      {/* Nothing to switch between until the CLI is installed — the unavailable
-          state is a single call to action, not a panel. */}
-      {ready && (
-        <div className="operator-modes">
-          <div className="operator-seg" role="group" aria-label="Agent mode">
+      {/* Bots — a vertical list of collaborators. Picking one opens its own
+          thread and its own history; the header crumb walks back here. */}
+      {ready && mode === "bots" && !botId && (
+        <div className="operator-page">
+          <div className="operator-page__head">
+            <span className="operator-page__title">Bots</span>
             <button
               type="button"
-              className="operator-seg__btn"
-              aria-pressed={mode === "sessions"}
-              onClick={() => { setMode("sessions"); setHistoryOpen(false); }}
+              className={`agent-panel__new agent-panel__new--icon${newBotOpen ? " agent-panel__new--on" : ""}`}
+              onClick={() => { setNewBotOpen((v) => !v); setBotError(""); }}
+              aria-label="New bot"
+              title="New bot"
             >
-              Sessions
-            </button>
-            <button
-              type="button"
-              className="operator-seg__btn"
-              aria-pressed={mode === "bots"}
-              onClick={() => { setMode("bots"); setHistoryOpen(false); }}
-            >
-              Bots
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
             </button>
           </div>
-          {mode === "bots" && (
-            <>
-              <select
-                className="operator-controls__model operator-bot-select"
-                value={botId}
-                onChange={(e) => setBotId(e.target.value)}
-                disabled={streaming || bots.length === 0}
-                aria-label="Bot"
-              >
-                {bots.length === 0 && <option value="">No bots yet</option>}
-                {bots.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className={`agent-panel__new agent-panel__new--icon${newBotOpen ? " agent-panel__new--on" : ""}`}
-                onClick={() => { setNewBotOpen((v) => !v); setBotError(""); }}
-                aria-label="New bot"
-                title="New bot"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="agent-panel__new agent-panel__new--icon"
-                onClick={() => { if (activeBot && window.confirm(`Delete ${activeBot.name} and everything it has learned?`)) void deleteBot(activeBot.id); }}
-                disabled={!activeBot || streaming}
-                aria-label="Delete bot"
-                title="Delete bot"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="3 6 21 6" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {ready && mode === "bots" && newBotOpen && (
-        <div className="operator-bot-new">
-          <input
-            className="operator-bot-input"
-            placeholder="Bot name"
-            value={newBotName}
-            autoFocus
-            onChange={(e) => setNewBotName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void createBot(); if (e.key === "Escape") setNewBotOpen(false); }}
-          />
-          <div className="operator-bot-money">
-            <span className="operator-bot-money__sign">$</span>
-            <input
-              className="operator-bot-input operator-bot-input--budget"
-              inputMode="decimal"
-              placeholder="0"
-              value={newBotBudget}
-              onChange={(e) => setNewBotBudget(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void createBot(); if (e.key === "Escape") setNewBotOpen(false); }}
-              aria-label="Monthly budget in dollars"
-            />
-            <span className="operator-bot-money__per">/mo</span>
-          </div>
-          <button type="button" className="operator-bot-add" onClick={() => void createBot()}>Add</button>
-        </div>
-      )}
-      {ready && mode === "bots" && botError && <div className="operator-bot-error">{botError}</div>}
-
-      {historyOpen && (
-        <div className="operator-history">
-          {sessions.map((s) => (
-            <div key={s.id} className={`operator-history__row${s.id === chatIdRef.current ? " operator-history__row--active" : ""}`}>
-              <button type="button" className="operator-history__open" onClick={() => openChat(s.id)}>
-                <span className="operator-history__title">{s.title}</span>
-                <span className="operator-history__meta">{new Date(s.updatedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {s.messages.length} messages</span>
-              </button>
-              <button type="button" className="operator-history__del" onClick={() => deleteChat(s.id)} aria-label="Delete chat" title="Delete chat">×</button>
+          {newBotOpen && (
+            <div className="operator-bot-new">
+              <div className="operator-bot-new__top">
+                <button
+                  type="button"
+                  className="operator-bot-face operator-bot-face--pick"
+                  style={{ background: botTint(newBotIcon) }}
+                  onClick={() => setIconPickerOpen((v) => !v)}
+                  aria-label="Choose an icon"
+                  title="Choose an icon"
+                >
+                  {newBotIcon}
+                </button>
+                <input
+                  className="operator-bot-input"
+                  placeholder="Name"
+                  value={newBotName}
+                  autoFocus
+                  onChange={(e) => setNewBotName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void createBot(); if (e.key === "Escape") setNewBotOpen(false); }}
+                />
+              </div>
+              {iconPickerOpen && (
+                <div className="operator-icons" role="group" aria-label="Bot icon">
+                  {BOT_ICONS.map((ic) => (
+                    <button
+                      key={ic}
+                      type="button"
+                      className={`operator-icons__cell${ic === newBotIcon ? " is-on" : ""}`}
+                      onClick={() => { setNewBotIcon(ic); setIconPickerOpen(false); }}
+                      aria-pressed={ic === newBotIcon}
+                    >
+                      {ic}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* The brief. It goes into the bot's system prompt on every turn,
+                  so it is worth more than a label — hence a textarea. */}
+              <textarea
+                className="operator-bot-input operator-bot-input--desc"
+                placeholder="What is this bot for? It reads this on every turn."
+                rows={3}
+                value={newBotDesc}
+                onChange={(e) => setNewBotDesc(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setNewBotOpen(false); }}
+              />
+              <div className="operator-bot-new__actions">
+                <button type="button" className="operator-btn" onClick={() => { setNewBotOpen(false); setIconPickerOpen(false); setBotError(""); }}>Cancel</button>
+                <button type="button" className="operator-btn operator-btn--primary" onClick={() => void createBot()} disabled={!newBotName.trim()}>Create bot</button>
+              </div>
             </div>
-          ))}
+          )}
+          {botError && <div className="operator-bot-error">{botError}</div>}
+          <div className="operator-page__body">
+            {bots.length === 0 ? (
+              <p className="operator-page__empty">No bots yet. A bot is a named collaborator with its own memory and monthly budget.</p>
+            ) : bots.map((b) => {
+              const threads = chats.sessions.filter((x) => x.projectId === `bot:${b.id}` && !x.archived);
+              return (
+                <div key={b.id} className="operator-botrow">
+                  <button type="button" className="operator-botrow__open" onClick={() => setBotId(b.id)}>
+                    <span className="operator-bot-face" style={{ background: botTint(b.icon || b.id) }} aria-hidden="true">
+                      {b.icon || "🤖"}
+                    </span>
+                    <span className="operator-botrow__lines">
+                      <span className="operator-botrow__name">{b.name}</span>
+                      <span className="operator-botrow__meta">
+                        {b.description || `${threads.length} conversation${threads.length === 1 ? "" : "s"}`}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="operator-row__icon operator-row__icon--danger"
+                    onClick={() => { if (window.confirm(`Delete ${b.name} and everything it has learned?`)) void deleteBot(b.id); }}
+                    aria-label={`Delete ${b.name}`}
+                    title="Delete bot"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="3 6 21 6" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* History — the whole panel, not a 30% drawer. Every thread the app
+          holds, grouped under the project (or bot) it belongs to. */}
+      {historyOpen && (
+        <div className="operator-page">
+          <div className="operator-page__head">
+            <span className="operator-page__title">History</span>
+            <div className="operator-seg operator-seg--sm" role="group" aria-label="History filter">
+              <button type="button" className="operator-seg__btn" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Active</button>
+              <button type="button" className="operator-seg__btn" aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Archived</button>
+            </div>
+            <button type="button" className="operator-row__icon" onClick={() => setHistoryOpen(false)} aria-label="Close history" title="Close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div className="operator-page__body">
+            {historyGroups.length === 0 ? (
+              <p className="operator-page__empty">{showArchived ? "Nothing archived yet." : "No conversations yet."}</p>
+            ) : historyGroups.map((g) => (
+              <section key={g.key} className="operator-hist__group">
+                <h3 className="operator-hist__project">{g.label}</h3>
+                {g.items.map((sn) => (
+                  <div key={sn.id} className={`operator-hist__row${sn.id === chatIdRef.current ? " is-active" : ""}`}>
+                    <button type="button" className="operator-hist__open" onClick={() => openChat(sn.id)}>
+                      <span className="operator-hist__title">{sn.title}</span>
+                      <span className="operator-hist__meta">
+                        {new Date(sn.updatedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {sn.messages.length} messages
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="operator-row__icon"
+                      onClick={() => archiveChat(sn.id, !sn.archived)}
+                      aria-label={sn.archived ? "Unarchive" : "Archive"}
+                      title={sn.archived ? "Unarchive" : "Archive"}
+                    >
+                      {sn.archived ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8" /><polyline points="9 14 12 11 15 14" />
+                        </svg>
+                      ) : (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="4" width="18" height="4" /><path d="M5 8v12h14V8" /><polyline points="9 12 12 15 15 12" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="operator-row__icon operator-row__icon--danger"
+                      onClick={() => deleteChat(sn.id)}
+                      aria-label="Delete chat"
+                      title="Delete chat"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="3 6 21 6" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </section>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1294,10 +1436,15 @@ export function OperatorPanel({
           {messages.length === 0 ? (
             <div className="agent-panel__hero operator-hero">
               <h1 className="agent-panel__hero-title">
-                Welcome back{firstName ? `, ${firstName}` : ""}.
+                {activeBot ? `Hey, I'm ${activeBot.name}.` : `Welcome back${firstName ? `, ${firstName}` : ""}.`}
               </h1>
-              <p className="agent-panel__hero-sub">Your recent work here.</p>
+              <p className="agent-panel__hero-sub">
+                {activeBot ? "What do you wanna work on?" : "Your recent work here."}
+              </p>
 
+              {/* The activity year is the user's, not the bot's — a bot greets
+                  you and gets to work instead. */}
+              {!activeBot && (
               <div className="operator-streak-card" ref={cardRef}>
                 <div className="operator-streak__scroll">
                   <div className="operator-streak__inner">
@@ -1334,6 +1481,7 @@ export function OperatorPanel({
                   <span>More</span>
                 </div>
               </div>
+              )}
 
               {lastChat && (
                 <>

@@ -4,38 +4,38 @@
 /* Site blue — the sprite, the slider fill, and focus rings all key off this. */
 .agent-panel { --matteblack-blue: #007aff; }
 
-/* Brand in the header. The model selector used to live here; it now sits under
- * the composer, so the name tucks closer to the sprite. */
+/* Header slot beside the sprite. It used to carry the runner's name; the
+ * sprite already brands that, so Sessions | Bots (or the open bot's crumb)
+ * sits here instead and the header stays one line. */
 .operator-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
   margin-left: 2px;
 }
-.operator-brand__name {
-  font-size: 14px;
+
+/* Back out of an open bot, into the bot list. */
+.operator-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 8px 3px 4px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary, #18181b);
-  letter-spacing: 0.2px;
+  cursor: pointer;
 }
+.operator-crumb:hover { background: rgba(17, 24, 39, 0.06); }
+.operator-crumb__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------------------------------------------------------------------------
- * Sessions | Bots — the mode strip under the header.
- *
- * Its own row rather than inline with the header: at 336px the header already
- * carries the sprite, the brand line and five controls, and a segmented control
- * squeezed in there reads as an afterthought.
- * ------------------------------------------------------------------------- */
-.operator-modes {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px 10px;
-  flex-shrink: 0;
-}
-
+/* Sessions | Bots — in the header line, and reused (smaller) as History's
+ * Active | Archived filter. */
 .operator-seg {
   display: inline-flex;
   gap: 2px;
@@ -77,77 +77,117 @@
 
 /* The bot picker borrows the composer's model dropdown wholesale — same
  * chevron, same hover, same dark-mode handling — and only takes the width. */
-.operator-bot-select {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Inline "new bot" form. No modal: it is two fields, and the panel has nowhere
- * to put a dialog that wouldn't cover the conversation. */
+/* ---------------------------------------------------------------------------
+ * New bot — name, face, brief. No budget: a monthly cap chosen before the bot
+ * has done anything is a guess, so it's asked for when it matters instead.
+ * ------------------------------------------------------------------------- */
 .operator-bot-new {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px 10px;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 10px 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.04);
   flex-shrink: 0;
 }
+
+.operator-bot-new__top { display: flex; align-items: center; gap: 8px; }
 
 .operator-bot-input {
   flex: 1 1 auto;
   min-width: 0;
-  appearance: none;
+  padding: 8px 11px;
+  border-radius: 9px;
   border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 7px;
-  background: #ffffff;
-  color: var(--text-primary, #18181b);
+  background: var(--agent-surface, #f0f0f3);
   font: inherit;
-  font-size: 12px;
-  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--text-primary, #18181b);
 }
-
-.operator-bot-input::placeholder { color: var(--text-muted, #6b7280); opacity: 0.7; }
-
+.operator-bot-input::placeholder { color: var(--text-muted, #6b7280); opacity: 0.75; }
 .operator-bot-input:focus-visible {
   outline: none;
-  border-color: var(--matteblack-blue);
-  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.3);
+  border-color: rgba(17, 24, 39, 0.3);
 }
 
-/* $ and /mo sit outside the field so the value the user types is the number
- * that gets stored (in cents, server-side). */
-.operator-bot-money {
+.operator-bot-input--desc {
+  flex: none;
+  width: 100%;
+  resize: none;
+  line-height: 1.45;
+  font-size: 12.5px;
+}
+
+.operator-bot-new__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* The panel's text button — same shape language as the header's icon buttons,
+ * filled with --text-primary for the one primary action, exactly as the hero's
+ * call to action is. */
+.operator-btn {
+  appearance: none;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, opacity 0.12s;
+}
+.operator-btn:hover { color: var(--text-primary, #18181b); background: rgba(17, 24, 39, 0.06); }
+.operator-btn--primary {
+  border-color: transparent;
+  background: var(--text-primary, #18181b);
+  color: var(--agent-surface, #f0f0f3);
+}
+.operator-btn--primary:hover { background: var(--text-primary, #18181b); opacity: 0.88; }
+.operator-btn:disabled { opacity: 0.45; cursor: default; }
+.operator-btn:disabled:hover { background: var(--text-primary, #18181b); }
+
+/* The bot's face: its emoji on a tint derived from the icon (in the picker) or
+ * its id (in the list), so two bots wearing the same emoji still read apart. */
+.operator-bot-face {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 3px;
-  flex: 0 0 auto;
-  font-size: 12px;
-  color: var(--text-muted, #6b7280);
-}
-
-.operator-bot-input--budget {
-  flex: 0 0 auto;
-  width: 52px;
-  text-align: right;
-}
-
-.operator-bot-add {
-  appearance: none;
-  flex: 0 0 auto;
+  justify-content: center;
   border: none;
-  border-radius: 7px;
-  background: var(--matteblack-blue);
-  color: #ffffff;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 11px;
-  cursor: pointer;
-  transition: filter 0.12s, transform 0.12s;
+  /* Squircle, not a circle — matches the app's mark and the picker chips. */
+  border-radius: 11px;
+  font-size: 17px;
+  line-height: 1;
 }
+.operator-bot-face--pick { cursor: pointer; transition: transform 0.12s; }
+.operator-bot-face--pick:hover { transform: scale(1.05); }
 
-.operator-bot-add:hover { filter: brightness(1.08); }
-.operator-bot-add:active { transform: translateY(0.5px); }
-.operator-bot-add:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.4); }
+.operator-icons {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+.operator-icons__cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.operator-icons__cell:hover { background: rgba(17, 24, 39, 0.08); }
+.operator-icons__cell.is-on { background: rgba(17, 24, 39, 0.14); }
 
 .operator-bot-error {
   padding: 0 12px 10px;
@@ -475,7 +515,6 @@
   color: #e8e8ed;
 }
 [data-theme="dark"] .operator-bot-input::placeholder { color: #9a9aa2; }
-[data-theme="dark"] .operator-bot-money { color: #9a9aa2; }
 [data-theme="dark"] .operator-bot-error { color: #f0b429; }
 
 /* Setup ("Connect your Claude") steps inside the hero. */
@@ -671,3 +710,193 @@
   background: rgba(37, 99, 235, 0.06);
   border-color: rgba(37, 99, 235, 0.3);
 }
+
+
+/* ---------------------------------------------------------------------------
+ * Full-page overlays — Bots and History.
+ *
+ * These take the whole panel below the header rather than a short drawer: a
+ * 240px dropdown showed four threads out of thirty and hid the grouping that
+ * makes a long history readable.
+ * ------------------------------------------------------------------------- */
+.operator-seg--sm { margin-left: auto; }
+.operator-seg--sm .operator-seg__btn { padding: 3px 9px; font-size: 11px; }
+
+.operator-page {
+  position: absolute;
+  top: 53px; /* below .agent-panel__header */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--agent-surface, #f0f0f3);
+  border-radius: 0 0 4px 4px;
+}
+
+.operator-page__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 12px;
+  flex-shrink: 0;
+}
+
+.operator-page__title {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #18181b);
+}
+
+.operator-page__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Explicit: a nowrap title long enough to overflow would otherwise make the
+     whole page scroll sideways instead of being cut off. */
+  overflow-x: hidden;
+  padding: 0 10px 14px;
+}
+
+.operator-page__empty {
+  margin: 24px 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted, #6b7280);
+}
+
+/* Shared trailing icon button for rows (archive, delete). Revealed on hover so
+ * a long list reads as titles, not as a column of controls. */
+.operator-row__icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.operator-page__head .operator-row__icon { opacity: 1; }
+.operator-botrow:hover .operator-row__icon,
+.operator-hist__row:hover .operator-row__icon,
+.operator-row__icon:focus-visible { opacity: 1; }
+.operator-row__icon:hover { background: rgba(17, 24, 39, 0.07); color: var(--text-primary, #18181b); }
+.operator-row__icon--danger:hover { color: #d24b3e; }
+
+/* Bots — one row per collaborator. */
+.operator-botrow {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+  border-radius: 10px;
+}
+.operator-botrow:hover { background: rgba(17, 24, 39, 0.05); }
+
+.operator-botrow__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.operator-botrow__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #18181b);
+}
+.operator-botrow__meta { font-size: 11.5px; color: var(--text-muted, #6b7280); }
+
+/* History — threads under the project they belong to. */
+.operator-hist__group { margin-bottom: 14px; }
+
+.operator-hist__project {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted, #6b7280);
+}
+
+.operator-hist__row {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+  border-radius: 10px;
+}
+.operator-hist__row:hover { background: rgba(17, 24, 39, 0.05); }
+.operator-hist__row.is-active { background: rgba(17, 24, 39, 0.08); }
+
+.operator-hist__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.operator-hist__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #18181b);
+}
+.operator-hist__meta { font-size: 11.5px; color: var(--text-muted, #6b7280); }
+
+[data-theme="dark"] .operator-page { background: var(--agent-surface, #1b1b1f); }
+[data-theme="dark"] .operator-crumb:hover,
+[data-theme="dark"] .operator-botrow:hover,
+[data-theme="dark"] .operator-hist__row:hover { background: rgba(255, 255, 255, 0.07); }
+[data-theme="dark"] .operator-hist__row.is-active { background: rgba(255, 255, 255, 0.11); }
+[data-theme="dark"] .operator-row__icon:hover { background: rgba(255, 255, 255, 0.1); }
+
+/* A long title dissolves into the paper at the right edge rather than stopping
+ * at an ellipsis — the archive and delete buttons then read against a clean
+ * surface instead of a wall of text. Applied to the box, which is always full
+ * width, so a short title never touches the ramp. */
+.operator-hist__open,
+.operator-botrow__open { overflow: hidden; }
+
+.operator-hist__title,
+.operator-hist__meta,
+.operator-botrow__name,
+.operator-botrow__meta {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent 100%);
+}
+
+/* Bot rows carry the face, so the text column indents past it. */
+.operator-botrow__open { flex-direction: row; align-items: center; gap: 10px; }
+.operator-botrow__lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+[data-theme="dark"] .operator-bot-new { background: rgba(255, 255, 255, 0.05); }
+[data-theme="dark"] .operator-btn { border-color: rgba(255, 255, 255, 0.14); }
+[data-theme="dark"] .operator-btn:hover { background: rgba(255, 255, 255, 0.08); }
+[data-theme="dark"] .operator-icons__cell:hover { background: rgba(255, 255, 255, 0.1); }
+[data-theme="dark"] .operator-icons__cell.is-on { background: rgba(255, 255, 255, 0.16); }

@@ -2858,63 +2858,6 @@
   color: var(--accent, #c96442);
 }
 
-.operator-history {
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 6px;
-  margin: 0 10px 6px;
-  border-radius: 10px;
-  background: rgba(15, 17, 21, 0.03);
-  flex-shrink: 0;
-}
-
-.operator-history__row {
-  display: flex;
-  align-items: center;
-  border-radius: 8px;
-}
-.operator-history__row:hover { background: rgba(15, 17, 21, 0.05); }
-.operator-history__row--active { background: rgba(15, 17, 21, 0.07); }
-
-.operator-history__open {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 10px;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.operator-history__title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #24272c;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.operator-history__meta {
-  font-size: 11px;
-  color: #7a7f88;
-}
-
-.operator-history__del {
-  width: 24px;
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  font-size: 16px;
-  line-height: 1;
-  color: #9aa0a8;
-  cursor: pointer;
-}
-.operator-history__del:hover { color: #d24b3e; }
-
 /* Pinned instruction docs — chips above the composer. */
 .agent-panel__pins {
   display: flex;
