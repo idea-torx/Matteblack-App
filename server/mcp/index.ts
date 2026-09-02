@@ -30,6 +30,7 @@ import { pipeline } from "node:stream/promises";
 import { resolveLocalPath } from "../utils/localPath.js";
 import { applyExactPatch } from "../skills/patchText.js";
 import { parseToolAllowlist } from "./toolAllowlist.js";
+import { guardArgs, mediaUrls } from "./higgsfield.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -615,6 +616,19 @@ const READ_TOOLS: Tool[] = [
       type: "object",
       properties: { path: { type: "string", description: "Absolute path, or one starting with ~/." } },
       required: ["path"],
+    },
+  },
+  {
+    name: "higgsfield",
+    description:
+      "Run the Higgsfield CLI (`higgsfield …`) on this machine — the second generation route, on the user's Higgsfield plan. Pass the words after `higgsfield` as `args`, exactly as the Higgsfield skills write them (add --wait to generate commands). Every image/video URL the command prints is downloaded and placed on the canvas as an ordinary node, so results can be edited, framed and cut like any other generation. Returns the command output. `auth` and `workspace` are refused — the user signs in from Settings > Connectors.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        args: { type: "array", items: { type: "string" }, description: "Argument list, e.g. [\"generate\",\"create\",\"nano_banana_2\",\"--prompt\",\"a quiet beach\",\"--aspect_ratio\",\"16:9\",\"--wait\"]. A canvas or https media URL given to a media flag (--image, --start-image, --video …) is downloaded to a temp file first, since the CLI takes paths." },
+        label: { type: "string", description: "Short caption for the canvas node(s). Defaults to the --prompt value." },
+      },
+      required: ["args"],
     },
   },
   {
@@ -1562,6 +1576,78 @@ function runReadLocalFile(args: Record<string, unknown>): CallToolResult {
   return ok(`${r.path} (${stat.size} bytes)${truncated ? `, truncated to ${maxBytes}` : ""}\n\n${text}`);
 }
 
+// ---------------------------------------------------------------------------
+// higgsfield — the user's Higgsfield CLI, results onto the canvas
+// ---------------------------------------------------------------------------
+
+function higgsfieldBinary(): string {
+  const home = os.homedir();
+  for (const c of [
+    path.join(home, ".local", "bin", "higgsfield"), "/opt/homebrew/bin/higgsfield", "/usr/local/bin/higgsfield",
+    path.join(home, ".npm-global", "bin", "higgsfield"),
+  ]) { try { if (fs.existsSync(c)) return c; } catch { /* next */ } }
+  return "higgsfield"; // PATH
+}
+
+/** Media flags take a path or a Higgsfield id — never a URL. Fetch URLs to a temp file. */
+async function localiseMediaArgs(ep: Endpoint, args: string[]): Promise<string[]> {
+  const out = [...args];
+  for (let i = 1; i < out.length; i++) {
+    const v = out[i];
+    if (!/^--(image|start-image|end-image|video|audio|image-references|video-references|audio-references|image_references|video_references|audio_references)$/.test(out[i - 1])) continue;
+    if (!/^(https?:\/\/|\/)/.test(v) || (v.startsWith("/") && fs.existsSync(v))) continue;
+    const target = /^https?:\/\//i.test(v) ? v : `${ep.baseUrl}${v}`;
+    const res = await fetch(target, { headers: { "x-matteblack-token": ep.token ?? "" } });
+    if (!res.ok) throw new Error(`Couldn't fetch ${v}: HTTP ${res.status}`);
+    const ext = /\.([a-z0-9]{2,4})(\?|$)/i.exec(v)?.[1] || (res.headers.get("content-type") || "").split("/")[1]?.split(";")[0] || "bin";
+    const dir = path.join(resolveDataDir(), "tmp"); fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `hf-${Date.now()}-${i}.${ext}`);
+    fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    out[i] = file;
+  }
+  return out;
+}
+
+async function runHiggsfield(args: Record<string, unknown>): Promise<CallToolResult> {
+  const guarded = guardArgs(args.args);
+  if ("error" in guarded) return fail(guarded.error);
+  const ep = readEndpoint();
+  if (!ep) return fail("The Fal Forge app isn't running.");
+  let argv: string[];
+  try { argv = await localiseMediaArgs(ep, guarded); } catch (err) { return fail(err instanceof Error ? err.message : String(err)); }
+  const output = await new Promise<{ text: string; code: number | null }>((resolve) => {
+    let text = "";
+    // ponytail: 25 min hard stop — a stuck --wait would otherwise hold the turn forever.
+    const child = spawn(higgsfieldBinary(), [...argv, "--no-color"], { stdio: ["ignore", "pipe", "pipe"] });
+    const timer = setTimeout(() => child.kill(), 25 * 60_000);
+    child.stdout.on("data", (d) => { text += d; });
+    child.stderr.on("data", (d) => { text += d; });
+    child.on("error", (e) => { clearTimeout(timer); resolve({ text: `${text}\n${e.message}`, code: 127 }); });
+    child.on("close", (code) => { clearTimeout(timer); resolve({ text, code }); });
+  });
+  if (output.code === 127) return fail("The Higgsfield CLI isn't installed. Ask the user to set it up in Settings > Connectors.");
+  if (/session expired|not authenticated|auth login/i.test(output.text)) {
+    return fail("Higgsfield needs a sign-in. Ask the user to click Sign in under Settings > Connectors > Higgsfield.");
+  }
+  const pi = argv.indexOf("--prompt");
+  const label = typeof args.label === "string" && args.label.trim() ? args.label.trim() : (pi >= 0 ? argv[pi + 1] : "Higgsfield");
+  const placed: string[] = [];
+  const problems: string[] = [];
+  for (const url of mediaUrls(output.text)) {
+    try {
+      const r = (await httpJson(ep, "POST", "/api/agent/import-url", { url, label }, 120_000)) as { nodeId?: string; skipped?: string };
+      if (r.nodeId) placed.push(`${url} → node ${r.nodeId}`);
+    } catch (err) { problems.push(`${url}: ${err instanceof Error ? err.message : String(err)}`); }
+  }
+  const body = output.text.trim().slice(-6000);
+  const tail = [
+    placed.length ? `Placed on the canvas:\n${placed.join("\n")}` : "",
+    problems.length ? `Couldn't place:\n${problems.join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+  const text = `${body}${tail ? `\n\n${tail}` : ""}` || "(no output)";
+  return output.code === 0 ? ok(text) : fail(`higgsfield exited ${output.code}:\n${text}`);
+}
+
 function runListLocalDir(args: Record<string, unknown>): CallToolResult {
   const r = resolveLocalPath(args.path);
   if ("error" in r) return fail(r.error);
@@ -1642,6 +1728,7 @@ async function main(): Promise<void> {
     if (name === "recall") return runRecall();
     if (name === "remember") return runRemember(args);
     if (name === "forget") return runForget(args);
+    if (name === "higgsfield") return runHiggsfield(args);
     if (name === "read_local_file") return runReadLocalFile(args);
     if (name === "list_local_dir") return runListLocalDir(args);
     if (name === "list_skills") return runListSkills();

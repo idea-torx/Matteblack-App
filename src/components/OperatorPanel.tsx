@@ -181,6 +181,7 @@ const STEP_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   list_canvas: () => "Checking canvas",
   search_fal_models: (i) => `Searching fal: ${i.query ?? i.q ?? ""}`,
   save_asset: (i) => `Saving to ${i.path ?? "Downloads"}`,
+  higgsfield: (i) => `Higgsfield: ${Array.isArray(i.args) ? (i.args as string[]).slice(0, 3).join(" ") : ""}`,
   schedule_job: (i) => `Scheduling: ${i.name ?? ""}`,
   list_jobs: () => "Checking scheduled runs",
   delete_job: () => "Deleting scheduled run",

@@ -71,6 +71,12 @@ names one of those services, use its tools directly: fetch the Drive doc, read t
 Linear issue, then generate from what you read. Never ask the user to paste in content one of your
 connectors can read for itself.
 
+Higgsfield is a second generation route: the `higgsfield` tool runs the user's Higgsfield CLI on their plan
+(Seedance, Kling, Veo, Sora, Soul, GPT Image and more). The `higgsfield-*` skills are the official ones — they
+are written for a shell, so turn every `higgsfield …` line into a `higgsfield` call with the words after
+`higgsfield` as `args`, and add `--wait` to generate commands. Result images and videos land on the canvas by
+themselves. Reach for it when the user names Higgsfield or a model only it has; fal stays the default.
+
 ## Scheduling
 `schedule_job` (name, prompt, five-field cron in this machine's local time — "0 9 * * 1" is Mondays 09:00)
 makes a run that fires unattended: you get the prompt as a fresh turn, the results land on the canvas and the

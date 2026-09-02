@@ -22,6 +22,7 @@ import { resolveLocalPath } from "../utils/localPath.js";
 import { resolveUploadPath } from "../utils/uploadPath.js";
 import { UPLOADS_DIR } from "../config/runtime.js";
 import fs from "node:fs";
+import probe from "probe-image-size";
 import path from "node:path";
 
 const router = Router();
@@ -300,6 +301,46 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
   } catch (err) {
     console.error("[agent/html] read failed:", err);
     res.status(500).json({ error: "Failed to read the source markup." });
+  }
+});
+
+/** Put a finished file from elsewhere — a Higgsfield result, any https media —
+ *  on the open canvas as an ordinary image/video node. Downloaded here so the
+ *  node outlives the source link. */
+const MAX_IMPORT_BYTES = 200_000_000;
+router.post("/api/agent/import-url", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const canvasId = activeCanvas(req);
+  if (!canvasId) { res.status(400).json({ error: "No canvas is open." }); return; }
+  const userId = req.userId!;
+  const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+  if (!/^https:\/\//i.test(url)) { res.status(400).json({ error: "url must be https." }); return; }
+  const label = typeof req.body?.label === "string" ? req.body.label.slice(0, 200) : "";
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { res.status(502).json({ error: `HTTP ${r.status} fetching ${url}` }); return; }
+    const ct = (r.headers.get("content-type") || "").split(";")[0];
+    const ext = /\.([a-z0-9]{2,4})(\?|$)/i.exec(url)?.[1]?.toLowerCase() || ct.split("/")[1] || "bin";
+    const kind = /^(mp4|webm|mov)$/.test(ext) || ct.startsWith("video/") ? "video"
+      : /^(png|jpe?g|webp|gif)$/.test(ext) || ct.startsWith("image/") ? "image" : null;
+    if (!kind) { res.json({ skipped: `not an image or video (${ct || ext})` }); return; }
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.byteLength > MAX_IMPORT_BYTES) { res.status(413).json({ error: "File over 200MB." }); return; }
+    const src = await saveFile(`users/${userId}/imports`, `${uuidv4()}.${ext}`, buf);
+    // ponytail: videos land 16:9 and let the player fit; images take their real ratio.
+    let aspect = kind === "video" ? "16:9" : "1:1";
+    if (kind === "image") { try { const d = probe.sync(buf); if (d) aspect = `${d.width}:${d.height}`; } catch { /* unknown format: square */ } }
+    const size = placeholderSize("quality", aspect, kind);
+    const { rect, z } = await placeNewNode(canvasId, userId, size);
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO canvas_nodes (id, canvas_id, node_type, x, y, width, height, rotation, z_index, locked, visible, label, src, gradient, metadata, asset_id, job_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, false, true, $9, $10, '', $11, NULL, NULL)`,
+      [id, canvasId, kind, rect.x, rect.y, size.w, size.h, z, label, src, JSON.stringify({ source: "import", origin: url })],
+    );
+    broadcastCanvasUpdate(canvasId, "");
+    res.json({ nodeId: id, src, kind });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed." });
   }
 });
 

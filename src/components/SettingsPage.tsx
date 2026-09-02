@@ -1418,6 +1418,7 @@ function ProvidersSection() {
 
 type ConnectorRow = { runner: "claude" | "codex"; name: string; url?: string; command?: string; status: "connected" | "needs_auth" | "unknown"; enabled: boolean };
 type CatalogRow = { id: string; label: string; url: string; blurb: string };
+type HiggsfieldStatus = { installed: boolean; loggedIn: boolean; account: string; skills: number };
 
 /** The user's external MCP servers, and a catalog to add popular ones. Nothing
  *  here handles a credential: adding registers a URL with the CLI, and signing
@@ -1425,13 +1426,14 @@ type CatalogRow = { id: string; label: string; url: string; blurb: string };
 function ConnectorsSection() {
   const [rows, setRows] = useState<ConnectorRow[]>([]);
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
+  const [hf, setHf] = useState<HiggsfieldStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/connectors", { credentials: "include" });
-      if (res.ok) { const d = await res.json(); setRows(d.connectors || []); setCatalog(d.catalog || []); }
+      if (res.ok) { const d = await res.json(); setRows(d.connectors || []); setCatalog(d.catalog || []); setHf(d.higgsfield ?? null); }
     } catch { /* offline */ }
     setLoading(false);
   }, []);
@@ -1497,6 +1499,31 @@ function ConnectorsSection() {
         <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
           Switched-on servers become tools the operator can call. Anything you connect at claude.ai → Settings
           → Connectors shows up here automatically.
+        </div>
+      </div>
+
+      <h2 className="settings-section-title">Higgsfield</h2>
+      <div className="settings-card settings-card--full">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">Higgsfield CLI</span>
+            <span className="settings-toggle-desc">
+              {!hf ? "Checking…" : !hf.installed ? "Not installed" : !hf.loggedIn ? "Needs sign-in" : hf.account || "Signed in"}
+              {hf ? ` · ${hf.skills} of 6 skills mirrored` : ""}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="settings-btn-primary"
+            disabled={busy !== null || !hf}
+            onClick={() => void post("higgsfield/setup", {}, "hf")}
+          >
+            {busy === "hf" ? "Working…" : !hf?.installed ? "Install" : !hf?.loggedIn ? "Sign in" : "Update skills"}
+          </button>
+        </div>
+        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+          A second generation route on your Higgsfield plan (Seedance, Kling, Veo, Soul, GPT Image…). Sign-in is the
+          CLI's own browser login; the official Higgsfield skills are mirrored into your skill library.
         </div>
       </div>
 

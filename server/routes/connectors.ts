@@ -5,16 +5,27 @@
  *   POST /api/connectors/add     — register a catalog entry with both CLIs
  *   POST /api/connectors/login   — start the CLI's own OAuth for one server
  *   POST /api/connectors/enable  — hand one server to the operator, or take it back
+ *   POST /api/connectors/higgsfield/setup — install/sign in the Higgsfield CLI, mirror its skills
  */
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { CATALOG, addConnector, listConnectors, loginConnector } from "../operator/connectors.js";
 import { setConnectorEnabled } from "../config/userConfig.js";
+import { higgsfieldStatus, setupHiggsfield, syncHiggsfieldSkills } from "../operator/higgsfield.js";
 
 const router = Router();
 
 router.get("/api/connectors", requireAuth, async (_req: AuthRequest, res) => {
-  res.json({ connectors: await listConnectors(), catalog: CATALOG });
+  const [connectors, higgsfield] = await Promise.all([listConnectors(), higgsfieldStatus()]);
+  res.json({ connectors, catalog: CATALOG, higgsfield });
+});
+
+/** Higgsfield CLI: install/sign in happens in Terminal (interactive OAuth);
+ *  the skills mirror runs here. Idempotent — the button doubles as "update". */
+router.post("/api/connectors/higgsfield/setup", requireAuth, async (_req: AuthRequest, res) => {
+  const status = await higgsfieldStatus();
+  if (!status.installed || !status.loggedIn) setupHiggsfield();
+  res.json({ ok: true, ...(await syncHiggsfieldSkills()) });
 });
 
 router.post("/api/connectors/add", requireAuth, async (req: AuthRequest, res) => {

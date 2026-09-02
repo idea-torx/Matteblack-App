@@ -62,6 +62,7 @@ const WEB_TOOLS = ["WebFetch", "WebSearch"];
 /** The Fal Forge MCP tools we let the operator call, bare (un-namespaced). */
 export const OPERATOR_MCP_TOOL_NAMES = [
   "generate_media",
+  "higgsfield",
   "continue_video",
   "generate_music",
   "generate_voiceover",
