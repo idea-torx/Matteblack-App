@@ -548,7 +548,6 @@
 
 .qs-open-all-btn:active { transform: translateY(1px); }
 
-.qs-open-all-btn svg { color: #ffffff; }
 
 /* ─── Sign out ─── */
 .qs-signout-card {
@@ -690,8 +689,6 @@
 [data-theme="light"] .qs-grid-card { background: rgba(0, 0, 0, 0.025); border-color: var(--border-subtle); }
 [data-theme="light"] .qs-grid-card:hover { background: var(--overlay-hover); border-color: var(--border-strong); }
 [data-theme="light"] .qs-grid-icon { background: rgba(0, 0, 0, 0.05); }
-[data-theme="light"] .qs-open-all-btn { background: #000000; border-color: #000000; color: #ffffff; }
-[data-theme="light"] .qs-open-all-btn:hover { background: #1a1a1a; border-color: #1a1a1a; }
 [data-theme="light"] .qs-grid-tier-pill { background: rgba(0, 0, 0, 0.05); border-color: var(--border-subtle); color: var(--text-secondary); }
 [data-theme="light"] .qs-toggle { background: rgba(0, 0, 0, 0.15); }
 [data-theme="light"] .qs-inbox-popover { background: var(--panel-bg); }
