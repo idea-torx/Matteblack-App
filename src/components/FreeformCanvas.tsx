@@ -49,6 +49,7 @@ import type {
   UndoCommand,
   PendingPlacement,
   FreeformCanvasProps,
+  PickedElement,
 } from "../types/canvas";
 import {
   MIN_ZOOM,
@@ -80,12 +81,58 @@ import {
 
 export type { ReferenceImage, CanvasNode, PendingPlacement };
 
+/**
+ * Element picker for a rendered-HTML node: the boxes from its element map,
+ * scaled to the node, on top of the selection handles. Click picks one piece,
+ * shift-click adds. Deeper elements come later in document order and so sit on
+ * top, which is what makes a click land on the word rather than its wrapper.
+ * ponytail: picks are local to the mount; deselecting the node clears them.
+ */
+type MapEl = { tag: string; text: string; bbox: [number, number, number, number] };
+function HtmlElementPicker({ node, onPick }: { node: CanvasNode; onPick: (els: PickedElement[]) => void }) {
+  const mapUrl = node.metadata?.map_url as string | undefined;
+  const pw = (node.metadata?.pixel_width as number) || node.width;
+  const ph = (node.metadata?.pixel_height as number) || node.height;
+  const [els, setEls] = useState<MapEl[]>([]);
+  const [picked, setPicked] = useState<number[]>([]);
+  useEffect(() => {
+    let live = true;
+    setEls([]); setPicked([]);
+    if (mapUrl) fetch(mapUrl, { credentials: "include" }).then((r) => r.ok ? r.json() : []).then((m) => { if (live && Array.isArray(m)) setEls(m); }).catch(() => {});
+    return () => { live = false; };
+  }, [mapUrl]);
+  useEffect(() => {
+    onPick(picked.map((i) => ({ nodeId: node.id, ...els[i] })).filter((e) => e.tag));
+  }, [picked, els, node.id, onPick]);
+  useEffect(() => () => onPick([]), [onPick]);
+  if (!mapUrl || els.length === 0) return null;
+  const sx = node.width / pw, sy = node.height / ph;
+  return (
+    <>
+      {els.map((el, i) => (
+        <div
+          key={i}
+          className={`freeform-canvas__html-el${picked.includes(i) ? " freeform-canvas__html-el--picked" : ""}`}
+          title={`<${el.tag}> ${el.text}`}
+          style={{ left: el.bbox[0] * sx, top: el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPicked((prev) => e.shiftKey ? (prev.includes(i) ? prev.filter((p) => p !== i) : [...prev, i]) : (prev.length === 1 && prev[0] === i ? [] : [i]));
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 export function FreeformCanvas({
   selectedImageIds,
   onSelectImage,
   onSelectMultiple,
   onDeselectAll,
   onNodeMeta,
+  onElementPick,
   onDropReference,
   onDropPrompt,
   onDropTrayItem,
@@ -3193,6 +3240,9 @@ export function FreeformCanvas({
                 />
               ) : selectionBox ? null : (
                 <>
+                  {node.metadata?.kind === "html" && selectedIds.size === 1 && onElementPick && (
+                    <HtmlElementPicker node={node} onPick={onElementPick} />
+                  )}
                   {(["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <div
                       key={`rot-${corner}`}

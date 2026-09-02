@@ -274,6 +274,20 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       }
     } catch { /* selection is a hint; a bad id must not fail the turn */ }
   }
+  // Pieces picked inside a rendered-HTML node. Text is the handle the agent
+  // edits by (render_html `edits` find/replace), position disambiguates.
+  const picked = Array.isArray(body.selectedElements)
+    ? (body.selectedElements as unknown[]).filter((e): e is { nodeId: string; tag: string; text: string; bbox: number[] } =>
+        !!e && typeof e === "object" && typeof (e as { nodeId?: unknown }).nodeId === "string" && typeof (e as { tag?: unknown }).tag === "string").slice(0, 8)
+    : [];
+  if (picked.length > 0 && selectionNote) {
+    const lines = picked.map((e) => {
+      const [x, y, w, h] = Array.isArray(e.bbox) ? e.bbox.map(Number) : [0, 0, 0, 0];
+      const text = String(e.text || "").slice(0, 80);
+      return `- <${e.tag.replace(/[^a-z0-9-]/gi, "")}>${text ? ` "${text}"` : ""} at ${x},${y} (${w}×${h}px) in node ${e.nodeId}`;
+    });
+    selectionNote = selectionNote.slice(0, -1) + `\nThe user picked ${picked.length === 1 ? "this element" : "these elements"} inside the render — "this", "that text", "this bit" means exactly ${picked.length === 1 ? "it" : "them"}, nothing else on the page:\n${lines.join("\n")}\nChange only what was picked: get_html, then render_html with the same nodeId and \`edits\` whose find strings are that element's exact markup or text.]`;
+  }
 
   // Tell Claude an image is attached AND that it's supplied to the tools
   // automatically — otherwise Claude assumes it can only reference images that

@@ -62,7 +62,7 @@ import { NodeCanvas } from "./components/NodeCanvas";
 import { NodesPanelDefault } from "./components/NodesPanelDefault";
 import { NodeInspectorPanel } from "./components/NodeInspectorPanel";
 import { DEMO_WORKFLOW, type WorkflowNode, type WorkflowEdge } from "./components/nodeTypes";
-import type { CanvasApi, CanvasNode } from "./types/canvas";
+import type { CanvasApi, CanvasNode, PickedElement } from "./types/canvas";
 import { CinemaExportPanel } from "./features/cinema-frame/components/CinemaExportPanel";
 import "./App.css";
 
@@ -226,6 +226,7 @@ function App() {
   const [audioClipsByProject, setAudioClipsByProject] = useState<Record<string, AudioClip[]>>({});
   const [canvasLoading, setCanvasLoading] = useState(true);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+  const [selectedElements, setSelectedElements] = useState<PickedElement[]>([]);
   const [canvasNodes, setCanvasNodes] = useState<CanvasNode[]>([]);
   // The grid is an overlay on the canvas card, not a route: the canvas stays
   // mounted underneath so canvasNodes keeps updating and flipping back costs
@@ -2238,7 +2239,7 @@ function App() {
               } catch { /* canvas not live yet */ }
               // The selection travels too: a node the user has clicked is the
               // node they mean, and the agent has no other way to learn its id.
-              return { canvasId: canvasIdRef.current || undefined, viewport, selectedNodeIds: selectedImageIds };
+              return { canvasId: canvasIdRef.current || undefined, viewport, selectedNodeIds: selectedImageIds, selectedElements };
             }}
             canvasReferenceImages={canvasReferenceImages}
             seedPrompt={agentSeed}
@@ -2494,6 +2495,7 @@ function App() {
                 onSelectMultiple={handleCanvasSelectMultiple}
                 onDeselectAll={handleDeselectAll}
                 onNodeMeta={(id, meta) => setSelectedNodeMeta((prev) => { const next = new Map(prev); next.set(id, meta); return next; })}
+                onElementPick={setSelectedElements}
                 gifMakerMode={gifMakerOpen}
                 onDropReference={handleDropReference}
                 onDropPrompt={handleRecyclePrompt}

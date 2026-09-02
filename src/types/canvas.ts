@@ -78,12 +78,16 @@ export type PendingPlacement = {
   trayItem: unknown;
 };
 
+export type PickedElement = { nodeId: string; tag: string; text: string; bbox: [number, number, number, number] };
+
 export type FreeformCanvasProps = {
   selectedImageIds: string[];
   onSelectImage: (id: string, mode?: "exclusive" | "toggle") => void;
   onSelectMultiple?: (ids: string[], mode?: "exclusive" | "add") => void;
   onDeselectAll?: () => void;
   onNodeMeta?: (id: string, meta: ReferenceImage) => void;
+  /** Pieces of a rendered-HTML node the user has picked (empty = none). */
+  onElementPick?: (elements: PickedElement[]) => void;
   gifMakerMode?: boolean;
   onDropReference?: (ref: ReferenceImage) => void;
   onDropPrompt?: (prompt: string, jobId?: string | null) => void;

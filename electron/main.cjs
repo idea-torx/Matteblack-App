@@ -101,8 +101,8 @@ function resolveDataDir() {
 /** Serve a render request from the server child (see server/utils/htmlRender.ts). */
 async function handleRenderHtml(child, msg) {
   try {
-    const png = await renderHtmlToPng(msg.html, msg.width, msg.height);
-    child.postMessage({ type: "render-html-result", id: msg.id, png: png.toString("base64") });
+    const { png, map } = await renderHtmlToPng(msg.html, msg.width, msg.height);
+    child.postMessage({ type: "render-html-result", id: msg.id, png: png.toString("base64"), map });
   } catch (err) {
     child.postMessage({ type: "render-html-result", id: msg.id, error: String((err && err.message) || err) });
   }

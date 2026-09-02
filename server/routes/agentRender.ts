@@ -249,9 +249,12 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
 
     // Attach the pixels here, not in the agent's context: it wrote `asset:name`.
     const { html: markup, missing, problems } = await inlineAssets(source, images);
-    const png = await renderHtmlToPng(markup, width, height);
+    const { png, map } = await renderHtmlToPng(markup, width, height);
     const stem = uuidv4();
     const src = await saveFile(`users/${userId}/html`, `${stem}.png`, png);
+    // Element map beside the markup: the canvas fetches it to let the user pick
+    // a piece of the render and point the agent at it. Rebuilt every render.
+    const mapUrl = await saveFile(`users/${userId}/html`, `${stem}.map.json`, Buffer.from(JSON.stringify(map), "utf8"));
     // The markup lives next to the PNG rather than in the node's jsonb: canvas
     // sync ships every node's metadata on every load, and art pages are KBs.
     const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(source, "utf8"));
@@ -259,7 +262,7 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
     // names to paths has to travel with it or a later edit re-renders blank.
     // It is a handful of short strings, unlike the markup itself.
     const imageMap = images && typeof images === "object" && !Array.isArray(images) ? images : {};
-    const metadata = { source: "agent", kind: "html", html_url: htmlUrl, pixel_width: width, pixel_height: height, images: imageMap };
+    const metadata = { source: "agent", kind: "html", html_url: htmlUrl, map_url: mapUrl, pixel_width: width, pixel_height: height, images: imageMap };
 
     if (nodeId) {
       const upd = await pool.query(

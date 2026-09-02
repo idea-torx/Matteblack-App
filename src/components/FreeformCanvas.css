@@ -1524,3 +1524,19 @@ html.is-mac .freeform-canvas__toolbar {
    * the open panel, so the pill follows the rail or the panel beside it. */
   left: calc(var(--canvas-left-inset, 0px) + 10px);
 }
+
+/* Element picker on a rendered-HTML node: invisible until hovered, so the
+   render reads as a picture, not a wireframe. */
+.freeform-canvas__html-el {
+  position: absolute;
+  pointer-events: auto;
+  cursor: crosshair;
+  box-sizing: border-box;
+}
+.freeform-canvas__html-el:hover {
+  outline: calc(1px / var(--zoom, 1)) dashed rgba(120, 170, 255, 0.9);
+}
+.freeform-canvas__html-el--picked {
+  outline: calc(2px / var(--zoom, 1)) solid #4c8dff;
+  background: rgba(76, 141, 255, 0.12);
+}

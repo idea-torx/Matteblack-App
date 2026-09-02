@@ -34,6 +34,29 @@ const SETTLE = `new Promise((r) => {
   Promise.all([loaded, fonts]).then(settle, settle);
 })`;
 
+// Element map: what is where on the page, so the canvas can offer each piece
+// for selection and the agent can be told "the user means THIS <h1>". Own text
+// first so a wrapper doesn't repeat every word inside it. The root-sized box is
+// skipped (it's the page, not a piece) and the walk is capped so a particle
+// field of 5k spans doesn't ship as a map.
+const ELEMENT_MAP = `(() => {
+  const out = [];
+  const W = innerWidth, H = innerHeight;
+  const skip = new Set(["script", "style", "br", "html", "head"]);
+  for (const el of document.body.querySelectorAll("*")) {
+    const tag = el.tagName.toLowerCase();
+    if (skip.has(tag)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) continue;
+    if (r.width * r.height > 0.9 * W * H) continue;
+    const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" ");
+    const text = (own.trim() || el.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 80);
+    out.push({ tag, text, bbox: [r.left, r.top, r.width, r.height].map(Math.round) });
+    if (out.length >= 400) break;
+  }
+  return out;
+})()`;
+
 const IDLE_MS = 60_000;
 
 let warm = null;
@@ -89,7 +112,8 @@ async function renderOnce(html, w, h) {
     // output size is then the same on any machine, supersampled where it can be.
     const img = await win.webContents.capturePage();
     const shot = img.getSize().width === w ? img : img.resize({ width: w, height: h, quality: "best" });
-    return shot.toPNG();
+    const map = await win.webContents.executeJavaScript(ELEMENT_MAP).catch(() => []);
+    return { png: shot.toPNG(), map };
   } catch (err) {
     // The warm window is the prime suspect for any navigation failure, and a
     // sticky broken one would fail every render after it. Start over next time.
@@ -101,6 +125,7 @@ async function renderOnce(html, w, h) {
   }
 }
 
+/** Resolves { png: Buffer, map: element map } */
 function renderHtmlToPng(html, width, height) {
   const w = Math.max(1, Math.min(4096, Math.round(width) || 1080));
   const h = Math.max(1, Math.min(4096, Math.round(height) || 1350));
