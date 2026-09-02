@@ -1505,22 +1505,25 @@ function ProvidersSection() {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runner: r.id, ids }),
           });
           return (
-            <div key={`models-${r.id}`} className="settings-toggle-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-              <span className="settings-toggle-label">{r.label} models in the dropdown</span>
-              <span className="settings-toggle-desc">Tick the ones you use. None ticked shows all {r.catalog?.length}.</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <details key={`models-${r.id}`} className="settings-models">
+              <summary>
+                <span className="settings-toggle-label">{r.label} models in the dropdown</span>
+                <span className="settings-toggle-desc">{picks.size ? `${picks.size} picked` : `All ${r.catalog?.length}`} · tick the ones you use</span>
+              </summary>
+              <div className="settings-models__list">
                 {(r.catalog ?? []).map((m) => (
-                  <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                  <label key={m.id} className="settings-model-card">
+                    <span className="settings-model-card__name">{m.label}</span>
                     <input
                       type="checkbox"
+                      className="settings-switch"
                       checked={picks.has(m.id)}
                       onChange={(e) => save(e.target.checked ? [...picks, m.id] : [...picks].filter((id) => id !== m.id))}
                     />
-                    <span className="settings-toggle-desc">{m.label}</span>
                   </label>
                 ))}
               </div>
-            </div>
+            </details>
           );
         })}
         <div className="settings-card-note">
