@@ -593,7 +593,7 @@
   height: 24px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--c-cyan) 100%);
+  background: var(--gradient-brand-diag);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -605,8 +605,7 @@
 
 .sidebar-user-avatar:empty,
 .sidebar-user-avatar--guest {
-  background: rgba(var(--tint-rgb), 0.1);
-  background-image: none;
+  color: #ffffff;
 }
 
 .sidebar-user-name {
@@ -675,7 +674,7 @@
   height: 32px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--c-cyan) 100%);
+  background: var(--gradient-brand-diag);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -93,7 +93,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--c-cyan) 100%);
+  background: var(--gradient-brand-diag);
   display: flex;
   align-items: center;
   justify-content: center;

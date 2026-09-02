@@ -100,6 +100,11 @@
   --gradient-brand: linear-gradient(90deg,
     #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
     #EE9A52 62.5%, #E8795F 75%, #DE7B96 87.5%, #A874D2 100%);
+  /* Diagonal form, for avatars and other small round surfaces where a
+   * left-to-right sweep would only show two or three stops. */
+  --gradient-brand-diag: linear-gradient(135deg,
+    #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
+    #EE9A52 62.5%, #E8795F 75%, #DE7B96 87.5%, #A874D2 100%);
 
   /* ─── Semantic roles ───────────────────────────────────────────────────
    * One ramp stop per function. `--x` is the solid fill (chosen so white text

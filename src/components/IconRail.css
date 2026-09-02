@@ -144,7 +144,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--c-cyan) 100%);
+  background: var(--gradient-brand-diag);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,8 +162,10 @@
 }
 
 .icon-rail-avatar-circle--guest {
-  background: rgba(var(--tint-rgb), 0.1);
-  color: var(--text-muted);
+  /* Signed out, no photo: the default is the brand ramp itself, not a grey
+   * disc. Same treatment as an initial, so the rail reads the same either
+   * way. */
+  color: #ffffff;
 }
 
 .icon-rail-avatar-dot {
