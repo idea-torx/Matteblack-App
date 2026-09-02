@@ -1495,7 +1495,13 @@ async function runPatchSkill(args: Record<string, unknown>): Promise<CallToolRes
 // over an endpoint the app's UI could call.
 // ---------------------------------------------------------------------------
 
-const MEMORY_DIR = path.join(resolveDataDir(), "agent-memory");
+/** Sessions share `agent-memory/`; a bot run gets its own subdirectory, so a
+ *  bot's notes are invisible to sessions and to every other bot. MB_BOT_ID is
+ *  set on the MCP spawn for the life of one turn (see mcpServerSpec), and is
+ *  slugged here for the same reason a note slug is: it must not escape. */
+const MEMORY_DIR = process.env.MB_BOT_ID
+  ? path.join(resolveDataDir(), "agent-memory", "bots", memorySlug(process.env.MB_BOT_ID))
+  : path.join(resolveDataDir(), "agent-memory");
 
 /** Filename-safe id, and the trust boundary: the result can never contain a
  *  path separator or dots, so a slug cannot escape MEMORY_DIR. */

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { isDesktopApp, desktopBridge } from "../desktop";
 import NumericInput from "./NumericInput";
 import { useAuth } from "../contexts/AuthContext";
 import { useWorkspace } from "../contexts/WorkspaceContext";
@@ -149,10 +150,10 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
     invites: "invitations",
   };
   const resolvedInitial = SECTION_ALIASES[initialSection] ?? initialSection;
-  // In local mode the billing sections don't exist — send any billing-targeted
-  // entry point (default "subscription", or an insufficient-credits CTA) to a
-  // real section instead of a blank pane.
-  const localSafeInitial = isLocal && BILLING_SECTIONS.some((s) => s.id === resolvedInitial)
+  // In local mode the billing and team sections don't exist — send anything
+  // aimed at them (default "subscription", an insufficient-credits CTA, an old
+  // workspace link) to a real section instead of a blank pane.
+  const localSafeInitial = isLocal && [...BILLING_SECTIONS, ...WORKSPACE_SECTIONS, { id: "security" }].some((s) => s.id === resolvedInitial)
     ? "profile"
     : resolvedInitial;
   const effectiveInitial = !user && localSafeInitial !== "auth" ? "auth" : localSafeInitial;
@@ -190,11 +191,14 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
 
   const groups: SectionGroup[] = isLoggedIn
     ? [
-        { label: "Account", sections: ACCOUNT_SUB_SECTIONS },
+        // Security is all cloud auth — AuthKit email changes, sessions, deleting
+        // a hosted account. None of it exists on a local install.
+        { label: "Account", sections: isLocal ? ACCOUNT_SUB_SECTIONS.filter((x) => x.id !== "security") : ACCOUNT_SUB_SECTIONS },
         // Billing is meaningless in the login-less local/desktop build (no
         // Stripe, unlimited local generation), so hide the whole group.
         ...(isLocal ? [] : [{ label: "Billing", sections: BILLING_SECTIONS }]),
-        { label: "Team", sections: WORKSPACE_SECTIONS },
+        // One machine, one user: no team to name, no members, no invitations.
+        ...(isLocal ? [] : [{ label: "Team", sections: WORKSPACE_SECTIONS }]),
         { label: "Preferences", sections: PREFERENCES_SECTIONS },
         ...(user?.role === "superadmin"
           ? [{
@@ -1297,6 +1301,8 @@ const LOGO_DOMAIN: Record<string, string> = {
   gmail: "google.com",
   "google drive": "google.com",
   "google calendar": "google.com",
+  "fal.ai": "fal.ai",
+  fal: "fal.ai",
 };
 
 function logoDomain(name: string, url?: string): string | undefined {
@@ -1409,11 +1415,121 @@ function SetupSection() {
             )}
           </div>
         ))}
+        {isDesktopApp() && (
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">This Mac</span>
+              <span className="settings-toggle-desc">The frameless window has no File menu, so these live here.</span>
+            </div>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.connectToClaude?.(); }}>Connect to Claude…</button>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.openDataFolder?.(); }}>Data folder</button>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.checkForUpdates?.(); }}>Check for updates</button>
+          </div>
+        )}
         <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.
         </div>
       </div>
     </div>
+  );
+}
+
+/** fal.ai — the generation provider. Its key used to live in a modal behind the
+ *  key icon in the rail; a key is a property of a provider, so it lives on the
+ *  provider row now and the modal is gone. Write-only: the server hands back a
+ *  mask, never the key. */
+function FalProviderRow() {
+  const [status, setStatus] = useState<{ set: boolean; masked: string | null }>({ set: false, masked: null });
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // A saved key needs no field until you want to replace it.
+  const [editing, setEditing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (!res.ok) return;
+      const d = await res.json();
+      const k = d?.falKey;
+      setStatus({ set: k?.set === true, masked: typeof k?.masked === "string" ? k.masked : null });
+    } catch { /* offline */ }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async (key: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ falKey: key }),
+      });
+      if (!res.ok) setError(`Couldn't save the key (${res.status})`);
+      else { setValue(""); setEditing(false); }
+    } catch { setError("Network error while saving"); }
+    await load();
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <div className="settings-toggle-row">
+        <ServiceLogo name="fal.ai" />
+        <div className="settings-toggle-info">
+          <span className="settings-toggle-label">fal.ai</span>
+          <span className="settings-toggle-desc">
+            Runs every image, video and audio generation.{" "}
+            {status.set
+              ? `Key saved ${status.masked ?? ""}`.trim()
+              : <>No key yet — <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener noreferrer">get one at fal.ai</a>.</>}
+          </span>
+        </div>
+        {status.set && (
+          <>
+            <button type="button" className="settings-btn-secondary" onClick={() => setEditing((v) => !v)}>
+              {editing ? "Cancel" : "Replace key"}
+            </button>
+            <span className="settings-signedin">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Connected
+            </span>
+          </>
+        )}
+      </div>
+      {(editing || !status.set) && (
+      <div className="settings-toggle-row settings-toggle-row--sub">
+        <div className="settings-toggle-info">
+          <input
+            className="settings-input"
+            type="password"
+            value={value}
+            placeholder={status.set ? "Paste a new key to replace it" : "Paste your fal.ai key"}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && value.trim()) void save(value.trim()); }}
+          />
+          {error && <span className="settings-toggle-desc" role="alert">{error}</span>}
+        </div>
+        {status.set && (
+          <button type="button" className="settings-btn-secondary" disabled={busy} onClick={() => void save("")}>
+            Clear
+          </button>
+        )}
+        <button
+          type="button"
+          className="settings-btn-primary"
+          disabled={busy || !value.trim()}
+          onClick={() => void save(value.trim())}
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      )}
+    </>
   );
 }
 
@@ -1432,7 +1548,12 @@ function ProvidersSection() {
       if (res.ok) setAuth(await res.json());
     } catch { /* offline */ }
   }, []);
-  useEffect(() => { void loadAuth(); }, [loadAuth]);
+  useEffect(() => {
+    void loadAuth();
+    // The CLI's sign-in finishes in a browser, so coming back is the cue to re-probe.
+    window.addEventListener("focus", loadAuth);
+    return () => window.removeEventListener("focus", loadAuth);
+  }, [loadAuth]);
   const signIn = async (id: string) => {
     setSigningIn(id);
     try {
@@ -1471,6 +1592,7 @@ function ProvidersSection() {
       <h2 className="settings-section-title">Providers</h2>
       <div className="settings-card settings-card--full">
         {error && <div className="settings-toggle-desc" role="alert">{error}</div>}
+        <FalProviderRow />
         {runners.map((r) => (
           <label className="settings-toggle-row" key={r.id} style={{ cursor: "pointer" }}>
             <ServiceLogo name={r.label} />
@@ -1478,11 +1600,17 @@ function ProvidersSection() {
               <span className="settings-toggle-label">{r.label}</span>
               <span className="settings-toggle-desc">
                 {r.binaryFound ? `Found at ${r.binaryPath}` : `Not installed (looked for "${r.binaryPath}")`}
-                {r.binaryFound && (auth[r.id] ? " · Signed in" : " · Not signed in")}
               </span>
               {!r.binaryFound && <span className="settings-toggle-desc">Install it from Setup above</span>}
             </div>
-            {r.binaryFound && !auth[r.id] && (
+            {r.binaryFound && (auth[r.id] ? (
+              <span className="settings-signedin">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Signed in
+              </span>
+            ) : (
               <button
                 type="button"
                 className="settings-btn-primary"
@@ -1491,7 +1619,7 @@ function ProvidersSection() {
               >
                 {signingIn === r.id ? "Finish sign-in in your browser…" : "Sign in"}
               </button>
-            )}
+            ))}
             <input
               type="radio"
               name="operator-runner"
@@ -1752,7 +1880,9 @@ function ScheduledRunsSection() {
       {error && <div className="settings-toggle-desc" role="alert">{error}</div>}
 
       <div className="settings-card settings-card--full">
-        {jobs.length === 0 && <div className="settings-toggle-desc">No scheduled runs yet.</div>}
+        {jobs.length === 0 && (
+          <div className="settings-empty">Nothing scheduled yet. Add your first run below.</div>
+        )}
         {jobs.map((j) => (
           <div className="settings-toggle-row" key={j.id}>
             <div className="settings-toggle-info">
@@ -1766,8 +1896,8 @@ function ScheduledRunsSection() {
                   </span>
                 : j.last_result && <span className="settings-toggle-desc">{j.last_result.slice(0, 200)}</span>}
             </div>
-            <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void runNow(j.id)}>Run now</button>
-            <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void remove(j.id)}>Delete</button>
+            <button type="button" className="settings-btn-secondary" disabled={busy} onClick={() => void runNow(j.id)}>Run now</button>
+            <button type="button" className="settings-btn-secondary" disabled={busy} onClick={() => void remove(j.id)}>Delete</button>
             <button
               type="button"
               className={`rpanel-toggle ${j.enabled ? "rpanel-toggle--on" : ""}`}
@@ -1783,26 +1913,46 @@ function ScheduledRunsSection() {
       </div>
 
       <div className="settings-card settings-card--full">
-        <div className="settings-toggle-info" style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+        <div className="settings-form">
           <span className="settings-toggle-label">New scheduled run</span>
-          <input
-            type="text" placeholder="Name (e.g. Hero shot variants)"
-            value={name} onChange={(e) => setName(e.target.value)}
-          />
-          <textarea
-            rows={4} placeholder="What should the operator do? Write it as a complete standalone instruction."
-            value={prompt} onChange={(e) => setPrompt(e.target.value)}
-          />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {CRON_PRESETS.map((p) => (
-              <button key={p.cron} type="button" className="settings-btn-primary" onClick={() => setCron(p.cron)}>{p.label}</button>
-            ))}
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="sched-name">Name</label>
+            <input
+              id="sched-name" className="settings-input" type="text" placeholder="Hero shot variants"
+              value={name} onChange={(e) => setName(e.target.value)}
+            />
           </div>
-          <input type="text" placeholder="0 9 * * 1" value={cron} onChange={(e) => setCron(e.target.value)} />
-          <span className="settings-toggle-desc">
-            Five-field cron, in this machine's local time zone: minute hour day-of-month month day-of-week.
-          </span>
-          <div>
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="sched-prompt">Instruction</label>
+            <textarea
+              id="sched-prompt" className="settings-input settings-input--area" rows={4}
+              placeholder="What should the operator do? Write it as a complete standalone instruction."
+              value={prompt} onChange={(e) => setPrompt(e.target.value)}
+            />
+          </div>
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="sched-cron">Schedule</label>
+            <div className="settings-chip-row">
+              {CRON_PRESETS.map((p) => (
+                <button
+                  key={p.cron}
+                  type="button"
+                  className={`settings-chip ${cron === p.cron ? "settings-chip--on" : ""}`}
+                  onClick={() => setCron(p.cron)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <input
+              id="sched-cron" className="settings-input settings-input--mono" type="text"
+              placeholder="0 9 * * 1" value={cron} onChange={(e) => setCron(e.target.value)}
+            />
+            <span className="settings-toggle-desc">
+              Five-field cron, in this machine's local time zone: minute hour day-of-month month day-of-week.
+            </span>
+          </div>
+          <div className="settings-form-actions">
             <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void create()}>Add scheduled run</button>
           </div>
         </div>

@@ -41,7 +41,6 @@ import { FolderManagerPanel } from "./components/FolderManagerPanel";
 import { AxiomManagerPanel } from "./components/AxiomManagerPanel";
 import { StyleManagerPanel } from "./components/StyleManagerPanel";
 import { SettingsPage } from "./components/SettingsPage";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { ClearcheckPanel, type AuditRecord } from "./components/ClearcheckPanel";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { DesignPanel } from "./components/DesignPanel";
@@ -267,7 +266,6 @@ function App() {
       .catch(() => { /* offline */ });
   }, []);
   // Local API-keys modal (fal.ai + Anthropic) for the desktop build.
-  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [wfNodes, setWfNodes] = useState<WorkflowNode[]>(DEMO_WORKFLOW.nodes);
   const [wfEdges, setWfEdges] = useState<WorkflowEdge[]>(DEMO_WORKFLOW.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -2180,7 +2178,6 @@ function App() {
               return willOpen;
             });
           }}
-          onOpenApiKeys={() => setApiKeysOpen(true)}
         />
         {quickSettingsOpen && (
           <QuickSettingsPanel
@@ -2230,6 +2227,7 @@ function App() {
             onClose={() => setAgentOpen(false)}
             onBusyChange={setAgentBusy}
             projectId={activeProjectId || undefined}
+            projects={projects}
             getCanvasContext={() => {
               // Snapshot the open canvas + viewport so operator generations land
               // where the user is looking (first gen) and cascade from there.
@@ -2985,9 +2983,6 @@ function App() {
             initialSection={settingsSection}
             onSignIn={() => { setSettingsOpen(false); setSelectedTool("make"); }}
           />
-        )}
-        {apiKeysOpen && (
-          <SettingsPanel onClose={() => setApiKeysOpen(false)} />
         )}
       </div>
 

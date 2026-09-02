@@ -89,15 +89,18 @@ export type { ReferenceImage, CanvasNode, PendingPlacement };
  * ponytail: picks are local to the mount; deselecting the node clears them.
  */
 type MapEl = { tag: string; text: string; bbox: [number, number, number, number] };
-function HtmlElementPicker({ node, onPick }: { node: CanvasNode; onPick: (els: PickedElement[]) => void }) {
+function HtmlElementPicker({ node, zoom, onPick }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void }) {
   const mapUrl = node.metadata?.map_url as string | undefined;
   const pw = (node.metadata?.pixel_width as number) || node.width;
   const ph = (node.metadata?.pixel_height as number) || node.height;
   const [els, setEls] = useState<MapEl[]>([]);
   const [picked, setPicked] = useState<number[]>([]);
+  // Drag offset in canvas px while a picked element is being nudged.
+  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; moved: boolean; justPicked: boolean } | null>(null);
   useEffect(() => {
     let live = true;
-    setEls([]); setPicked([]);
+    setEls([]); setPicked([]); setDrag(null);
     if (mapUrl) fetch(mapUrl, { credentials: "include" }).then((r) => r.ok ? r.json() : []).then((m) => { if (live && Array.isArray(m)) setEls(m); }).catch(() => {});
     return () => { live = false; };
   }, [mapUrl]);
@@ -107,21 +110,58 @@ function HtmlElementPicker({ node, onPick }: { node: CanvasNode; onPick: (els: P
   useEffect(() => () => onPick([]), [onPick]);
   if (!mapUrl || els.length === 0) return null;
   const sx = node.width / pw, sy = node.height / ph;
+  // Drop: nudge every picked element by the same delta, in the render's CSS px.
+  // The server re-renders with the translate baked into the markup and the
+  // node's src/map update over the canvas broadcast.
+  const commit = (ids: number[], dx: number, dy: number) => {
+    const moves = ids.map((i) => ({ i, dx: Math.round(dx / sx), dy: Math.round(dy / sy) }));
+    // Boxes stay offset until the new map arrives (the mapUrl effect clears it), or snap back on failure.
+    fetch("/api/canvas/html-move", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, moves }) })
+      .then((r) => { if (!r.ok) setDrag(null); })
+      .catch(() => setDrag(null));
+  };
   return (
     <>
-      {els.map((el, i) => (
-        <div
-          key={i}
-          className={`freeform-canvas__html-el${picked.includes(i) ? " freeform-canvas__html-el--picked" : ""}`}
-          title={`<${el.tag}> ${el.text}`}
-          style={{ left: el.bbox[0] * sx, top: el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setPicked((prev) => e.shiftKey ? (prev.includes(i) ? prev.filter((p) => p !== i) : [...prev, i]) : (prev.length === 1 && prev[0] === i ? [] : [i]));
-          }}
-        />
-      ))}
+      {els.map((el, i) => {
+        const isPicked = picked.includes(i);
+        return (
+          <div
+            key={i}
+            className={`freeform-canvas__html-el${isPicked ? " freeform-canvas__html-el--picked" : ""}`}
+            title={`<${el.tag}> ${el.text}`}
+            style={{
+              left: el.bbox[0] * sx, top: el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy,
+              transform: isPicked && drag ? `translate(${drag.dx}px, ${drag.dy}px)` : undefined,
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (e.button !== 0) return;
+              // Pick on press so a drag can start on an unpicked element.
+              const justPicked = !isPicked;
+              if (justPicked) setPicked((prev) => e.shiftKey ? [...prev, i] : [i]);
+              dragRef.current = { x: e.clientX, y: e.clientY, moved: false, justPicked };
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              const d = dragRef.current;
+              if (!d) return;
+              const dx = (e.clientX - d.x) / zoom, dy = (e.clientY - d.y) / zoom;
+              if (!d.moved && Math.hypot(dx, dy) * zoom < 3) return;
+              d.moved = true;
+              setDrag({ dx, dy });
+            }}
+            onPointerUp={(e) => {
+              const d = dragRef.current;
+              dragRef.current = null;
+              if (!d) return;
+              if (d.moved) commit(picked.includes(i) ? picked : [...picked, i], (e.clientX - d.x) / zoom, (e.clientY - d.y) / zoom);
+              // Plain click on an already-picked element unpicks it (shift-click toggles it out of a set).
+              else if (!d.justPicked) setPicked((prev) => e.shiftKey ? prev.filter((p) => p !== i) : (prev.length === 1 ? [] : [i]));
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        );
+      })}
     </>
   );
 }
@@ -3241,7 +3281,7 @@ export function FreeformCanvas({
               ) : selectionBox ? null : (
                 <>
                   {node.metadata?.kind === "html" && selectedIds.size === 1 && onElementPick && (
-                    <HtmlElementPicker node={node} onPick={onElementPick} />
+                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} />
                   )}
                   {(["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <div

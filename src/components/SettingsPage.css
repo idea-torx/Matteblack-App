@@ -3116,6 +3116,11 @@
   letter-spacing: 0;
   margin: 0 0 10px;
 }
+/* Stacked cards were touching. Spaced here rather than with a wrap gap, which
+ * would also push the section title off its card. */
+.settings-notifications-wrap .settings-card + .settings-card {
+  margin-top: 16px;
+}
 .settings-notifications-wrap .settings-card + .settings-section-title {
   margin-top: 24px;
 }
@@ -3221,3 +3226,106 @@
 }
 .settings-switch:checked { background: #4c8dff; }
 .settings-switch:checked::before { left: 18px; }
+
+/* A provider you're already connected to. Not a button — there is nothing to
+ * press once you're in, and a disabled button reads as broken. */
+.settings-signedin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The key field belongs to the row above it, so it shares that row's slot and
+ * drops the separator between them. */
+.settings-toggle-row--sub {
+  border-top: none !important;
+  padding-top: 0;
+  padding-left: 36px;
+}
+/* Match the buttons beside it — the form default is 40px and stood proud. */
+.settings-toggle-row--sub .settings-input {
+  height: 34px;
+  padding: 7px 12px;
+}
+
+/* ─── Scheduled runs form ───
+ * The inputs here were raw <input>/<textarea> with no class, so they rendered
+ * as browser defaults inside a styled card. They use the card's own field
+ * vocabulary now. */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+.settings-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.settings-input--area {
+  height: auto;
+  min-height: 88px;
+  line-height: 1.5;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+}
+.settings-input--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+
+/* Presets pick a value — they aren't four competing submit buttons, so they
+ * read as chips with the current one marked. */
+.settings-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.settings-chip {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: rgba(var(--tint-rgb), 0.06);
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.settings-chip:hover {
+  color: var(--text-primary);
+  background: rgba(var(--tint-rgb), 0.1);
+}
+.settings-chip--on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--tint-rgb), 0.04);
+}
+
+.settings-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+
+/* 4px corners across settings surfaces, matching the quick panel. */
+.settings-card,
+.settings-nav-btn,
+.settings-input,
+.settings-btn-primary,
+.settings-btn-secondary,
+.settings-btn-danger,
+.settings-btn-sm,
+.settings-logo {
+  border-radius: 4px;
+}

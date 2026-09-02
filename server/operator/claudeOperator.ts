@@ -129,7 +129,7 @@ export function allowedToolsFor(writable: boolean): string[] {
 
 /** Path + command to run the bundled MCP server. Electron main passes these via
  *  env (MB_APP_EXEC / MB_MCP_SCRIPT); dev falls back to this process + cwd. */
-export function mcpServerSpec(review: boolean, mcpTools: string[]): { command: string; args: string[]; env: Record<string, string> } {
+export function mcpServerSpec(review: boolean, mcpTools: string[], botId?: string): { command: string; args: string[]; env: Record<string, string> } {
   const command = process.env.MB_APP_EXEC || process.execPath;
   const script = process.env.MB_MCP_SCRIPT || path.join(process.cwd(), "dist-mcp", "index.js");
   return {
@@ -146,6 +146,9 @@ export function mcpServerSpec(review: boolean, mcpTools: string[]): { command: s
       ELECTRON_RUN_AS_NODE: "1",
       MATTEBLACK_DATA_DIR: DATA_DIR,
       MB_TOOLS: mcpTools.join(","),
+      // Which memory store this turn reads and writes: unset = the shared
+      // session memory, set = that bot's own.
+      ...(botId ? { MB_BOT_ID: botId } : {}),
       ...(review ? { MB_SKILL_ACTOR: "review" } : {}),
     },
   };
@@ -271,6 +274,13 @@ export interface RunOperatorOptions {
   review?: boolean;
   /** Override the configured runner for this turn. */
   runner?: RunnerId;
+  /** Run as this bot: its own durable memory instead of the shared session
+   *  memory, both in the system prompt and in the recall/remember/forget tools.
+   *  Validated by the route against the caller's bots. */
+  botId?: string;
+  /** Who this bot is, in the user's words — prepended to the system prompt so
+   *  the bot answers as itself rather than as the generic operator. */
+  botPersona?: { name: string; description: string };
 }
 
 /**
@@ -300,7 +310,12 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
       }`
     : " The user has not attached any repos yet.";
 
-  const systemPrompt = operatorSystemPrompt() + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions();
+  const persona = opts.botPersona
+    ? `\n\nYOU ARE "${opts.botPersona.name}", a named collaborator this user created.`
+      + (opts.botPersona.description ? ` They describe you as: ${opts.botPersona.description}` : "")
+      + " Work as that collaborator — it is your brief, and it outranks your generic defaults where they disagree."
+    : "";
+  const systemPrompt = operatorSystemPrompt() + persona + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId);
   // Codex reads AGENTS.md out of its cwd; Claude keeps --append-system-prompt
   // (it reads CLAUDE.md, and duplicating the doc into its context helps nobody).
   // Rewritten every turn — memory and the skill index move. Safe to drop in
@@ -313,7 +328,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
   const mcpTools = allowedTools
     .filter((t) => t.startsWith(`mcp__${MCP_SERVER_KEY}__`))
     .map((t) => t.slice(`mcp__${MCP_SERVER_KEY}__`.length));
-  const mcp = mcpServerSpec(opts.review === true, mcpTools);
+  const mcp = mcpServerSpec(opts.review === true, mcpTools, opts.botId);
 
   const ctx: RunnerContext = {
     message: opts.message,
@@ -427,6 +442,8 @@ export function cleanEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** stdout AND stderr: codex prints "Logged in using ChatGPT" on stderr, and
+ *  reading only stdout made every signed-in account read as signed out. */
 function runCli(runner: Runner, args: string[], timeoutMs: number): Promise<{ stdout: string; code: number | null }> {
   const bin = runner.resolveBinary();
   if (!bin.found) return Promise.resolve({ stdout: "", code: 127 });
@@ -435,6 +452,7 @@ function runCli(runner: Runner, args: string[], timeoutMs: number): Promise<{ st
     const child = spawn(bin.path, args, { env: cleanEnv(), stdio: ["ignore", "pipe", "pipe"], shell: /\.(cmd|bat)$/i.test(bin.path) });
     const timer = setTimeout(() => child.kill(), timeoutMs);
     child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stdout += d; });
     child.on("error", () => { clearTimeout(timer); resolve({ stdout, code: 127 }); });
     child.on("close", (code) => { clearTimeout(timer); resolve({ stdout, code }); });
   });

@@ -17,7 +17,7 @@ import { broadcastCanvasUpdate } from "./canvas.js";
 import { getOperatorContext } from "../services/operatorCanvasContext.js";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 import { saveFile, getFileStream, parseFileUrl } from "../storage.js";
-import { canRenderHtml, renderHtmlToPng } from "../utils/htmlRender.js";
+import { canRenderHtml, renderHtmlToPng, type HtmlMove } from "../utils/htmlRender.js";
 import { resolveLocalPath } from "../utils/localPath.js";
 import { resolveUploadPath } from "../utils/uploadPath.js";
 import { UPLOADS_DIR } from "../config/runtime.js";
@@ -290,6 +290,56 @@ router.post("/api/agent/render-html", requireMcpToken, requireAuth, async (req: 
     const message = err instanceof Error ? err.message : "Render failed.";
     console.error("[agent/render-html] failed:", err);
     res.status(500).json({ error: message });
+  }
+});
+
+/** The user dragged elements of a rendered node: re-render with translates
+ *  baked into the markup, so the agent's next edit starts from where things are.
+ *  User-facing (session auth), no MCP token — no model turn involved. */
+router.post("/api/canvas/html-move", requireAuth, async (req: AuthRequest, res) => {
+  const { nodeId, moves } = (req.body ?? {}) as { nodeId?: unknown; moves?: unknown };
+  if (typeof nodeId !== "string" || !/^[0-9a-f-]{36}$/i.test(nodeId) || !Array.isArray(moves)) { res.status(400).json({ error: "bad request" }); return; }
+  const clean = moves
+    .filter((m): m is HtmlMove => m && Number.isInteger(m.i) && Number.isFinite(m.dx) && Number.isFinite(m.dy))
+    .slice(0, 50);
+  if (clean.length === 0) { res.status(400).json({ error: "no moves" }); return; }
+  const userId = req.userId ?? "";
+  try {
+    // The node's own canvas, owned by the caller — no operator context needed.
+    const owner = await pool.query(
+      `SELECT n.canvas_id FROM canvas_nodes n JOIN canvas_states c ON c.id = n.canvas_id WHERE n.id = $1 AND c.user_id = $2`,
+      [nodeId, userId],
+    );
+    const canvasId = owner.rows[0]?.canvas_id as string | undefined;
+    if (!canvasId) { res.status(404).json({ error: "No such node." }); return; }
+    const stored = await loadNodeHtml(canvasId, nodeId);
+    if ("error" in stored) { res.status(404).json({ error: stored.error }); return; }
+    const width = stored.width || 1080, height = stored.height || 1350;
+    // Placeholders inlined for the render, but the stored copy keeps them, so
+    // the moved markup is re-derived by swapping the inlined pixels back out.
+    const { html: markup } = await inlineAssets(stored.html, stored.images);
+    const { png, map, html } = await renderHtmlToPng(markup, width, height, clean);
+    if (!html) { res.status(500).json({ error: "renderer returned no markup" }); return; }
+    // The serialized page carries the inlined pixels where the stored copy had
+    // `asset:` names — swap them back so a later edit still resolves assets.
+    let source = html;
+    for (const [name, ref] of Object.entries(stored.images ?? {})) {
+      const uri = await toDataUri(ref);
+      if (typeof uri === "string") source = source.split(uri).join(`asset:${name}`);
+    }
+    const stem = uuidv4();
+    const src = await saveFile(`users/${userId}/html`, `${stem}.png`, png);
+    const mapUrl = await saveFile(`users/${userId}/html`, `${stem}.map.json`, Buffer.from(JSON.stringify(map), "utf8"));
+    const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(source, "utf8"));
+    await pool.query(
+      `UPDATE canvas_nodes SET src = $1, metadata = metadata || $2::jsonb WHERE id = $3 AND canvas_id = $4`,
+      [src, JSON.stringify({ html_url: htmlUrl, map_url: mapUrl }), nodeId, canvasId],
+    );
+    broadcastCanvasUpdate(canvasId, "");
+    res.json({ nodeId, src, mapUrl });
+  } catch (err) {
+    console.error("[canvas/html-move] failed:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Move failed." });
   }
 });
 

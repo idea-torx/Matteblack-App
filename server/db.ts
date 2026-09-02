@@ -714,6 +714,25 @@ export async function initDB() {
 
     CREATE INDEX IF NOT EXISTS idx_operator_jobs_due ON operator_jobs(next_run_at) WHERE enabled;
 
+    -- Bots: named, persistent collaborators for a brand. Unlike a session (a
+    -- chat thread with the shared agent memory), a bot owns a durable memory
+    -- store of its own — DATA_DIR/agent-memory/bots/<id>/ — and a monthly
+    -- budget. The budget is recorded here only; nothing spends against it yet.
+    CREATE TABLE IF NOT EXISTS bots (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      budget_cents INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Personality: an emoji the user picks in the panel, and a description the
+    -- bot is told about itself on every turn (its brief, in its own words).
+    ALTER TABLE bots ADD COLUMN IF NOT EXISTS icon TEXT DEFAULT NULL;
+    ALTER TABLE bots ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_bots_user ON bots(user_id);
+
     CREATE TABLE IF NOT EXISTS credit_config (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       generation_type TEXT UNIQUE NOT NULL,
