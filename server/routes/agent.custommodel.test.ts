@@ -68,3 +68,4 @@ const turbo = gen({ kind: "video", explicitModel: "h3-turbo" });
 assert.equal(turbo.resolvedModel, "h3-turbo-t2v");
 assert.equal(gen({ kind: "video", explicitModel: "h3 max turbo" }).resolvedModel, "h3-turbo-t2v");
 assert.equal(gen({ kind: "video", explicitModel: "no-such-model" }).resolvedModel, "h3-max-t2v");
+assert.equal(gen({ kind: "video", explicitModel: "h3-turbo", videoResolution: "768p" }).videoResolution, "768p");

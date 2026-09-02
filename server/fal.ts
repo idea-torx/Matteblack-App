@@ -344,7 +344,7 @@ function normalizeSeedanceResolution(value: unknown): "480p" | "720p" | "1080p" 
   if (typeof value === "string") {
     const v = value.toLowerCase().trim();
     if (v === "480p" || v === "480") return "480p";
-    if (v === "720p" || v === "720") return "720p";
+    if (v === "720p" || v === "720" || v === "768p") return "720p";
     if (v === "1080p" || v === "1080") return "1080p";
   }
   return "1080p";

@@ -1784,9 +1784,9 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       videoResolution: {
         type: "string",
-        enum: ["480p", "720p", "1080p"],
+        enum: ["480p", "720p", "768p", "1080p"],
         description:
-          "Video output resolution. Set it when the user names one ('480p', 'draft res', '1080p', 'full HD'). Omit for the 720p default. Ignored for images. Each model clamps to what it actually supports (H3 Max: 480p or 768p).",
+          "Video output resolution. Set it when the user names one ('480p', 'draft res', '1080p', 'full HD'). Omit for the 720p default. Ignored for images. Each model clamps to what it actually supports (H3 Max/Turbo: 480p or 768p; 768p on other models renders 720p).",
       },
       durationSeconds: {
         type: "integer",
@@ -2478,7 +2478,8 @@ function parseGenerateMediaInput(
   // Duration (video only): explicit value wins; otherwise sniff the user's
   // message for "5 second video" / "10s clip" etc. null = backend default.
   const vresRaw = typeof input.videoResolution === "string" ? input.videoResolution.toLowerCase().trim() : "";
-  const videoResolution = ["480p", "720p", "1080p"].includes(vresRaw) ? vresRaw : null;
+  // 768p is H3's real tier; the skill names it, so the tool must take it.
+  const videoResolution = ["480p", "720p", "768p", "1080p"].includes(vresRaw) ? vresRaw : null;
   let durationSeconds: number | null = null;
   if (kind === "video") {
     const durRaw = input.durationSeconds ?? input.duration_seconds ?? input.duration;
@@ -4760,7 +4761,11 @@ router.post("/api/agent/cost", requireMcpToken, requireAuth, (req: AuthRequest, 
   const requested = typeof body.model === "string" ? body.model : null;
   // No model named -> price the whole catalog for the given params, so the
   // agent can say which is cheapest rather than guessing.
-  const keys = requested ? [requested] : falPricedModelKeys();
+  // A family name ("h3-turbo", "h3 max turbo") prices its text variant: the
+  // skills teach family names, so the estimator must take them too.
+  const keys = requested
+    ? [estimateFalCost(requested) ? requested : resolveExplicitModel(requested)?.t2 ?? requested]
+    : falPricedModelKeys();
   const num = (v: unknown) => {
     const n = Number(v);
     return isFinite(n) && n > 0 ? n : undefined;
