@@ -46,6 +46,7 @@ export const CATALOG: { id: string; label: string; url: string; blurb: string }[
   { id: "google-drive", label: "Google Drive", url: "https://drivemcp.googleapis.com/mcp/v1", blurb: "Read docs, sheets and files from Drive." },
   { id: "dropbox", label: "Dropbox", url: "https://mcp.dropbox.com/mcp", blurb: "Files and folders in your Dropbox (open beta)." },
   { id: "gmail", label: "Gmail", url: "https://gmailmcp.googleapis.com/mcp/v1", blurb: "Search and read mail." },
+  { id: "higgsfield", label: "Higgsfield", url: "https://mcp.higgsfield.ai/mcp", blurb: "30+ image and video models (Sora, Veo, Kling, Soul) on your Higgsfield plan." },
   { id: "figma", label: "Figma", url: "https://mcp.figma.com/mcp", blurb: "Pull frames, screenshots and design tokens." },
   { id: "notion", label: "Notion", url: "https://mcp.notion.com/mcp", blurb: "Read and write pages and databases." },
   { id: "linear", label: "Linear", url: "https://mcp.linear.app/mcp", blurb: "Issues, projects and cycles." },
