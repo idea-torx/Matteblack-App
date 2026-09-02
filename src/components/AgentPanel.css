@@ -1115,6 +1115,39 @@
   width: 100%;
   isolation: isolate;
   display: grid;
+  /* The textarea's own fill, repeated on the wrap so the button-row band
+   * below can match it. Overridden per theme alongside the textarea. */
+  --composer-bg: #ecedf0;
+}
+
+/* Button-row band. The textarea reserves 52px of bottom padding for the (+),
+ * pin and send buttons, but padding only holds space at the END of the
+ * content — scroll a long prompt and the lines run straight under the
+ * buttons. This fills that row with the composer's own colour: above the
+ * textarea, below the buttons (which sit at z-index 2). */
+.agent-panel__textarea-wrap::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  height: 46px;
+  border-radius: 0 0 4px 4px;
+  background: var(--composer-bg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Not in the idle pill — that state is one empty line tall, and its buttons
+ * are centred rather than sitting in a reserved row. */
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)::after {
+  display: none;
+}
+
+/* Mobile keeps the compact padding and no reserved row, so a band there would
+ * cover real text instead of scrolled-away text. */
+.agent-panel--mobile .agent-panel__textarea-wrap::after {
+  display: none;
 }
 
 /* Perpetual animations are this app's single largest idle cost. Any animation
@@ -2260,6 +2293,10 @@
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state below use a pure white fill so the text entry area
  * reads as a bright, distinct chip on the panel paper. */
+[data-theme="light"] .agent-panel__textarea-wrap {
+  --composer-bg: #ffffff;
+}
+
 [data-theme="light"] .agent-panel__textarea {
   background: #ffffff;
   background-clip: padding-box;
@@ -2436,6 +2473,10 @@
 
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state. White pill → dark raised pill in dark mode. */
+[data-theme="dark"] .agent-panel__textarea-wrap {
+  --composer-bg: #1b1b1f;
+}
+
 [data-theme="dark"] .agent-panel__textarea {
   background: #1b1b1f;
   background-clip: padding-box;

@@ -3,6 +3,7 @@ import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
 import { CodexMark } from "./CodexMark";
 import { ThinkingPill } from "./ThinkingPill";
+import { humanizeTool, stepLabel, type Step } from "./thinkingLabel";
 import { StreamingText } from "./StreamingText";
 import { renderMarkdown } from "../utils/markdown";
 import type { ReferenceImage, PickedElement } from "../types/canvas";
@@ -166,11 +167,6 @@ type Gen = {
   error?: string;
 };
 
-/** A visible step in the "thinking" space: a reasoning block or a skill/memory tool call. */
-type Step =
-  | { id: string; kind: "thinking"; text: string }
-  | { id: string; kind: "tool"; label: string; status: "running" | "ready" | "failed" };
-
 const STEP_LABELS: Record<string, (input: Record<string, unknown>) => string> = {
   list_skills: () => "Searching skills",
   get_skill: (i) => `Reading skill: ${i.slug ?? i.name ?? ""}`,
@@ -188,24 +184,20 @@ const STEP_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   delete_job: () => "Deleting scheduled run",
 };
 
-/** Chips in the thinking space: skill/memory calls and expandable reasoning. */
+/** Expandable reasoning blocks only. Tool calls used to render here as a chip
+ * row above the bubble; they now drive the Thinking pill's label instead —
+ * one live line saying what the agent is doing, not a growing list. */
 function Steps({ steps }: { steps: Step[] }) {
-  if (steps.length === 0) return null;
+  const thinking = steps.filter((st) => st.kind === "thinking");
+  if (thinking.length === 0) return null;
   return (
     <div className="agent-panel__steps">
-      {steps.map((st) =>
-        st.kind === "thinking" ? (
-          <details key={st.id} className="agent-step agent-step--thinking">
-            <summary>Thinking</summary>
-            <div className="agent-step__text">{st.text}</div>
-          </details>
-        ) : (
-          <span key={st.id} className={`agent-step agent-step--${st.status}`}>
-            {st.status === "running" && <QuantumThinking size={12} ariaLabel="" />}
-            {st.label}
-          </span>
-        ),
-      )}
+      {thinking.map((st) => (
+        <details key={st.id} className="agent-step agent-step--thinking">
+          <summary>Thinking</summary>
+          <div className="agent-step__text">{st.kind === "thinking" ? st.text : ""}</div>
+        </details>
+      ))}
     </div>
   );
 }
@@ -638,8 +630,12 @@ export function OperatorPanel({
       case "tool_use":
         if (GEN_TOOLS.has(ev.tool)) {
           patchAssistant((m) => ({ ...m, gens: [...m.gens, { id: ev.id, tool: ev.tool, status: "running" }] }));
-        } else if (STEP_LABELS[ev.tool]) {
-          const label = STEP_LABELS[ev.tool]((ev.input && typeof ev.input === "object" ? ev.input : {}) as Record<string, unknown>);
+        } else {
+          // Every non-generation tool gets a line. STEP_LABELS phrases the ones
+          // worth phrasing; anything else falls back to its own name, so a tool
+          // added later still narrates instead of silently reading "Thinking…".
+          const input = (ev.input && typeof ev.input === "object" ? ev.input : {}) as Record<string, unknown>;
+          const label = STEP_LABELS[ev.tool] ? STEP_LABELS[ev.tool](input) : humanizeTool(ev.tool);
           patchAssistant((m) => ({ ...m, steps: [...(m.steps ?? []), { id: ev.id, kind: "tool", label, status: "running" }] }));
         }
         break;
@@ -1507,7 +1503,7 @@ export function OperatorPanel({
                       ) : m.streaming && !hasText ? (
                         <>
                           <Steps steps={steps} />
-                          <ThinkingPill className="agent-panel__thinking" />
+                          <ThinkingPill className="agent-panel__thinking" label={stepLabel(steps)} />
                         </>
                       ) : (
                         <>
@@ -1517,7 +1513,7 @@ export function OperatorPanel({
                           ) : (
                             <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
                           )}
-                          {m.streaming && <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" />}
+                          {m.streaming && <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" label={stepLabel(steps)} />}
                         </>
                       )}
                     </div>
