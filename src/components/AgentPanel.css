@@ -162,7 +162,7 @@
 }
 
 .agent-panel__alive--busy .quantum-thinking {
-  --qt-color: #3b82f6;
+  --qt-color: var(--accent);
 }
 
 /* Header action buttons — white "pill" pattern with a soft drop shadow
@@ -334,7 +334,7 @@
 
 .agent-panel__history-item--active {
   border-color: rgba(138, 180, 255, 0.45);
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .agent-panel__history-title {
@@ -398,8 +398,8 @@
 
 .agent-panel__history-action--danger:hover {
   color: #fecaca;
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(var(--danger-rgb), 0.1);
+  border-color: rgba(var(--danger-rgb), 0.3);
 }
 
 .agent-panel__messages {
@@ -490,8 +490,8 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(59, 130, 246, 0.08);
-  color: #3b82f6;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 
@@ -728,8 +728,8 @@
 
 .agent-panel__bubble--error {
   align-self: flex-start;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.32);
+  background: rgba(var(--danger-rgb), 0.12);
+  border: 1px solid rgba(var(--danger-rgb), 0.32);
   color: #fecaca;
   white-space: pre-wrap;
   padding: 8px 10px;
@@ -1026,8 +1026,8 @@
 .agent-panel__error {
   font-size: 11.5px;
   color: #fecaca;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: rgba(var(--danger-rgb), 0.08);
+  border: 1px solid rgba(var(--danger-rgb), 0.24);
   padding: 6px 8px;
   border-radius: 5px;
 }
@@ -1062,13 +1062,13 @@
 }
 
 .agent-gen__placed-chip--failed {
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(var(--danger-rgb), 0.4);
+  background: rgba(var(--danger-rgb), 0.16);
   color: rgba(254, 202, 202, 0.95);
 }
 
 .agent-gen__placed-chip--failed:hover {
-  background: rgba(239, 68, 68, 0.28);
+  background: rgba(var(--danger-rgb), 0.28);
 }
 
 .agent-panel__context-warning {
@@ -1088,8 +1088,8 @@
 }
 .agent-panel__context-warning--critical {
   color: #fecaca;
-  background: rgba(239, 68, 68, 0.10);
-  border: 1px solid rgba(239, 68, 68, 0.32);
+  background: rgba(var(--danger-rgb), 0.10);
+  border: 1px solid rgba(var(--danger-rgb), 0.32);
 }
 .agent-panel__context-warning-btn {
   flex-shrink: 0;
@@ -1219,7 +1219,7 @@
     90deg,
     rgba(var(--tint-rgb), 0.25) 0%,
     rgba(var(--tint-rgb), 0.25) 25%,
-    #3B82F6 50%,
+    var(--accent) 50%,
     rgba(var(--tint-rgb), 0.25) 75%,
     rgba(var(--tint-rgb), 0.25) 100%
   );
@@ -1371,15 +1371,26 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  /* A horizontal ramp scrolling through the button. The size is the whole
+   * trick: 2000% stretches the seventeen stops to ~700px, so each stop spans
+   * roughly two button widths and the 36px window only ever holds one
+   * colour easing into the next. At 300% all nine were inside the window at
+   * once and averaged out to mud. --gradient-brand-loop mirrors the ramp so
+   * the scroll never crosses a seam. */
+  background: var(--gradient-brand-loop);
+  background-size: 2000% 100%;
+  animation: agent-send-ramp 24s linear infinite;
   border: none;
   color: #fff;
   cursor: pointer;
   padding: 0;
-  transition: filter 0.08s, background 0.08s, box-shadow 0.08s, top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), right 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 1px 2px rgba(15, 17, 21, 0.10),
-    0 2px 6px rgba(37, 99, 235, 0.30);
+  transition: filter 0.08s, top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), right 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+}
+
+@keyframes agent-send-ramp {
+  0%   { background-position:   0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 .agent-panel__send:hover:not(:disabled) {
@@ -1396,71 +1407,20 @@
    * blue CTA gradient blooms in over it on a slow loop and recedes —
    * "grey → blue → grey" — so the empty state still announces itself
    * as the call to action without permanently advertising as armed. */
-  background: #c7c8cc;
-  color: #fff;
+  /* Inactive keeps the ramp at full strength — dimming the whole chip is what
+   * made it look washed out. Only the arrow softens, which is enough to say
+   * "nothing to send" without draining the colour. */
+  color: rgba(255, 255, 255, 0.6);
   cursor: not-allowed;
-  isolation: isolate;
-  /* Halo pulses in sync with the gradient bloom. Sized small at rest
-   * (matching a quiet grey chip) and expanding into a brand-blue glow
-   * at the peak of the cycle. */
-  animation: agent-send-cta-shadow 5.5s ease-in-out infinite;
-}
-
-/* The blue gradient lives on a pseudo-element so we can fade its
- * opacity independently from the base grey. Layered behind the icon
- * via stacking order set on .agent-panel__send:disabled > *. */
-.agent-panel__send:disabled::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    #60a5fa 0%,
-    #3b82f6 35%,
-    #2563eb 65%,
-    #4f46e5 100%
-  );
-  background-size: 220% 220%;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 0;
-  animation:
-    agent-send-cta-fade  5.5s ease-in-out infinite,
-    agent-send-cta-shift 5.5s ease-in-out infinite;
-}
-
-/* Keep the arrow icon above the blue overlay. */
-.agent-panel__send:disabled > * {
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes agent-send-cta-fade {
-  0%, 100% { opacity: 0; }
-  50%      { opacity: 1; }
-}
-
-@keyframes agent-send-cta-shift {
-  0%   { background-position:   0% 50%; }
-  100% { background-position: 100% 50%; }
-}
-
-@keyframes agent-send-cta-shadow {
-  0%, 100% { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.10); }
-  50%      { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.14), 0 6px 18px rgba(59, 130, 246, 0.40); }
+  box-shadow: none;
 }
 
 /* Honor reduced-motion: hold the quiet grey resting state and skip
  * the blue bloom so the button doesn't pulse. */
 @media (prefers-reduced-motion: reduce) {
-  .agent-panel__send:disabled,
-  .agent-panel__send:disabled::after {
-    animation: none;
-  }
-  .agent-panel__send:disabled::after {
-    opacity: 0;
-  }
+  /* Hold the ramp still rather than dropping it; a colourless button would
+   * lose the distinction from every other control in the composer. */
+  .agent-panel__send { animation: none; background-position: 50% 50%; }
 }
 
 /* Grey, not red: stopping a turn is a normal thing to do — you interrupt to
@@ -1582,13 +1542,13 @@
 }
 
 .agent-gen--on-canvas .agent-gen__placed-chip--failed {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(var(--danger-rgb), 0.28);
+  background: rgba(var(--danger-rgb), 0.08);
   color: rgba(254, 202, 202, 0.7);
 }
 
 .agent-gen--on-canvas .agent-gen__placed-chip--failed:hover {
-  background: rgba(239, 68, 68, 0.16);
+  background: rgba(var(--danger-rgb), 0.16);
   color: rgba(254, 202, 202, 0.9);
 }
 
@@ -1697,14 +1657,14 @@
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  background: rgba(239, 68, 68, 0.85);
+  background: rgba(var(--danger-rgb), 0.85);
   border: 1px solid rgba(var(--tint-rgb), 0.18);
   border-radius: 6px;
   cursor: pointer;
 }
 
 .agent-gen__cta:hover {
-  background: rgba(239, 68, 68, 1);
+  background: rgba(var(--danger-rgb), 1);
 }
 
 .agent-gen__cta-hint {
@@ -2279,7 +2239,7 @@
   background: var(--bg-code);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__markdown a { color: #2563eb; }
+[data-theme="light"] .agent-panel__markdown a { color: var(--accent-hover); }
 [data-theme="light"] .agent-panel__markdown a:hover { color: #1d4ed8; }
 [data-theme="light"] .agent-panel__markdown blockquote,
 [data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
@@ -2501,20 +2461,6 @@
   box-shadow: none;
 }
 
-/* Disabled send button in dark mode — swap the resting grey for an
- * inert dark grey that reads on the deep panel surface. The blue
- * bloom and shadow pulse continue to animate from the base rule;
- * we just bump the halo so the glow has presence in dark theme. */
-[data-theme="dark"] .agent-panel__send:disabled {
-  background: #3a3a40;
-  animation: agent-send-cta-shadow-dark 5.5s ease-in-out infinite;
-}
-
-@keyframes agent-send-cta-shadow-dark {
-  0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.40); }
-  50%      { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px rgba(59, 130, 246, 0.50); }
-}
-
 /* Alive (online) spinner — base rule uses a low-alpha grey ring that
  * reads on the light paper but disappears against the dark panel.
  * Bump the ring contrast so the "online" cue stays legible. */
@@ -2598,7 +2544,7 @@
 }
 
 .agent-panel__mention-item--active {
-  background: rgba(59, 130, 246, 0.10);
+  background: rgba(var(--accent-rgb), 0.10);
 }
 
 .agent-panel__mention-dot {
@@ -2646,7 +2592,7 @@
 }
 
 .agent-panel__mention-source--platform {
-  color: #2563eb;
+  color: var(--accent-hover);
   background: rgba(37, 99, 235, 0.10);
 }
 
@@ -2717,7 +2663,7 @@
 }
 
 [data-theme="dark"] .agent-panel__mention-item--active {
-  background: rgba(59, 130, 246, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 [data-theme="dark"] .agent-panel__mention-dot {
@@ -2741,7 +2687,7 @@
 
 [data-theme="dark"] .agent-panel__mention-source--platform {
   color: #93c5fd;
-  background: rgba(59, 130, 246, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 [data-theme="dark"] .agent-panel__mention-source--workspace {
@@ -2898,31 +2844,6 @@
 
 /* Second composer button, right of the (+). */
 .agent-panel__upload--doc { left: 43px; }
-
-/* Kept at the end of the file on purpose: the `animation:` shorthands above
- * (including the dark-theme .agent-panel__send:disabled variant) would reset
- * play-state back to running if these came first. See the note by
- * the note above for why the idle loops are paused at all. */
-.agent-panel__send:disabled,
-.agent-panel__send:disabled::after {
-  animation-play-state: paused;
-}
-.agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
-.agent-panel__textarea-wrap:hover .agent-panel__send:disabled::after,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled::after {
-  animation-play-state: running;
-}
-
-/* The dark-theme rule above re-declares `animation` at higher specificity, so
- * it needs its own pause/run pair rather than inheriting the one above. */
-[data-theme="dark"] .agent-panel__send:disabled {
-  animation-play-state: paused;
-}
-[data-theme="dark"] .agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
-[data-theme="dark"] .agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled {
-  animation-play-state: running;
-}
 
 /* ----- Steps: skill/memory chips + expandable thinking, above the reply ----- */
 .agent-panel__steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }

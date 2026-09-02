@@ -93,7 +93,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+  background: var(--gradient-brand-radial);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -152,15 +152,15 @@
 }
 
 .qs-role-pill--plan {
-  background: rgba(59, 130, 246, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   color: #93bbfd;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
 }
 
 .qs-role-pill--admin {
-  background: rgba(34, 197, 94, 0.16);
+  background: rgba(var(--success-rgb), 0.16);
   color: #86efac;
-  border: 1px solid rgba(34, 197, 94, 0.32);
+  border: 1px solid rgba(var(--success-rgb), 0.32);
 }
 
 .qs-account-email {
@@ -176,10 +176,10 @@
 .qs-guest-btn {
   display: flex; align-items: center; justify-content: center; width: 100%;
   font-size: 12px; font-weight: 600; color: #fff; padding: 9px 0;
-  border-radius: 6px; background: #3b82f6; border: none; cursor: pointer;
+  border-radius: 6px; background: var(--accent); border: none; cursor: pointer;
   transition: background 0.12s;
 }
-.qs-guest-btn:hover { background: #2563eb; }
+.qs-guest-btn:hover { background: var(--accent-hover); }
 
 /* ─── Credits card ─── */
 .qs-credits-card {
@@ -254,7 +254,7 @@
 
 .qs-credits-fill {
   height: 100%;
-  background: var(--accent, #3b82f6);
+  background: var(--accent);
   transition: width 0.3s ease;
 }
 
@@ -334,7 +334,7 @@
   height: 18px;
   padding: 0 6px;
   border-radius: 9px;
-  background: #ef4444;
+  background: var(--danger);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -563,10 +563,10 @@
 
 .qs-signout-card .qs-row { background: transparent; }
 
-.qs-row--signout { color: #f87171; }
-.qs-row--signout .qs-row-icon { color: #f87171; }
-.qs-row--signout:hover { color: #ef4444; background: rgba(248, 113, 113, 0.08); }
-.qs-row--signout:hover .qs-row-icon { color: #ef4444; }
+.qs-row--signout { color: var(--danger-fg); }
+.qs-row--signout .qs-row-icon { color: var(--danger-fg); }
+.qs-row--signout:hover { color: var(--danger); background: rgba(248, 113, 113, 0.08); }
+.qs-row--signout:hover .qs-row-icon { color: var(--danger); }
 
 [data-theme="dark"] .qs-signout-card {
   background: #1f1f24;
@@ -575,9 +575,9 @@
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 4px 12px rgba(0, 0, 0, 0.45);
 }
-[data-theme="dark"] .qs-row--signout { color: #f87171; }
-[data-theme="dark"] .qs-row--signout:hover { color: #fca5a5; background: rgba(248, 113, 113, 0.12); }
-[data-theme="dark"] .qs-row--signout:hover .qs-row-icon { color: #fca5a5; }
+[data-theme="dark"] .qs-row--signout { color: var(--danger-fg); }
+[data-theme="dark"] .qs-row--signout:hover { color: var(--danger-fg); background: rgba(248, 113, 113, 0.12); }
+[data-theme="dark"] .qs-row--signout:hover .qs-row-icon { color: var(--danger-fg); }
 
 /* ─── Inbox popover ─── */
 .qs-inbox-popover {
@@ -661,10 +661,10 @@
 
 .qs-notif-icon-wrap { flex-shrink: 0; margin-top: 2px; }
 .qs-notif-icon { opacity: 0.85; }
-.qs-notif-icon--error { color: #ef4444; }
-.qs-notif-icon--warning { color: #f59e0b; }
-.qs-notif-icon--success { color: #22c55e; }
-.qs-notif-icon--info { color: #3b82f6; }
+.qs-notif-icon--error { color: var(--danger); }
+.qs-notif-icon--warning { color: var(--warning); }
+.qs-notif-icon--success { color: var(--success); }
+.qs-notif-icon--info { color: var(--accent); }
 
 .qs-notif-content {
   flex: 1;

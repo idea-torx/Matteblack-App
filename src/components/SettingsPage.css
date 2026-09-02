@@ -246,7 +246,7 @@
   border-radius: 6px;
   font-size: 12.5px;
   font-weight: 600;
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.06);
   border: none;
   cursor: pointer;
@@ -254,7 +254,7 @@
 }
 
 .settings-panel-nav-signout:hover {
-  color: #fca5a5;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.12);
 }
 
@@ -476,14 +476,14 @@
 }
 
 .settings-card-title--danger {
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .settings-btn-danger {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  background: #dc2626;
+  background: var(--danger);
   padding: 9px 18px;
   border-radius: 6px;
   cursor: pointer;
@@ -685,7 +685,7 @@
 }
 
 .settings-btn-sm--danger:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.08);
 }
 
@@ -700,7 +700,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(var(--tint-rgb), 0.06);
+  background: var(--gradient-brand-radial);
   flex-shrink: 0;
 }
 
@@ -710,7 +710,7 @@
   height: 64px;
   border-radius: 50%;
   border: 2px solid rgba(var(--tint-rgb), 0.08);
-  background: var(--accent);
+  background: var(--gradient-brand-radial);
   cursor: pointer;
   overflow: hidden;
   flex-shrink: 0;
@@ -885,7 +885,7 @@
 .settings-plan-badge {
   font-size: 11px;
   font-weight: 600;
-  color: #4ade80;
+  color: var(--success-fg);
   background: rgba(74, 222, 128, 0.1);
   padding: 4px 10px;
   border-radius: 20px;
@@ -913,7 +913,7 @@
 }
 
 .settings-usage-fill--low {
-  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  background: linear-gradient(90deg, var(--warning), var(--danger));
 }
 
 /* Plan overview card — credits + upgrade path */
@@ -958,7 +958,7 @@
 }
 
 .settings-credits-amount--low {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .settings-credits-total {
@@ -1008,7 +1008,7 @@
 
 .settings-theme-btn--active {
   color: var(--text-primary);
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   border-color: var(--accent);
 }
 
@@ -1197,7 +1197,7 @@
 .settings-invite-status {
   font-size: 11px;
   font-weight: 500;
-  color: #fbbf24;
+  color: var(--warning-fg);
   background: rgba(251, 191, 36, 0.1);
   padding: 3px 8px;
   border-radius: 4px;
@@ -1401,7 +1401,7 @@
 
 .buy-credits-error {
   font-size: 12px;
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.08);
   padding: 8px 12px;
   border-radius: 6px;
@@ -1453,9 +1453,9 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(59, 130, 246, 0.95) 0%,
-    rgba(59, 130, 246, 0.55) 30%,
-    rgba(59, 130, 246, 0) 70%
+    rgba(var(--accent-rgb), 0.95) 0%,
+    rgba(var(--accent-rgb), 0.55) 30%,
+    rgba(var(--accent-rgb), 0) 70%
   );
   /* Trace the perimeter of the ring with rounded corners matching the card. */
   offset-path: rect(0 100% 100% 0 round 10px);
@@ -1704,17 +1704,17 @@
 }
 
 .plan-card-error {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 12px;
   padding: 6px 12px;
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(var(--danger-rgb), 0.08);
   border-radius: 6px;
   margin: 8px 0;
 }
 
 .settings-plan-badge--warning {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 /* ─── Buy Credits / On Demand spending cap ─── */
@@ -1822,7 +1822,7 @@
 
 .settings-user-card--active {
   background: rgba(var(--tint-rgb), 0.06);
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 .settings-user-avatar {
@@ -1892,7 +1892,7 @@
 }
 
 .settings-signout-btn:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.06);
 }
 
@@ -1902,7 +1902,7 @@
 }
 
 .settings-signout-btn:hover svg {
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 /* ─── Auth card (login / signup) ─── */
@@ -2452,7 +2452,7 @@
   border-radius: 8px;
   background: rgba(248, 113, 113, 0.08);
   border: 1px solid rgba(248, 113, 113, 0.25);
-  color: #f87171;
+  color: var(--danger-fg);
   font-size: 13px;
 }
 
@@ -2941,7 +2941,7 @@
   border-radius: 8px;
   background: rgba(248, 113, 113, 0.08);
   border: 1px solid rgba(248, 113, 113, 0.25);
-  color: #f87171;
+  color: var(--danger-fg);
   font-size: 12.5px;
 }
 

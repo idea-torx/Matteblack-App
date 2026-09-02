@@ -700,6 +700,7 @@ function App() {
 
   const handleToolSelect = useCallback((id: ToolId | null) => {
     setRailView("toolkit");
+    setAgentOpen(false);
     setLibraryView(null);
     setLibraryInitialFolderId(null);
     setLibraryHighlightAssetId(null);
@@ -1862,8 +1863,11 @@ function App() {
   // on the LEFT and are NOT included here, so e.g. opening Library
   // while the agent is up keeps both visible (Library on the left,
   // Agent on the right).
+  // "create" is the bare canvas the agent already sits beside: a project switch
+  // sets it programmatically and must not kick the agent out. User clicks
+  // close the agent in handleToolSelect instead.
   useEffect(() => {
-    if (selectedTool || gifMakerOpen || svgMakerOpen) {
+    if ((selectedTool && selectedTool !== "create") || gifMakerOpen || svgMakerOpen) {
       setAgentOpen(false);
     }
   }, [selectedTool, gifMakerOpen, svgMakerOpen]);

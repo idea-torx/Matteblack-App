@@ -30,8 +30,8 @@
 
 .nc__marquee {
   position: absolute;
-  border: 1px solid rgba(59, 130, 246, 0.8);
-  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.8);
+  background: rgba(var(--accent-rgb), 0.1);
   pointer-events: none;
   z-index: 9999;
 }
@@ -105,7 +105,7 @@
 
 .nc-node--selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(59,130,246,0.12);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(var(--accent-rgb),0.12);
 }
 
 .nc-node-header {
@@ -282,8 +282,8 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(59,130,246,0.06);
-  border: 2px dashed rgba(59,130,246,0.35);
+  background: rgba(var(--accent-rgb),0.06);
+  border: 2px dashed rgba(var(--accent-rgb),0.35);
   border-radius: 10px;
   z-index: 30;
   pointer-events: none;
@@ -344,7 +344,7 @@
 }
 
 .nc-node--image .nc-node-icon {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(var(--accent-rgb), 0.2);
   color: #60a5fa;
 }
 
@@ -391,12 +391,12 @@
 }
 
 .nc-node--video .nc-node-icon {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
+  background: rgba(var(--success-rgb), 0.2);
+  color: var(--success-fg);
 }
 
 .nc-media-preview--video {
-  background: linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(0,0,0,0.3) 100%);
+  background: linear-gradient(135deg, rgba(var(--success-rgb),0.08) 0%, rgba(0,0,0,0.3) 100%);
   cursor: default;
   gap: 6px;
   color: var(--text-muted);
@@ -444,7 +444,7 @@
 /* ========== AXIOM NODES ========== */
 
 .nc-node--axiom .nc-node-header {
-  border-color: rgba(59, 130, 246, 0.15);
+  border-color: rgba(var(--accent-rgb), 0.15);
 }
 
 .nc-axiom-body {

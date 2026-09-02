@@ -28,13 +28,13 @@
 }
 
 .payment-result-icon--success {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  background: rgba(var(--success-rgb), 0.12);
+  color: var(--success);
 }
 
 .payment-result-icon--canceled {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  background: rgba(var(--danger-rgb), 0.12);
+  color: var(--danger);
 }
 
 .payment-result-title {
@@ -52,7 +52,7 @@
 }
 
 .payment-result-btn {
-  background: var(--accent, #3b82f6);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;

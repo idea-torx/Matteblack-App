@@ -481,7 +481,7 @@ export function GifMakerPanel({
                         <path
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                           fill="none"
-                          stroke="var(--accent, #3b82f6)"
+                          stroke="var(--accent)"
                           strokeWidth="3"
                           strokeDasharray={`${progress}, 100`}
                           strokeLinecap="round"

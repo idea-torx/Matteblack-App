@@ -41,16 +41,16 @@
   inset: 0;
   background: conic-gradient(
     from 0deg,
-    #3B82F6 0%,
+    var(--accent) 0%,
     #60a5fa 12%,
     transparent 25%,
     transparent 35%,
-    #3B82F6 45%,
+    var(--accent) 45%,
     #93c5fd 55%,
     transparent 68%,
     transparent 78%,
-    #3B82F6 90%,
-    #3B82F6 100%
+    var(--accent) 90%,
+    var(--accent) 100%
   );
 }
 
@@ -78,23 +78,23 @@
 .gen-node__glow--soft::before {
   background: conic-gradient(
     from 0deg,
-    rgba(59, 130, 246, 0.8) 0%,
+    rgba(var(--accent-rgb), 0.8) 0%,
     rgba(96, 165, 250, 0.7) 12%,
     transparent 25%,
     transparent 35%,
-    rgba(59, 130, 246, 0.8) 45%,
+    rgba(var(--accent-rgb), 0.8) 45%,
     rgba(147, 197, 253, 0.6) 55%,
     transparent 68%,
     transparent 78%,
-    rgba(59, 130, 246, 0.8) 90%,
-    rgba(59, 130, 246, 0.8) 100%
+    rgba(var(--accent-rgb), 0.8) 90%,
+    rgba(var(--accent-rgb), 0.8) 100%
   );
 }
 
 
 .gen-node--failed {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(220, 38, 38, 0.16) 100%);
-  border-color: rgba(239, 68, 68, 0.35);
+  background: linear-gradient(135deg, rgba(var(--danger-rgb), 0.16) 0%, rgba(220, 38, 38, 0.16) 100%);
+  border-color: rgba(var(--danger-rgb), 0.35);
 }
 
 .gen-node__content {
@@ -140,16 +140,16 @@
 [data-theme="light"] .gen-node__glow::before {
   background: conic-gradient(
     from 0deg,
-    #2563EB 0%,
-    #3B82F6 12%,
+    var(--accent-hover) 0%,
+    var(--accent) 12%,
     transparent 25%,
     transparent 35%,
-    #2563EB 45%,
+    var(--accent-hover) 45%,
     #60a5fa 55%,
     transparent 68%,
     transparent 78%,
-    #2563EB 90%,
-    #2563EB 100%
+    var(--accent-hover) 90%,
+    var(--accent-hover) 100%
   );
 }
 
@@ -158,7 +158,7 @@
 }
 
 [data-theme="light"] .gen-node__quantum {
-  --qt-color: #2563eb;
+  --qt-color: var(--accent-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -174,7 +174,7 @@
 }
 
 [data-theme="light"] .gen-node--failed {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.10) 0%, rgba(220, 38, 38, 0.10) 100%);
+  background: linear-gradient(135deg, rgba(var(--danger-rgb), 0.10) 0%, rgba(220, 38, 38, 0.10) 100%);
   border: 1px solid rgba(220, 38, 38, 0.45);
 }
 
@@ -202,7 +202,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  border: 1px solid rgba(239, 68, 68, 0.45);
+  border: 1px solid rgba(var(--danger-rgb), 0.45);
   background: rgba(15, 15, 18, 0.55);
   color: rgba(254, 202, 202, 0.95);
   cursor: pointer;
@@ -213,7 +213,7 @@
 }
 
 .gen-node__dismiss:hover {
-  background: rgba(239, 68, 68, 0.35);
+  background: rgba(var(--danger-rgb), 0.35);
   transform: scale(1.05);
 }
 

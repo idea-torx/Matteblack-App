@@ -26,6 +26,15 @@ import { getOperatorRunner, getOperatorModels } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
 import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
+
+// Operator children run in their own process groups (see spawn), so they
+// outlive the server unless it takes them down: an orphaned codex keeps the
+// thread writer lock and every later resume fails with "thread-store
+// conflict". Electron's before-quit SIGTERMs us; reap the groups on the way out.
+const liveKills = new Set<(sig: NodeJS.Signals) => void>();
+const reapOperators = () => { for (const k of liveKills) k("SIGKILL"); liveKills.clear(); };
+// index.ts's SIGTERM handler ends in process.exit, which fires this.
+process.on("exit", reapOperators);
 import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
@@ -367,6 +376,10 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
         stdio: [stdinText === undefined ? "ignore" : "pipe", "pipe", "pipe"],
         shell: useShell,
         windowsHide: true,
+        // Own process group so abort can kill the whole tree: the npm codex
+        // shim forwards SIGTERM but the native binary shrugs it off and keeps
+        // the thread writer lock.
+        detached: process.platform !== "win32",
       });
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
@@ -381,7 +394,16 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     let stderrBuf = "";
     let stdoutBuf = "";
 
-    const onAbort = () => { try { child.kill(); } catch { /* already gone */ } };
+    const killTree = (sig: NodeJS.Signals) => {
+      try { if (child.pid && process.platform !== "win32") process.kill(-child.pid, sig); else child.kill(sig); } catch { /* already gone */ }
+    };
+    liveKills.add(killTree);
+    const onAbort = () => {
+      killTree("SIGTERM");
+      // ponytail: 2s grace then SIGKILL the group; tune if codex learns to exit on SIGTERM.
+      const t = setTimeout(() => killTree("SIGKILL"), 2000);
+      child.once("close", () => clearTimeout(t));
+    };
     if (opts.signal) {
       if (opts.signal.aborted) onAbort();
       else opts.signal.addEventListener("abort", onAbort, { once: true });
@@ -422,6 +444,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     });
 
     child.on("close", (code) => {
+      liveKills.delete(killTree);
       opts.signal?.removeEventListener("abort", onAbort);
       if (code !== 0 && code !== null) {
         const detail = stderrBuf.trim().split("\n").slice(-3).join(" ").slice(0, 400);

@@ -62,6 +62,7 @@ export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
   // tier_fps tokens emitted by UpscalePanel.
   { model_key: "topaz-upscale-video", base_cost: 4, resolution_multipliers: { "720p_30": 0.5, "720p_60": 1, "1080p_30": 1, "1080p_60": 2, "4k_30": 4, "4k_60": 8 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "topaz-upscale-video-gaia2", base_cost: 2, resolution_multipliers: { "720p_30": 0.5, "720p_60": 1, "1080p_30": 1, "1080p_60": 2, "4k_30": 4, "4k_60": 8 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "bytedance-upscale-video", base_cost: 3, resolution_multipliers: { "720p_30": 0.5, "720p_60": 1, "1080p_30": 1, "1080p_60": 2, "4k_30": 2, "4k_60": 4 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "pixelcut_remove_bg", base_cost: 2, resolution_multipliers: null, duration_multipliers: null, feature_surcharges: null },
   { model_key: "remove_bg", base_cost: 4, resolution_multipliers: null, duration_multipliers: null, feature_surcharges: null },
   { model_key: "bria_expand", base_cost: 6, resolution_multipliers: null, duration_multipliers: null, feature_surcharges: null },
@@ -77,6 +78,8 @@ export const MODEL_PRICING_CONFIG: ModelPricingConfig[] = [
   { model_key: "veo3.1-lite-flf2v", base_cost: 6, resolution_multipliers: null, duration_multipliers: { "per_second": 1 }, feature_surcharges: { "generate_audio": 4 } },
   // H3 Max: 12 credits/s at 768P ($0.08/s fal), 480P scaled to fal's own ratio.
   { model_key: "h3-max-t2v", base_cost: 12, resolution_multipliers: { "480p": 0.625, "768p": 1.0 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "h3-turbo-t2v", base_cost: 6, resolution_multipliers: { "480p": 0.625, "768p": 1.0 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
+  { model_key: "h3-turbo-i2v", base_cost: 6, resolution_multipliers: { "480p": 0.625, "768p": 1.0 }, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   // Gemini Omni Flash 1.1: $0.15/s at 1080p, scaled by the resolution ladder.
   { model_key: "gemini-omni-t2v", base_cost: 20, resolution_multipliers: GEMINI_OMNI_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },
   { model_key: "gemini-omni-i2v", base_cost: 20, resolution_multipliers: GEMINI_OMNI_RESOLUTION_MULTIPLIERS, duration_multipliers: { "per_second": 1 }, feature_surcharges: null },

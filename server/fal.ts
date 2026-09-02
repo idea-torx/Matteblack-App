@@ -344,7 +344,7 @@ function normalizeSeedanceResolution(value: unknown): "480p" | "720p" | "1080p" 
   if (typeof value === "string") {
     const v = value.toLowerCase().trim();
     if (v === "480p" || v === "480") return "480p";
-    if (v === "720p" || v === "720") return "720p";
+    if (v === "720p" || v === "720" || v === "768p") return "720p";
     if (v === "1080p" || v === "1080") return "1080p";
   }
   return "1080p";
@@ -1047,6 +1047,41 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  // H3 Max Turbo — fal's post-trained variant of H3, same duration/resolution
+  // ladder, higher throughput. Only t2v and i2v ship; there is no turbo
+  // reference-to-video endpoint, so chunk-chained long-form still has to run
+  // on h3-max-r2v.
+  "h3-turbo-t2v": {
+    falModelId: "minimax/h3-max-turbo/text-to-video",
+    type: "video",
+    buildInput(params) {
+      return {
+        prompt: params.prompt || "",
+        duration: h3Duration(params.duration),
+        resolution: h3Resolution(params.resolution),
+        aspect_ratio: h3Aspect(params.aspect_ratio),
+        prompt_expansion_mode: "balanced",
+      };
+    },
+  },
+  "h3-turbo-i2v": {
+    falModelId: "minimax/h3-max-turbo/image-to-video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        prompt: params.prompt || "",
+        duration: h3Duration(params.duration),
+        resolution: h3Resolution(params.resolution),
+        prompt_expansion_mode: "balanced",
+      };
+      // Same as h3-max-i2v: no aspect_ratio field, output follows image_url.
+      const firstFrame = sanitizeUrl(params.firstFrameUrl);
+      if (firstFrame) input.image_url = firstFrame;
+      const lastFrame = sanitizeUrl(params.lastFrameUrl);
+      if (lastFrame) input.end_image_url = lastFrame;
+      return input;
+    },
+  },
   "seedance-2.0-t2v": {
     falModelId: "bytedance/seedance-2.0/text-to-video",
     type: "video",
@@ -1346,6 +1381,28 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  // ByteDance video upscaler: cheapest generative video upscale on fal.
+  // `scale_ratio` overrides target_resolution, so the panel's 1/2/4 factor
+  // maps straight through; fps is the panel's 30/60.
+  "bytedance-upscale-video": {
+    falModelId: "fal-ai/bytedance-upscaler/upscale/video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        enhancement_tier: "standard",
+        enhancement_preset: "aigc",
+        fidelity: "high",
+      };
+      const videoUrl = sanitizeUrl(params.video_url);
+      if (videoUrl) input.video_url = videoUrl;
+      const factor = Number(params.upscale_factor);
+      if (Number.isFinite(factor) && factor > 1) input.scale_ratio = Math.min(4, factor);
+      else input.target_resolution = "1080p";
+      const fps = Number(params.target_fps);
+      if (Number.isFinite(fps) && fps > 0) input.target_fps = Math.max(24, Math.min(60, Math.round(fps)));
+      return input;
+    },
+  },
   pixelcut_remove_bg: {
     falModelId: "pixelcut/background-removal",
     type: "image",
@@ -1631,7 +1688,7 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"];
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
   text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
   image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
-  video_gen: ["gemini-omni-t2v", "gemini-omni-i2v", "kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v"],
+  video_gen: ["gemini-omni-t2v", "gemini-omni-i2v", "kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v", "h3-turbo-t2v", "h3-turbo-i2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],
   upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],

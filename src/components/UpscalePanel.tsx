@@ -16,7 +16,7 @@ type UpscaleFactor = 2 | 4;
 // "Proteus" / `topaz-upscale-video-gaia2` â†’ "Gaia 2").
 type VideoTier = "720p" | "1080p" | "4k";
 type VideoFps = 30 | 60;
-type VideoModelKey = "topaz-upscale-video" | "topaz-upscale-video-gaia2";
+type VideoModelKey = "bytedance-upscale-video" | "topaz-upscale-video" | "topaz-upscale-video-gaia2";
 
 const TIER_LABELS: Record<VideoTier, string> = {
   "720p": "â‰¤ 720p",
@@ -31,6 +31,7 @@ const TIER_TO_UPSCALE_FACTOR: Record<VideoTier, number> = {
 };
 
 const VIDEO_MODEL_LABELS: Record<VideoModelKey, string> = {
+  "bytedance-upscale-video": "ByteDance (cheapest)",
   "topaz-upscale-video": "Topaz (Proteus)",
   "topaz-upscale-video-gaia2": "Gaia 2",
 };
@@ -75,7 +76,7 @@ export function UpscalePanel({
   // ----- Video upscale (Topaz) state -----
   const [videoTier, setVideoTier] = useState<VideoTier>("1080p");
   const [videoFps, setVideoFps] = useState<VideoFps>(30);
-  const [videoModel, setVideoModel] = useState<VideoModelKey>("topaz-upscale-video");
+  const [videoModel, setVideoModel] = useState<VideoModelKey>("bytedance-upscale-video");
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     upscaleFactor: false,
@@ -297,7 +298,7 @@ export function UpscalePanel({
               {openSections.videoModel && (
                 <div className="rpanel-card-body">
                   <div className="rpanel-list">
-                    {(["topaz-upscale-video", "topaz-upscale-video-gaia2"] as VideoModelKey[]).map((m) => (
+                    {(["bytedance-upscale-video", "topaz-upscale-video", "topaz-upscale-video-gaia2"] as VideoModelKey[]).map((m) => (
                       <button
                         key={m}
                         type="button"

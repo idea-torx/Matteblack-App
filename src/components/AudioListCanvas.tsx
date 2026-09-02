@@ -32,7 +32,7 @@ export type AudioClip = {
 
 const TYPE_GRADIENT: Record<AudioType, { from: string; to: string }> = {
   voicechanger: { from: "#22c55e", to: "#059669" },
-  tts: { from: "#3b82f6", to: "#1d4ed8" },
+  tts: { from: "var(--accent)", to: "#1d4ed8" },
   music: { from: "#a855f7", to: "#7c3aed" },
   sfx: { from: "#f59e0b", to: "#d97706" },
 };

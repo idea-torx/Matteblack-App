@@ -629,8 +629,8 @@
 }
 
 .lib-audio-row--playing {
-  border-color: rgba(59, 130, 246, 0.2);
-  background: rgba(59, 130, 246, 0.03);
+  border-color: rgba(var(--accent-rgb), 0.2);
+  background: rgba(var(--accent-rgb), 0.03);
 }
 
 .lib-audio-row-top {
@@ -700,21 +700,21 @@
 
 .lib-type--tts {
   color: #60a5fa;
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .lib-type--music {
-  color: #c084fc;
+  color: var(--kind-audio-fg);
   background: rgba(168, 85, 247, 0.12);
 }
 
 .lib-type--vc {
-  color: #34d399;
+  color: var(--success-fg);
   background: rgba(52, 211, 153, 0.12);
 }
 
 .lib-type--sfx {
-  color: #fbbf24;
+  color: var(--warning-fg);
   background: rgba(251, 191, 36, 0.12);
 }
 
@@ -908,7 +908,7 @@
   border-radius: 8px;
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
-  background: rgba(59, 130, 246, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 
 .lib-folder-group--drag-over .lib-folder-row {
@@ -983,7 +983,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.85);
+  background: rgba(var(--accent-rgb), 0.85);
   color: #fff;
   z-index: 2;
 }
@@ -1247,7 +1247,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--danger);
   border: 2px solid #1a1a2e;
   display: flex;
   align-items: center;
@@ -1261,7 +1261,7 @@
 
 .lib-card-delete-badge:hover {
   transform: scale(1.2);
-  background: #dc2626;
+  background: var(--danger);
 }
 
 .lib-card-delete-badge--inline {
@@ -1281,14 +1281,14 @@
 }
 
 .lib-header-btn--manage:hover {
-  color: #ef4444 !important;
-  background: rgba(239, 68, 68, 0.1) !important;
-  border-color: rgba(239, 68, 68, 0.2) !important;
+  color: var(--danger) !important;
+  background: rgba(var(--danger-rgb), 0.1) !important;
+  border-color: rgba(var(--danger-rgb), 0.2) !important;
 }
 
 .lib-header-btn--delete {
   background: transparent !important;
-  color: #ef4444 !important;
+  color: var(--danger) !important;
   border-color: transparent !important;
   cursor: default;
 }
@@ -1310,12 +1310,12 @@
 }
 
 .lib-header-btn--danger {
-  color: #ef4444 !important;
-  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: var(--danger) !important;
+  border-color: rgba(var(--danger-rgb), 0.3) !important;
 }
 
 .lib-header-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.15) !important;
+  background: rgba(var(--danger-rgb), 0.15) !important;
 }
 
 /* ─── Trash view ─── */
@@ -1404,9 +1404,9 @@
 }
 
 .trash-action-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(var(--danger-rgb), 0.2);
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.3);
 }
 
 /* ─── Fullscreen icon on hover ─── */
@@ -1556,7 +1556,7 @@
 /* ─── Multi-select highlight ─── */
 .lib-card--ctx-selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 8px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 8px rgba(var(--accent-rgb), 0.15);
 }
 
 .lib-card--ctx-selected:hover {
@@ -1570,7 +1570,7 @@
 }
 
 .lib-card--highlight {
-  border-color: #a78bfa;
+  border-color: var(--c-violet-fg);
   animation: lib-highlight-pulse 0.8s ease-in-out 2;
   z-index: 1;
 }
@@ -1627,18 +1627,18 @@
 }
 
 .lib-ctx-item--danger:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  background: rgba(var(--danger-rgb), 0.15);
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--danger-confirm {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  background: rgba(var(--danger-rgb), 0.2);
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--danger-confirm:hover {
-  background: rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
+  background: rgba(var(--danger-rgb), 0.3);
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--disabled {

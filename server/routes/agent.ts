@@ -1541,6 +1541,10 @@ const MODEL_WHITELIST: Record<string, ModelEntry> = {
   // endpoint takes image_url and end_image_url, so the mode is which of the two
   // the caller fills, not a different model.
   "h3-max": { kind: "video", tier: "quick", label: "MiniMax H3 Max", t2: "h3-max-t2v", i2: "h3-max-i2v", i2_first_last: "h3-max-i2v", i2_multi: "h3-max-r2v" },
+  // Turbo ships only t2v and i2v — no reference-to-video endpoint — so it has
+  // no i2_multi and can't back seam="reference" chaining. Opt-in by name only;
+  // it is never a tier default.
+  "h3-turbo": { kind: "video", tier: "quick", label: "MiniMax H3 Max Turbo", t2: "h3-turbo-t2v", i2: "h3-turbo-i2v", i2_first_last: "h3-turbo-i2v" },
 };
 
 // Three explicit ways the user can want references attached to a video:
@@ -1622,6 +1626,13 @@ const MODEL_ALIASES: Record<string, string> = {
   "minimax h3": "h3-max",
   "minimax h3 max": "h3-max",
   "hailuo": "h3-max",
+  "turbo": "h3-turbo",
+  "h3 turbo": "h3-turbo",
+  "h3-turbo": "h3-turbo",
+  "h3 max turbo": "h3-turbo",
+  "minimax turbo": "h3-turbo",
+  "minimax h3 turbo": "h3-turbo",
+  "minimax h3 max turbo": "h3-turbo",
 };
 // Resolve an explicit-model name to a ModelEntry. The concrete variant
 // (t2 / i2 / flf / multi) is picked later by the caller based on refs +
@@ -1680,8 +1691,8 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["h3-max", "seedance-2.5"],
-        description: "Model family for this chunk. 'h3-max' (default) or 'seedance-2.5' — seedance takes chunks up to 30s (fewer seams) and does native audio; keep the SAME model across every chunk of one sequence, mixing families drifts the look.",
+        enum: ["h3-max", "h3-turbo", "seedance-2.5"],
+        description: "Model family for this chunk. 'h3-max' (default), 'h3-turbo' (same ladder, faster/cheaper; frame seams only — a reference seam on it rides h3-max-r2v) or 'seedance-2.5' — seedance takes chunks up to 30s (fewer seams) and does native audio; keep the SAME model across every chunk of one sequence, mixing families drifts the look.",
       },
       seam: {
         type: "string",
@@ -1744,9 +1755,9 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max"],
+        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max", "h3-turbo"],
         description:
-          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form).",
+          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form), 'h3-turbo' (MiniMax H3 Max Turbo — same ladder, faster, text-to-video and image-to-video only, no reference-to-video and no long-form chaining).",
       },
       tier: {
         type: "string",
@@ -1773,9 +1784,9 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       videoResolution: {
         type: "string",
-        enum: ["480p", "720p", "1080p"],
+        enum: ["480p", "720p", "768p", "1080p"],
         description:
-          "Video output resolution. Set it when the user names one ('480p', 'draft res', '1080p', 'full HD'). Omit for the 720p default. Ignored for images. Each model clamps to what it actually supports (H3 Max: 480p or 768p).",
+          "Video output resolution. Set it when the user names one ('480p', 'draft res', '1080p', 'full HD'). Omit for the 720p default. Ignored for images. Each model clamps to what it actually supports (H3 Max/Turbo: 480p or 768p; 768p on other models renders 720p).",
       },
       durationSeconds: {
         type: "integer",
@@ -2467,7 +2478,8 @@ function parseGenerateMediaInput(
   // Duration (video only): explicit value wins; otherwise sniff the user's
   // message for "5 second video" / "10s clip" etc. null = backend default.
   const vresRaw = typeof input.videoResolution === "string" ? input.videoResolution.toLowerCase().trim() : "";
-  const videoResolution = ["480p", "720p", "1080p"].includes(vresRaw) ? vresRaw : null;
+  // 768p is H3's real tier; the skill names it, so the tool must take it.
+  const videoResolution = ["480p", "720p", "768p", "1080p"].includes(vresRaw) ? vresRaw : null;
   let durationSeconds: number | null = null;
   if (kind === "video") {
     const durRaw = input.durationSeconds ?? input.duration_seconds ?? input.duration;
@@ -2628,7 +2640,7 @@ function selectLogoUrl(
 function snapDurationForModel(model: string, seconds: number): number {
   if (model.startsWith("gemini-omni")) return Math.max(3, Math.min(10, Math.round(seconds)));
   if (model.startsWith("seedance-2.5")) return Math.max(4, Math.min(30, Math.round(seconds)));
-  if (model.startsWith("h3-max")) return Math.max(5, Math.min(15, Math.round(seconds)));
+  if (model.startsWith("h3-")) return Math.max(5, Math.min(15, Math.round(seconds)));
   if (model.startsWith("kling-o3-")) {
     // Clamp to the fal-accepted range; pass every other integer through
     // unchanged so e.g. 8s requests stay at 8s instead of snapping to 5/10.
@@ -2806,16 +2818,10 @@ export function buildGenerateBody(
   // video — pick family first, then concrete variant from the user's mode.
   // resolveAgentReferences already drops refs when kind=video and mode is
   // unset, so by this point hasRef implies the user supplied a mode.
-  const familyKey = useExplicit
-    ? (useExplicit.t2.startsWith("veo3.1-lite") ? "veo3.1-lite"
-       : useExplicit.t2.startsWith("kling-o3-4k") ? "kling-o3-4k"
-       : useExplicit.t2.startsWith("kling-o3-pro") ? "kling-o3-pro"
-       : useExplicit.t2.startsWith("h3-max") ? "h3-max"
-       : useExplicit.t2.startsWith("gemini-omni") ? "gemini-omni"
-       : useExplicit.t2.startsWith("seedance-2.5") ? "seedance-2.5"
-       : "seedance-2.0")
-    : resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null);
-  const family = MODEL_WHITELIST[familyKey];
+  // The explicit entry IS the family: a name-by-name chain here silently sent
+  // every family it didn't list (h3-turbo) to Seedance 2.0 at $10 a clip.
+  const family = useExplicit
+    ?? MODEL_WHITELIST[resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null)];
   let model: string;
   let notice: string | undefined;
   if (!hasRef || tool.videoReferenceMode == null) {
@@ -4755,7 +4761,11 @@ router.post("/api/agent/cost", requireMcpToken, requireAuth, (req: AuthRequest, 
   const requested = typeof body.model === "string" ? body.model : null;
   // No model named -> price the whole catalog for the given params, so the
   // agent can say which is cheapest rather than guessing.
-  const keys = requested ? [requested] : falPricedModelKeys();
+  // A family name ("h3-turbo", "h3 max turbo") prices its text variant: the
+  // skills teach family names, so the estimator must take them too.
+  const keys = requested
+    ? [estimateFalCost(requested) ? requested : resolveExplicitModel(requested)?.t2 ?? requested]
+    : falPricedModelKeys();
   const num = (v: unknown) => {
     const n = Number(v);
     return isFinite(n) && n > 0 ? n : undefined;
@@ -4929,6 +4939,17 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       if (parsed.kind === "video" && referenceUrls.length > 0 && parsed.videoReferenceMode == null) {
         parsed.videoReferenceMode = referenceUrls.length === 1 ? "first_frame" : "references";
       }
+      // A clip handed in as an image reference (the operator "continuing" a
+      // video through generate_media instead of continue_video) fails at fal
+      // as an unreadable image. Hand over its last frame instead.
+      if (parsed.kind === "video") {
+        for (let i = 0; i < referenceUrls.length; i++) {
+          if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(referenceUrls[i])) {
+            try { referenceUrls[i] = await extractLastFrame(referenceUrls[i]); }
+            catch (err) { res.status(400).json({ error: `Couldn't read a frame from ${referenceUrls[i]}: ${err instanceof Error ? err.message : String(err)}` }); return; }
+          }
+        }
+      }
       const seedanceAllowed = parsed.kind === "video" ? await isSeedanceAllowed(userId) : true;
       const built = buildGenerateBody(parsed, referenceUrls, canvasId, workspaceId, seedanceAllowed);
       if (!built) { res.status(400).json({ error: "This request couldn't be mapped to a supported generation." }); return; }
@@ -4949,7 +4970,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       const seam = input.seam === "reference" ? "reference" : "frame";
       // seam='frame' rides each family's i2v endpoint (the seed frame is the
       // link); seam='reference' rides its r2v endpoint (tail clip + stills).
-      const family = input.model === "seedance-2.5" ? "seedance-2.5" : "h3-max";
+      const family = input.model === "seedance-2.5" ? "seedance-2.5" : input.model === "h3-turbo" ? "h3-turbo" : "h3-max";
       const duration = snapDurationForModel(family, Number(input.durationSeconds) || 5);
 
       // Pull the handoff off the previous clip. This is the whole technique:
@@ -4993,7 +5014,8 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
 
       const body: Record<string, unknown> = {
         type: "video_gen",
-        model: seam === "reference" ? `${family}-r2v` : `${family}-i2v`,
+        // Turbo has no r2v endpoint; its reference seam borrows H3 Max's.
+        model: seam === "reference" ? `${family === "h3-turbo" ? "h3-max" : family}-r2v` : `${family}-i2v`,
         prompt,
         duration,
         // Inherit the source clip's resolution tier when the caller doesn't

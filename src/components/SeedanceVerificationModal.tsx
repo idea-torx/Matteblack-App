@@ -96,8 +96,8 @@ const labelStyle: React.CSSProperties = {
 };
 
 const alertStyle: React.CSSProperties = {
-  background: "rgba(239, 68, 68, 0.10)",
-  border: "1px solid rgba(239, 68, 68, 0.35)",
+  background: "rgba(var(--danger-rgb), 0.10)",
+  border: "1px solid rgba(var(--danger-rgb), 0.35)",
   borderRadius: 6,
   padding: "10px 14px",
   color: "#ef4444",

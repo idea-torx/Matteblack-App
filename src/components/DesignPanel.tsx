@@ -1474,7 +1474,7 @@ function VideoExportInline({ videoExport, onClose }: VideoExportInlineProps) {
                 id="video-export-audio"
                 checked={includeAudio}
                 onChange={(e) => setIncludeAudio(e.target.checked)}
-                style={{ accentColor: "var(--accent, #3b82f6)" }}
+                style={{ accentColor: "var(--accent)" }}
               />
               <label htmlFor="video-export-audio" style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", cursor: "pointer" }}>
                 Include audio
@@ -1518,7 +1518,7 @@ function VideoExportInline({ videoExport, onClose }: VideoExportInlineProps) {
                   style={{
                     width: `${Math.round(progress * 100)}%`,
                     height: "100%",
-                    background: "var(--accent, #3b82f6)",
+                    background: "var(--accent)",
                     borderRadius: 3,
                     transition: "width 0.3s ease",
                   }}

@@ -14,14 +14,14 @@
 }
 
 .audio-card--playing {
-  border-color: rgba(59, 130, 246, 0.25);
+  border-color: rgba(var(--accent-rgb), 0.25);
 }
 
 .canvas-gen--selected .audio-card {
   border-color: var(--accent);
   box-shadow:
     0 0 0 1px var(--accent),
-    0 0 20px rgba(59, 130, 246, 0.2);
+    0 0 20px rgba(var(--accent-rgb), 0.2);
 }
 
 /* Top: prompt text */
@@ -69,7 +69,7 @@
 }
 
 .audio-card--playing .audio-waveform-bar {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
 }
 
 .audio-card--playing .audio-waveform-bar--passed {
@@ -109,7 +109,7 @@
 
 .audio-scrub:hover::-webkit-slider-thumb {
   transform: scale(1.25);
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4);
 }
 
 .audio-scrub::-moz-range-track {
@@ -129,7 +129,7 @@
 
 .audio-scrub:hover::-moz-range-thumb {
   transform: scale(1.25);
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4);
 }
 
 /* Bottom toolbar */
@@ -164,16 +164,16 @@
 
 .audio-toolbar-btn--play:hover {
   color: var(--accent-hover);
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .audio-toolbar-btn--save:hover {
-  color: #34d399;
+  color: var(--success-fg);
   background: rgba(52, 211, 153, 0.08);
 }
 
 .audio-toolbar-btn--saved {
-  color: #34d399;
+  color: var(--success-fg);
   pointer-events: none;
   opacity: 0.9;
 }
@@ -183,7 +183,7 @@
 }
 
 .audio-toolbar-btn--delete:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.08);
 }
 
@@ -219,7 +219,7 @@
 
 .audio-failed-label {
   font-size: 11px;
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 /* Audio badge in meta row */
@@ -256,7 +256,7 @@
   background: rgba(0, 0, 0, 0.12);
 }
 [data-theme="light"] .audio-card--playing .audio-waveform-bar {
-  background: rgba(59, 130, 246, 0.30);
+  background: rgba(var(--accent-rgb), 0.30);
 }
 [data-theme="light"] .audio-toolbar-btn:hover {
   background: var(--overlay-hover);

@@ -115,11 +115,11 @@ export function highlightNewLibraryItem() {
   if (!grid) return;
   const firstItem = grid.firstElementChild as HTMLElement | null;
   if (!firstItem) return;
-  firstItem.style.boxShadow = "0 0 0 2px rgba(59, 130, 246, 0.3)";
+  firstItem.style.boxShadow = "0 0 0 2px rgba(var(--accent-rgb), 0.3)";
   firstItem.style.transition = "box-shadow 800ms ease-out";
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      firstItem.style.boxShadow = "0 0 0 2px rgba(59, 130, 246, 0)";
+      firstItem.style.boxShadow = "0 0 0 2px rgba(var(--accent-rgb), 0)";
       setTimeout(() => {
         firstItem.style.boxShadow = "";
         firstItem.style.transition = "";

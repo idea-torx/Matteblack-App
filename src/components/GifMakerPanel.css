@@ -77,7 +77,7 @@
 
 .gifmaker-preview-error {
   opacity: 0.8;
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .gifmaker-preview-content {
@@ -92,7 +92,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02));
+  background: linear-gradient(145deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0.02));
   color: var(--text-muted);
   cursor: pointer;
   transition: color 0.15s;

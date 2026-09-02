@@ -35,8 +35,8 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--accent, #3b82f6);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -108,7 +108,7 @@
 }
 
 .tos-modal-link-text a {
-  color: var(--accent, #3b82f6);
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -139,13 +139,13 @@
   height: 16px;
   margin-top: 2px;
   flex-shrink: 0;
-  accent-color: var(--accent, #3b82f6);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .tos-modal-error {
   font-size: 13px;
-  color: #ef4444;
+  color: var(--danger);
   margin: 0;
 }
 
@@ -155,7 +155,7 @@
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  background: var(--accent, #3b82f6);
+  background: var(--accent);
   border: none;
   border-radius: 8px;
   cursor: pointer;

@@ -49,3 +49,4 @@ dist-server/
 
 # Generated MCP bundle (built by npm run build:mcp)
 dist-mcp/
+.claude/worktrees/

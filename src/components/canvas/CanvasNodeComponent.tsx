@@ -17,6 +17,17 @@ import { enqueueDirty } from "../../services/CanvasStore";
 import { buildDWithRadius } from "../../utils/svgPathModel";
 import type { PathData } from "../../utils/svgPathModel";
 
+// html_urls the live frame already shows (our own saves): no reload for those.
+export const liveHtmlUrls = new Set<string>();
+const frameKeys = new Map<string, string>();
+function liveFrameKey(node: CanvasNode): string {
+  const url = String(node.metadata?.html_url);
+  const prev = frameKeys.get(node.id);
+  if (prev && liveHtmlUrls.has(url)) return prev;
+  frameKeys.set(node.id, url);
+  return url;
+}
+
 export type CanvasNodeProps = {
   node: CanvasNode;
   isSelected: boolean;
@@ -470,6 +481,25 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         ) : (
           <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
+      ) : node.metadata?.kind === "html" && node.metadata?.html_url ? (
+        // Live document over its PNG: the picker edits this DOM directly; the PNG
+        // shows through while the frame reloads (html_url changes, incl. our own saves).
+        <>
+        <img className="freeform-canvas__node-img" src={node.src} alt="" draggable={false} />
+        <iframe
+          key={liveFrameKey(node)}
+          data-html-node={node.id}
+          className="freeform-canvas__node-html"
+          sandbox="allow-same-origin"
+          src={`/api/canvas/html-live/${node.id}`}
+          title={node.label}
+          style={{
+            width: (node.metadata.pixel_width as number) || node.width,
+            height: (node.metadata.pixel_height as number) || node.height,
+            transform: `scale(${node.width / ((node.metadata.pixel_width as number) || node.width)}, ${node.height / ((node.metadata.pixel_height as number) || node.height)})`,
+          }}
+        />
+        </>
       ) : node.src ? (
         imgError ? (
           <div className="freeform-canvas__node-missing" style={contentClipStyle}>

@@ -80,13 +80,13 @@
 .share-modal-error {
   padding: 12px;
   background: rgba(248, 113, 113, 0.1);
-  color: #ef4444;
+  color: var(--danger);
   border-radius: 6px;
   font-size: 13px;
 }
 
 [data-theme="light"] .share-modal-error {
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 /* Toggle row — Anyone with the link */

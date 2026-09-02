@@ -1708,7 +1708,9 @@ const INSTRUCTIONS = [
 async function main(): Promise<void> {
   const server = new Server(
     { name: "falforge", version: "0.1.0" },
-    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+    // Codex copies `instructions` into EVERY tool description (27 tools x 8k chars
+    // per model call). Operator runs (MB_TOOLS set) already get this via AGENTS.md.
+    { capabilities: { tools: {} }, ...(TOOL_ALLOWLIST ? {} : { instructions: INSTRUCTIONS }) },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await listTools() }));
