@@ -75,3 +75,8 @@ test("spawnArgs: resume comes before the flags; max effort becomes xhigh", () =>
   assert.deepEqual(a.slice(0, 3), ["exec", "resume", "sess"]);
   assert.ok(a.includes('model_reasoning_effort="xhigh"'));
 });
+
+test("reasoning item → thinking, only on completion", () => {
+  assert.deepEqual(parseLine({ type: "item.started", item: { id: "r1", type: "reasoning", text: "" } }), []);
+  assert.deepEqual(parseLine({ type: "item.completed", item: { id: "r1", type: "reasoning", text: "use bridge" } }), [{ type: "thinking", text: "use bridge" }]);
+});

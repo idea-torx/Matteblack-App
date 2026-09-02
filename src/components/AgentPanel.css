@@ -2980,3 +2980,21 @@
 [data-theme="dark"] .agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled {
   animation-play-state: running;
 }
+
+/* ----- Steps: skill/memory chips + expandable thinking, above the reply ----- */
+.agent-panel__steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.agent-step {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 500; line-height: 1;
+  padding: 3px 6px; border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(203, 213, 225, 0.9);
+}
+.agent-step--running { border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.16); color: rgba(199, 210, 254, 0.95); }
+.agent-step--failed { border-color: rgba(239, 68, 68, 0.4); color: rgba(254, 202, 202, 0.95); }
+.agent-step--thinking { flex-basis: 100%; display: block; padding: 0; }
+.agent-step--thinking summary { cursor: pointer; padding: 3px 6px; list-style: none; opacity: 0.8; }
+.agent-step--thinking summary::before { content: "▸ "; }
+.agent-step--thinking[open] summary::before { content: "▾ "; }
+.agent-step__text { padding: 4px 8px 6px; white-space: pre-wrap; font-size: 11px; line-height: 1.4; opacity: 0.75; }

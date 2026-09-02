@@ -90,6 +90,7 @@ export const OPERATOR_MCP_TOOL_NAMES = [
   "remember",
   "forget",
   "patch_skill",
+  "save_asset",
   "search_fal_models",
   "get_fal_model_schema",
   "add_model",
@@ -165,6 +166,7 @@ function writeMcpConfig(review: boolean, spec: { command: string; args: string[]
 export type OperatorEvent =
   | { type: "session"; sessionId: string }
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "tool_use"; id: string; tool: string; input: unknown }
   | { type: "tool_result"; id: string; text: string; isError: boolean }
   | { type: "done"; sessionId?: string; result: string; isError: boolean }

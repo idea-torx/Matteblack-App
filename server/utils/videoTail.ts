@@ -25,6 +25,7 @@ import { randomUUID } from "node:crypto";
 import { saveFile } from "../storage.js";
 import { UPLOADS_DIR } from "../config/runtime.js";
 import { resolveUploadFile } from "./uploadPath.js";
+import { bin } from "../setup/doctor.js";
 
 const run = promisify(execFile);
 
@@ -44,7 +45,7 @@ export class VideoTailError extends Error {}
 /** One probe, so a missing ffmpeg is reported once and clearly. */
 let ffmpegChecked: Promise<void> | null = null;
 function ensureFfmpeg(): Promise<void> {
-  ffmpegChecked ??= run("ffmpeg", ["-version"]).then(
+  ffmpegChecked ??= run(bin("ffmpeg"), ["-version"]).then(
     () => undefined,
     () => {
       throw new VideoTailError(
@@ -86,7 +87,7 @@ async function fetchToTemp(videoUrl: string, dir: string): Promise<string> {
 
 /** Clip length in seconds, via ffprobe. */
 async function durationOf(file: string): Promise<number> {
-  const { stdout } = await run("ffprobe", [
+  const { stdout } = await run(bin("ffprobe"), [
     "-v", "error", "-show_entries", "format=duration",
     "-of", "default=noprint_wrappers=1:nokey=1", file,
   ]);
@@ -126,7 +127,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 export async function probeMinDimension(videoUrl: string): Promise<number | undefined> {
   const target = resolveUploadFile(videoUrl, UPLOADS_DIR) ?? videoUrl;
   try {
-    const { stdout } = await run("ffprobe", [
+    const { stdout } = await run(bin("ffprobe"), [
       "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
       "-of", "csv=p=0", target,
     ]);
@@ -140,7 +141,7 @@ export async function extractLastFrame(videoUrl: string): Promise<string> {
   return withTempDir(async (dir) => {
     const src = await fetchToTemp(videoUrl, dir);
     const out = path.join(dir, "last.png");
-    await run("ffmpeg", ["-sseof", "-1", "-i", src, "-update", "1", "-y", out]);
+    await run(bin("ffmpeg"), ["-sseof", "-1", "-i", src, "-update", "1", "-y", out]);
     const data = await fsp.readFile(out).catch(() => {
       throw new VideoTailError("ffmpeg produced no frame from the end of that clip.");
     });
@@ -168,7 +169,7 @@ export async function extractTailClip(videoUrl: string, seconds: number): Promis
     }
     const take = Math.min(want, total);
     const out = path.join(dir, "tail.mp4");
-    await run("ffmpeg", [
+    await run(bin("ffmpeg"), [
       "-ss", String(Math.max(0, total - take)), "-i", src,
       // -crf 16: near-transparent. The default (23) visibly softens the tail,
       // and H3 conditions every continuation on this file — seam quality IS
@@ -200,9 +201,9 @@ export async function seamDuplicatesFrame(prevUrl: string, nextUrl: string): Pro
     const next = await fetchToTemp(nextUrl, b);
     const last = path.join(dir, "last.png");
     const first = path.join(dir, "first.png");
-    await run("ffmpeg", ["-sseof", "-1", "-i", prev, "-update", "1", "-y", last]);
-    await run("ffmpeg", ["-i", next, "-frames:v", "1", "-y", first]);
-    const { stderr } = await run("ffmpeg", ["-i", last, "-i", first, "-lavfi", "ssim", "-f", "null", "-"]);
+    await run(bin("ffmpeg"), ["-sseof", "-1", "-i", prev, "-update", "1", "-y", last]);
+    await run(bin("ffmpeg"), ["-i", next, "-frames:v", "1", "-y", first]);
+    const { stderr } = await run(bin("ffmpeg"), ["-i", last, "-i", first, "-lavfi", "ssim", "-f", "null", "-"]);
     const m = String(stderr).match(/All:([\d.]+)/);
     // ponytail: 0.92 SSIM threshold — re-encoded duplicates score ~0.97+,
     // adjacent frames of fast motion land well below. Tune here if a model
@@ -240,7 +241,7 @@ async function lufsOf(src: string): Promise<number | null> {
     try {
       // ebur128 prints its summary on stderr; -map a:0 makes a missing audio
       // stream fail fast instead of measuring nothing.
-      const { stderr } = await run("ffmpeg", ["-i", src, "-map", "a:0", "-af", "ebur128", "-f", "null", "-"]);
+      const { stderr } = await run(bin("ffmpeg"), ["-i", src, "-map", "a:0", "-af", "ebur128", "-f", "null", "-"]);
       const matches = [...String(stderr).matchAll(/I:\s*(-?[\d.]+)\s*LUFS/g)];
       const last = matches.at(-1);
       if (!last) return null;

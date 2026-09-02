@@ -252,6 +252,19 @@ function App() {
   const [styleRefreshKey, setStyleRefreshKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState("account");
+  // First launch: the app shells out to git/ffmpeg/claude, so say so once if they're absent.
+  const [setupMissing, setSetupMissing] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/setup/doctor", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const miss = (d?.rows || [])
+          .filter((r: { id: string; found: boolean }) => !r.found && ["git", "ffmpeg", "claude"].includes(r.id))
+          .map((r: { label: string }) => r.label);
+        if (miss.length) setSetupMissing(miss.join(", "));
+      })
+      .catch(() => { /* offline */ });
+  }, []);
   // Local API-keys modal (fal.ai + Anthropic) for the desktop build.
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [wfNodes, setWfNodes] = useState<WorkflowNode[]>(DEMO_WORKFLOW.nodes);
@@ -2098,6 +2111,20 @@ function App() {
           boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
         }}>
           {recycleNotice}
+        </div>
+      )}
+      {setupMissing && (
+        <div style={{
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+          background: "#1a1a1a", color: "#fff", padding: "10px 16px", borderRadius: 8,
+          border: "1px solid #333", zIndex: 1000, fontSize: 13, display: "flex", gap: 10, alignItems: "center",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}>
+          <span>Some components are missing — {setupMissing}.</span>
+          <button type="button" className="settings-btn-primary"
+            onClick={() => { setSetupMissing(null); setSettingsSection("providers"); setSettingsOpen(true); }}>Open Setup</button>
+          <button type="button" style={{ background: "none", border: "none", color: "#888", cursor: "pointer" }}
+            onClick={() => setSetupMissing(null)} aria-label="Dismiss">×</button>
         </div>
       )}
       {viewerCapReached && isActiveProjectViewer && (

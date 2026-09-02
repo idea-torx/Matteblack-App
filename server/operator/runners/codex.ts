@@ -148,6 +148,10 @@ export function parseLine(obj: Record<string, unknown>): OperatorEvent[] {
       const text = typeof item.text === "string" ? item.text : "";
       return t === "item.completed" && text.trim() ? [{ type: "text", text }] : [];
     }
+    if (item.type === "reasoning") {
+      const text = typeof item.text === "string" ? item.text : "";
+      return t === "item.completed" && text.trim() ? [{ type: "thinking", text }] : [];
+    }
     if (item.type === "mcp_tool_call") {
       // Codex reports the bare tool name plus the server separately; the client
       // renders the same bare name Claude's mcp__falforge__ prefix strips to.

@@ -55,6 +55,8 @@ export function parseStreamJsonLine(obj: Record<string, unknown>): OperatorEvent
         const b = block as Record<string, unknown>;
         if (b.type === "text" && typeof b.text === "string" && b.text.trim()) {
           out.push({ type: "text", text: b.text });
+        } else if (b.type === "thinking" && typeof b.thinking === "string" && b.thinking.trim()) {
+          out.push({ type: "thinking", text: b.thinking });
         } else if (b.type === "tool_use" && typeof b.name === "string") {
           out.push({
             type: "tool_use",

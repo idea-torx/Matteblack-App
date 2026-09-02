@@ -252,7 +252,7 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
             {activeSection === "profile" && <ProfileSection />}
             {activeSection === "security" && <SecuritySection onDeleted={() => setActiveSection("auth")} />}
             {activeSection === "subscription" && <SubscriptionSection />}
-            {activeSection === "providers" && <ProvidersSection />}
+            {activeSection === "providers" && <><SetupSection /><ProvidersSection /></>}
             {activeSection === "notifications" && <NotificationsSection />}
             {activeSection === "general" && <GeneralSection />}
             {activeSection === "members" && <MembersSection />}
@@ -1247,6 +1247,71 @@ function SubscriptionSection() {
   );
 }
 
+/** Setup — probe the local components the app shells out to, and install the
+ *  missing ones in a real Terminal window. */
+function SetupSection() {
+  type SetupRow = { id: string; label: string; found: boolean; path: string; install: string | null; note?: string };
+  const [rows, setRows] = useState<SetupRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/setup/doctor", { credentials: "include" });
+      if (res.ok) setRows((await res.json()).rows || []);
+    } catch { /* offline */ }
+  }, []);
+  useEffect(() => {
+    void load();
+    // Installs happen in Terminal, so coming back to the app is the cue to re-probe.
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
+
+  const install = async (id: string) => {
+    setBusy(id);
+    try {
+      await fetch("/api/setup/install", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+      });
+    } catch { /* the Terminal window is the feedback */ }
+    await load();
+    setBusy(null);
+  };
+
+  return (
+    <div className="settings-notifications-wrap">
+      <h2 className="settings-section-title">Setup</h2>
+      <div className="settings-card settings-card--full">
+        {rows.map((r) => (
+          <div className="settings-toggle-row" key={r.id}>
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{r.label}</span>
+              <span className="settings-toggle-desc">
+                {r.found ? `Found at ${r.path}` : "Not installed"}
+                {!r.found && r.note ? ` — ${r.note}` : ""}
+              </span>
+            </div>
+            {!r.found && (
+              <button
+                type="button"
+                className="settings-btn-primary"
+                disabled={!r.install || busy !== null}
+                title={r.install ? undefined : r.note}
+                onClick={() => void install(r.id)}
+              >
+                {busy === r.id ? "Installing in Terminal…" : "Install"}
+              </button>
+            )}
+          </div>
+        ))}
+        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+          Install opens a Terminal window so you can watch it and answer any password prompt.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Which agent CLI drives the in-app operator. Driven entirely by the runner
  *  list GET /api/operator/status returns, so a third runner needs no UI work. */
 function ProvidersSection() {
@@ -1309,6 +1374,7 @@ function ProvidersSection() {
                 {r.binaryFound ? `Found at ${r.binaryPath}` : `Not installed (looked for "${r.binaryPath}")`}
                 {r.binaryFound && (auth[r.id] ? " · Signed in" : " · Not signed in")}
               </span>
+              {!r.binaryFound && <span className="settings-toggle-desc">Install it from Setup above</span>}
             </div>
             {r.binaryFound && !auth[r.id] && (
               <button

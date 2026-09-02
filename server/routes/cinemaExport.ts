@@ -15,6 +15,7 @@ import path from "node:path";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { UPLOADS_DIR } from "../config/runtime.js";
 import { resolveUploadFile } from "../utils/uploadPath.js";
+import { bin } from "../setup/doctor.js";
 import {
   buildFFmpegCommand,
   type ExportConfig,
@@ -30,7 +31,7 @@ const run = promisify(execFile);
 const router = Router();
 
 async function probe(file: string): Promise<StreamInfo> {
-  const { stdout } = await run("ffprobe", [
+  const { stdout } = await run(bin("ffprobe"), [
     "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height", "-of", "json", file,
   ]);
   const streams = (JSON.parse(String(stdout)).streams ?? []) as
@@ -100,7 +101,7 @@ router.post("/api/cinema/export", requireAuth, async (req: AuthRequest, res) => 
     );
     if (concatListContent) await fsp.writeFile(path.join(dir, "concat_list.txt"), concatListContent);
     // cwd=dir: the built args reference concat_list.txt and the output by bare name.
-    await run("ffmpeg", ["-y", ...args], { cwd: dir, maxBuffer: 64 * 1024 * 1024 });
+    await run(bin("ffmpeg"), ["-y", ...args], { cwd: dir, maxBuffer: 64 * 1024 * 1024 });
 
     const out = path.join(dir, safeName.endsWith(".mp4") ? safeName : `${safeName}.mp4`);
     // Move the result into a served exports dir and hand back a GET URL

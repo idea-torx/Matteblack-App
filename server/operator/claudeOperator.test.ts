@@ -104,3 +104,9 @@ test("every operator-allowlisted tool is a real MCP tool, and none are silently 
       "Add them to OPERATOR_MCP_TOOLS, or to WITHHELD in this test if that is deliberate.",
   );
 });
+
+test("assistant thinking block → thinking event", () => {
+  const evs = parseStreamJsonLine({ type: "assistant", message: { content: [{ type: "thinking", thinking: "pick bridge skill" }, { type: "text", text: "Skills: bridge" }] } });
+  assert.deepEqual(evs[0], { type: "thinking", text: "pick bridge skill" });
+  assert.equal(evs[1]?.type, "text");
+});

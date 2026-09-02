@@ -24,6 +24,9 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { resolveLocalPath } from "../utils/localPath.js";
 import { applyExactPatch } from "../skills/patchText.js";
 import { parseToolAllowlist } from "./toolAllowlist.js";
@@ -276,6 +279,19 @@ const READ_TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "The asset/job id." } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "save_asset",
+    description:
+      "Save one generation to the user's disk — \"export the last video to Downloads\", \"put that on my Desktop\". Get the id from list_canvas (most recent first; pick by type), then pass a folder or a filename. Bare folder names (Downloads, Desktop) mean ~/Downloads, ~/Desktop. Defaults to ~/Downloads. Returns the written path and reveals it in Finder. Only writes inside the user's home folder.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The asset/job id from list_canvas." },
+        path: { type: "string", description: "Destination folder or file path (absolute, ~/…, or a bare folder name like Downloads)." },
+      },
       required: ["id"],
     },
   },
@@ -965,6 +981,46 @@ async function fetchThumbnail(ep: Endpoint, url: string): Promise<{ data: string
   }
 }
 
+const EXT_BY_MIME: Record<string, string> = {
+  "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov",
+  "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif",
+  "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mp4": "m4a",
+};
+
+async function runSaveAsset(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const id = typeof args.id === "string" ? args.id : "";
+  if (!id) return fail("save_asset requires an `id` (from list_canvas).");
+  const home = os.homedir();
+  let dest = typeof args.path === "string" && args.path.trim() ? args.path.trim() : "~/Downloads";
+  if (!dest.startsWith("/") && !dest.startsWith("~")) dest = `~/${dest}`; // "Downloads" → ~/Downloads
+  const r = resolveLocalPath(dest, home);
+  if ("error" in r) return fail(r.error);
+  if (r.path !== home && !r.path.startsWith(home + path.sep)) return fail(`Refusing to write outside your home folder: ${r.path}`);
+  try {
+    const a = (await httpJson(ep, "GET", `/api/agent/asset/${encodeURIComponent(id)}`)) as AssetRow & { status?: string };
+    if (!a.url) return fail(`Asset ${id} has no result yet${a.status ? ` (status: ${a.status})` : ""}.`);
+    const target = /^https?:\/\//i.test(a.url) ? a.url : `${ep.baseUrl}${a.url.startsWith("/") ? "" : "/"}${a.url}`;
+    const res = await fetch(target, { headers: { "x-matteblack-token": ep.token ?? "" } });
+    if (!res.ok || !res.body) return fail(`Couldn't download ${a.url}: HTTP ${res.status}`);
+    const mime = (res.headers.get("content-type") || "").split(";")[0].trim();
+    const urlExt = /\.([a-z0-9]{2,4})(\?|$)/i.exec(a.url)?.[1]?.toLowerCase();
+    const ext = EXT_BY_MIME[mime] || urlExt || "bin";
+    // A directory (existing, or a path with no extension) gets an auto filename.
+    const isDir = (() => { try { return fs.statSync(r.path).isDirectory(); } catch { return !path.extname(r.path); } })();
+    const file = isDir
+      ? path.join(r.path, `${(a.model || a.type || "asset").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${id.slice(0, 8)}.${ext}`)
+      : r.path;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(file));
+    if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+    return { content: [{ type: "text", text: `Saved ${a.type} ${id} → ${file} (${fs.statSync(file).size} bytes)` }] };
+  } catch (err) {
+    return fail(`save_asset failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function runGetAsset(args: Record<string, unknown>): Promise<CallToolResult> {
   const ep = readEndpoint();
   if (!ep) return fail(NOT_RUNNING);
@@ -1490,6 +1546,7 @@ async function main(): Promise<void> {
     if (name === "add_model") return runAddModel(args);
     if (name === "list_canvas") return runListCanvas(args);
     if (name === "get_asset") return runGetAsset(args);
+    if (name === "save_asset") return runSaveAsset(args);
     if (name === "estimate_cost") return runEstimateCost(args);
     if (name === "recall") return runRecall();
     if (name === "remember") return runRemember(args);

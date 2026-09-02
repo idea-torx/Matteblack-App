@@ -165,12 +165,53 @@ type Gen = {
   error?: string;
 };
 
+/** A visible step in the "thinking" space: a reasoning block or a skill/memory tool call. */
+type Step =
+  | { id: string; kind: "thinking"; text: string }
+  | { id: string; kind: "tool"; label: string; status: "running" | "ready" | "failed" };
+
+const STEP_LABELS: Record<string, (input: Record<string, unknown>) => string> = {
+  list_skills: () => "Searching skills",
+  get_skill: (i) => `Reading skill: ${i.slug ?? i.name ?? ""}`,
+  save_skill: (i) => `Saving skill: ${i.slug ?? i.name ?? ""}`,
+  patch_skill: (i) => `Improving skill: ${i.slug ?? ""}`,
+  recall: () => "Recalling memory",
+  remember: (i) => `Remembering: ${i.slug ?? i.title ?? ""}`,
+  forget: (i) => `Forgetting: ${i.slug ?? ""}`,
+  list_canvas: () => "Checking canvas",
+  search_fal_models: (i) => `Searching fal: ${i.query ?? i.q ?? ""}`,
+  save_asset: (i) => `Saving to ${i.path ?? "Downloads"}`,
+};
+
+/** Chips in the thinking space: skill/memory calls and expandable reasoning. */
+function Steps({ steps }: { steps: Step[] }) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="agent-panel__steps">
+      {steps.map((st) =>
+        st.kind === "thinking" ? (
+          <details key={st.id} className="agent-step agent-step--thinking">
+            <summary>Thinking</summary>
+            <div className="agent-step__text">{st.text}</div>
+          </details>
+        ) : (
+          <span key={st.id} className={`agent-step agent-step--${st.status}`}>
+            {st.status === "running" && <QuantumThinking size={12} ariaLabel="" />}
+            {st.label}
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   streaming: boolean;
   gens: Gen[];
+  steps?: Step[];
   error?: string;
 };
 
@@ -237,6 +278,7 @@ type ServerEvent =
   | { type: "ping" }
   | { type: "session"; sessionId: string }
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "tool_use"; id: string; tool: string; input: unknown }
   | { type: "tool_result"; id: string; text: string; isError: boolean }
   | { type: "done"; sessionId?: string; result: string; isError: boolean }
@@ -514,14 +556,23 @@ export function OperatorPanel({
       case "text":
         patchAssistant((m) => ({ ...m, text: (m.text ? m.text + "\n" : "") + ev.text }));
         break;
+      case "thinking":
+        patchAssistant((m) => ({ ...m, steps: [...(m.steps ?? []), { id: `${ev.text.length}-${(m.steps ?? []).length}`, kind: "thinking", text: ev.text }] }));
+        break;
       case "tool_use":
         if (GEN_TOOLS.has(ev.tool)) {
           patchAssistant((m) => ({ ...m, gens: [...m.gens, { id: ev.id, tool: ev.tool, status: "running" }] }));
+        } else if (STEP_LABELS[ev.tool]) {
+          const label = STEP_LABELS[ev.tool]((ev.input && typeof ev.input === "object" ? ev.input : {}) as Record<string, unknown>);
+          patchAssistant((m) => ({ ...m, steps: [...(m.steps ?? []), { id: ev.id, kind: "tool", label, status: "running" }] }));
         }
         break;
       case "tool_result":
         patchAssistant((m) => ({
           ...m,
+          steps: (m.steps ?? []).map((st) =>
+            st.kind === "tool" && st.id === ev.id ? { ...st, status: ev.isError ? "failed" : "ready" } : st,
+          ),
           gens: m.gens.map((g) =>
             g.id === ev.id
               ? { ...g, status: ev.isError ? "failed" : "ready", url: extractUrl(ev.text), error: ev.isError ? ev.text : undefined }
@@ -1058,7 +1109,8 @@ export function OperatorPanel({
             messages.map((m) => {
               const isUser = m.role === "user";
               const hasText = !!m.text.trim();
-              const showBubble = hasText || (m.streaming && m.gens.length === 0);
+              const steps = m.steps ?? [];
+              const showBubble = hasText || (m.streaming && m.gens.length === 0) || steps.length > 0;
               return (
                 <div key={m.id} className={`agent-panel__msg agent-panel__msg--${isUser ? "user" : "assistant"}`}>
                   {showBubble && (
@@ -1066,9 +1118,13 @@ export function OperatorPanel({
                       {isUser ? (
                         m.text
                       ) : m.streaming && !hasText ? (
-                        <ThinkingPill className="agent-panel__thinking" />
+                        <>
+                          <Steps steps={steps} />
+                          <ThinkingPill className="agent-panel__thinking" />
+                        </>
                       ) : (
                         <>
+                          <Steps steps={steps} />
                           {m.streaming ? (
                             <StreamingText text={m.text} />
                           ) : (
