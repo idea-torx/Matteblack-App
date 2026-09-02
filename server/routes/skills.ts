@@ -6,10 +6,18 @@
 import { Router, type Response, type NextFunction } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { getMcpToken } from "../mcpToken.js";
-import { listSkills, readSkill, writeSkill, deleteSkill, slugify, readPins, setPin, SKILLS_DIR } from "../skills/skillStore.js";
+import { listSkills, readSkill, writeSkill, deleteSkill, slugify, readPins, setPin, SKILLS_DIR,
+  listSkillHistory, readSkillVersion, readActors, reviewMayWrite, type Actor } from "../skills/skillStore.js";
 import { BUILTIN_SKILLS, isBuiltinSkill, markSeeded } from "../skills/builtin.js";
 
 const router = Router();
+
+/** Who is writing. The MCP bridge stamps `operator` on a live turn and `review`
+ *  on the after-turn pass; anything else is the user's own panel. */
+function actorOf(req: AuthRequest): Actor {
+  const h = req.header("x-falforge-actor");
+  return h === "operator" || h === "review" ? h : "user";
+}
 
 /** Either the paired MCP process (loopback + per-boot token) or a signed-in
  *  user. Skills are on-disk documents in the user's own data dir, so there's
@@ -44,7 +52,35 @@ router.put("/api/skills/:slug", allowMcpOrUser, (req: AuthRequest, res) => {
   // 1MB: a skill is a script, not an asset. Bounded so a runaway agent write
   // can't fill the user's disk one PUT at a time.
   if (body.body.length > 1_000_000) { res.status(413).json({ error: "Skill is too large (1MB max)." }); return; }
-  res.json(writeSkill(req.params.slug, body.body));
+  const actor = actorOf(req);
+  const slug = slugify(req.params.slug);
+  const existing = readSkill(slug);
+  // The after-turn review pass runs with nobody watching, so it is the one
+  // writer that has to keep its hands off documents the user owns. A live
+  // operator turn is not restricted: the user is right there.
+  if (actor === "review" && existing) {
+    const factory = BUILTIN_SKILLS[slug];
+    const ok = reviewMayWrite({
+      pinned: readPins().includes(slug),
+      lastActor: readActors()[slug],
+      isFactoryText: !!factory && existing.body.trim() === factory.trim(),
+    });
+    if (!ok) { res.status(409).json({ error: `"${slug}" is pinned or hand-edited by the user — ask before changing it.` }); return; }
+  }
+  res.json(writeSkill(req.params.slug, body.body, actor));
+});
+
+/** Every previous body, newest first. The panel restores from these. */
+router.get("/api/skills/:slug/history", allowMcpOrUser, (req: AuthRequest, res) => {
+  res.json({ versions: listSkillHistory(req.params.slug) });
+});
+
+router.post("/api/skills/:slug/restore", allowMcpOrUser, (req: AuthRequest, res) => {
+  const version = String((req.body ?? {}).version ?? "");
+  const body = readSkillVersion(req.params.slug, version);
+  if (body === null) { res.status(404).json({ error: "No such version." }); return; }
+  // Goes through writeSkill, so the restore itself is versioned and undoable.
+  res.json({ ...writeSkill(req.params.slug, body, actorOf(req)), body });
 });
 
 /** Pin/unpin: pinned skills ride along with every operator run. */

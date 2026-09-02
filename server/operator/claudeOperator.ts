@@ -19,7 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { REPOS_DIR, readStore as readRepoStore } from "../github/ghCli.js";
 import { operatorSystemPrompt } from "../skills/builtin.js";
-import { pinnedInstructions } from "../skills/skillStore.js";
+import { skillIndex, pinnedInstructions } from "../skills/skillStore.js";
 import { memoryInstructions } from "../skills/agentMemory.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
 import { getClaudeCodePath } from "../config/userConfig.js";
@@ -110,6 +110,19 @@ export const OPERATOR_MCP_TOOLS = [
   "recall",
   "remember",
   "forget",
+  "patch_skill",
+].map((t) => `mcp__${MCP_SERVER_KEY}__${t}`);
+
+/** The after-turn review pass's grant: it may only write down what it learned.
+ *  No generation, no repos, no web, no files. */
+export const REVIEW_MCP_TOOLS = [
+  "remember",
+  "forget",
+  "recall",
+  "list_skills",
+  "get_skill",
+  "patch_skill",
+  "save_skill",
 ].map((t) => `mcp__${MCP_SERVER_KEY}__${t}`);
 
 export const OPERATOR_ALLOWED_TOOLS = [...OPERATOR_MCP_TOOLS, ...FILE_TOOLS, ...WEB_TOOLS];
@@ -122,7 +135,7 @@ export function allowedToolsFor(writable: boolean): string[] {
 
 /** Path + command to run the bundled MCP server. Electron main passes these via
  *  env (MB_APP_EXEC / MB_MCP_SCRIPT); dev falls back to this process + cwd. */
-function mcpServerSpec(): { command: string; args: string[]; env: Record<string, string> } {
+function mcpServerSpec(review: boolean): { command: string; args: string[]; env: Record<string, string> } {
   const command = process.env.MB_APP_EXEC || process.execPath;
   const script = process.env.MB_MCP_SCRIPT || path.join(process.cwd(), "dist-mcp", "index.js");
   return {
@@ -130,16 +143,20 @@ function mcpServerSpec(): { command: string; args: string[]; env: Record<string,
     args: [script],
     // ELECTRON_RUN_AS_NODE makes the app binary behave as Node (no-op for real
     // node); MATTEBLACK_DATA_DIR points the MCP server at this app's discovery file.
-    env: { ELECTRON_RUN_AS_NODE: "1", MATTEBLACK_DATA_DIR: DATA_DIR },
+    // MB_SKILL_ACTOR tells the bridge which actor header to stamp on skill
+    // writes — the review pass is not allowed to touch the user's own docs.
+    env: { ELECTRON_RUN_AS_NODE: "1", MATTEBLACK_DATA_DIR: DATA_DIR, ...(review ? { MB_SKILL_ACTOR: "review" } : {}) },
   };
 }
 
 /** Write the --mcp-config file claude loads. Returns its path. */
-function writeMcpConfig(): string {
+function writeMcpConfig(review: boolean): string {
   ensureDataDir();
-  const spec = mcpServerSpec();
+  const spec = mcpServerSpec(review);
   const cfg = { mcpServers: { [MCP_SERVER_KEY]: { command: spec.command, args: spec.args, env: spec.env } } };
-  const p = path.join(DATA_DIR, "operator-mcp-config.json");
+  // Separate file per actor: a foreground turn rewriting the shared one while a
+  // review is in flight would hand the review the wrong env.
+  const p = path.join(DATA_DIR, review ? "operator-mcp-config-review.json" : "operator-mcp-config.json");
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2), "utf8");
   return p;
 }
@@ -256,6 +273,12 @@ export interface RunOperatorOptions {
   effort?: EffortLevel;
   onEvent: (e: OperatorEvent) => void;
   signal?: AbortSignal;
+  /** Replaces the computed allowlist outright. Used by the after-turn review
+   *  pass, which may only write memory and skills. */
+  allowedTools?: string[];
+  /** This IS the after-turn review pass. Never set by the panel; the route
+   *  only starts a review for a turn that had it unset, so it cannot recurse. */
+  review?: boolean;
 }
 
 /**
@@ -273,7 +296,7 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
     );
   }
 
-  const mcpConfigPath = writeMcpConfig();
+  const mcpConfigPath = writeMcpConfig(opts.review === true);
 
   // Attached repos are checked out here; pin cwd so Read/Grep/Glob reach them
   // and nothing else on the user's disk. Constant regardless of how many repos
@@ -297,8 +320,8 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
     "--verbose", // required for stream-json to emit intermediate events
     "--mcp-config", mcpConfigPath,
     "--strict-mcp-config",
-    "--allowedTools", allowedToolsFor(writable.length > 0).join(","),
-    "--append-system-prompt", operatorSystemPrompt() + repoNote + pinnedInstructions() + memoryInstructions(),
+    "--allowedTools", (opts.allowedTools ?? allowedToolsFor(writable.length > 0)).join(","),
+    "--append-system-prompt", operatorSystemPrompt() + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(),
   ];
   if (opts.sessionId) args.push("--resume", opts.sessionId);
   if (opts.model) args.push("--model", opts.model);

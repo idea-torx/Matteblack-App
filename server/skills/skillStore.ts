@@ -131,12 +131,66 @@ export function readSkill(slug: string): Skill | null {
   return { slug: safe, title, description, label, preview: previewOf(body), updatedAt: stat.mtime.toISOString(), bytes: stat.size, body };
 }
 
+export const HISTORY_DIR = path.join(SKILLS_DIR, ".history");
+/** Who last wrote each skill. `user` = the panel or a foreground request,
+ *  `operator` = Claude during a live turn, `review` = the after-turn pass. */
+const ACTORS_PATH = path.join(SKILLS_DIR, ".actors.json");
+export type Actor = "user" | "operator" | "review";
+
+export function readActors(): Record<string, string> {
+  try { return JSON.parse(fs.readFileSync(ACTORS_PATH, "utf8")) as Record<string, string>; } catch { return {}; }
+}
+
+/** Versions of one skill, newest first. Filenames are the version ids. */
+export function listSkillHistory(slug: string): string[] {
+  const dir = path.join(HISTORY_DIR, slugify(slug));
+  try { return fs.readdirSync(dir).filter((f) => f.endsWith(".md")).map((f) => f.slice(0, -3)).sort().reverse(); }
+  catch { return []; }
+}
+
+export function readSkillVersion(slug: string, version: string): string | null {
+  if (!listSkillHistory(slug).includes(version)) return null; // also the path guard
+  try { return fs.readFileSync(path.join(HISTORY_DIR, slugify(slug), `${version}.md`), "utf8"); } catch { return null; }
+}
+
+/** May the after-turn review pass overwrite this skill? Pure — the caller
+ *  supplies the facts, so this stays testable and out of builtin.ts's import
+ *  cycle. Foreground writes never go through here: the user is present. */
+export function reviewMayWrite(o: { pinned: boolean; lastActor?: string; isFactoryText: boolean }): boolean {
+  if (o.pinned) return false;
+  // Hand-edited: text that isn't the shipped factory copy and whose last write
+  // wasn't ours. No actor recorded means it predates this bookkeeping — assume
+  // the user, which is the safe direction to be wrong in.
+  return o.isFactoryText || (o.lastActor ?? "user") !== "user";
+}
+
 /** Write (create or overwrite) a skill. Returns its metadata. */
-export function writeSkill(slug: string, body: string): SkillMeta {
+export function writeSkill(slug: string, body: string, actor?: Actor): SkillMeta {
   ensureSkillsDir();
   const p = skillPath(slug);
-  fs.writeFileSync(p, body, "utf8");
   const safe = slugify(slug);
+  // Version the outgoing body before it's gone, so a bad agent patch is one
+  // click to undo. ponytail: last 20 per skill, flat files, no index.
+  try {
+    const prev = fs.readFileSync(p, "utf8");
+    const dir = path.join(HISTORY_DIR, safe);
+    fs.mkdirSync(dir, { recursive: true });
+    // ISO instant, colons out (Windows-safe filename). Two writes inside one
+    // millisecond get a -1, -2 … suffix rather than eating each other.
+    const stamp = new Date().toISOString().replace(/:/g, "-");
+    let name = stamp;
+    for (let n = 1; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${stamp}-${n}`;
+    fs.writeFileSync(path.join(dir, `${name}.md`), prev, "utf8");
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".md")).sort().slice(0, -20)) {
+      fs.unlinkSync(path.join(dir, f));
+    }
+  } catch { /* first write of this skill — nothing to keep */ }
+  fs.writeFileSync(p, body, "utf8");
+  if (actor) {
+    const actors = readActors();
+    actors[safe] = actor;
+    try { fs.writeFileSync(ACTORS_PATH, JSON.stringify(actors), "utf8"); } catch { /* sidecar is advisory */ }
+  }
   const stat = fs.statSync(p);
   const { title, description, label } = parseHeader(body, safe);
   return { slug: safe, title, description, label, preview: previewOf(body), updatedAt: stat.mtime.toISOString(), bytes: stat.size };
@@ -183,6 +237,13 @@ export function setPin(slug: string, pinned: boolean): string[] {
 /** Strip optional frontmatter — it's panel metadata, not instruction. */
 function stripFrontmatter(body: string): string {
   return body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
+}
+
+/** One line per skill so the operator knows what exists before deciding to get_skill. */
+export function skillIndex(): string {
+  const rows = listSkills().map((s) => `- ${s.slug}: ${s.description || s.title}`);
+  if (!rows.length) return "";
+  return `\n\nYOUR SKILL LIBRARY (get_skill <slug> for the full text):\n${rows.join("\n")}`;
 }
 
 /** The pinned documents, ready to append to a system prompt. Empty when none. */

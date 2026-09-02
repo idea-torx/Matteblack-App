@@ -7,7 +7,7 @@
  */
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
-import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
+import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
 import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
@@ -105,6 +105,49 @@ export function formatGenerationsNote(rows: GenerationRow[], now: number): strin
   return `\n\n[System note: generation jobs you dispatched in the last 30 minutes, from the app's job log. This list is ground truth — if a turn was interrupted, your own history may be missing tool results for jobs that still ran and landed on the canvas. Trust this list over your memory when deciding whether something was already generated; check list_canvas before regenerating.\n${lines.join("\n")}]`;
 }
 
+// ---------------------------------------------------------------------------
+// After-turn review — the self-improvement pass
+// ---------------------------------------------------------------------------
+
+const REVIEW_PROMPT = [
+  "Review this conversation and update two things.",
+  "MEMORY: who the user is — persona, preferences, expectations about how you should work — with `remember`.",
+  "SKILLS: how to do this class of task. Be active; most sessions produce at least one skill update, and a pass that does nothing is a missed learning opportunity.",
+  "Signals: the user corrected your style, format, workflow, or approach (frustration is a first-class skill signal); a non-trivial technique or fix emerged; a skill you followed turned out wrong or outdated.",
+  "Routing: a correction about how you behave (asking first, verbosity, spend, what to confirm) goes to `operator-system`, which is read every turn; a correction about how a kind of piece is made goes to the skill for that piece.",
+  "Preference order: patch the skill that was in play with `patch_skill`; else patch an existing broader skill; else `save_skill` a new class-level skill named for the kind of work, never for today's job.",
+  "Settings the user keeps repeating (model, resolution, aspect, duration) are their usual: keep the memory note `usual-settings` current with `remember` so 'my usual' resolves next time.",
+  "Do not capture setup or environment failures, claims that a tool is broken, transient errors that resolved, unresolved attempts as if they were a workflow, or one-off narratives.",
+  "Never touch a pinned skill or one the user edited by hand.",
+  "Do not generate media, do not address the user, produce no prose beyond tool calls; if nothing stands out say 'Nothing to save.'",
+].join(" ");
+
+/** At most one review in flight per session. The user taking another turn on the
+ *  same session cancels it — a live turn owns the transcript, and a review
+ *  writing skills underneath it is exactly the race Hermes cancels for. */
+const reviews = new Map<string, AbortController>();
+
+function startReview(sessionId: string): void {
+  reviews.get(sessionId)?.abort();
+  const ac = new AbortController();
+  reviews.set(sessionId, ac);
+  // Fire and forget: never streamed to the client, never awaited, so `event:
+  // end` has already gone out by the time this runs.
+  runOperator({
+    message: REVIEW_PROMPT,
+    sessionId,
+    // ponytail: cheapest model, lowest effort — this is a bookkeeping pass.
+    model: "haiku",
+    effort: "low",
+    review: true,
+    allowedTools: REVIEW_MCP_TOOLS,
+    signal: ac.signal,
+    onEvent: (e) => { if (e.type === "error") console.error("[operator] review:", e.message); },
+  })
+    .catch((err) => console.error("[operator] review failed:", err))
+    .finally(() => { if (reviews.get(sessionId) === ac) reviews.delete(sessionId); });
+}
+
 router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
   res.json(operatorStatus());
 });
@@ -120,6 +163,8 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     return;
   }
   const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : undefined;
+  // The user has the floor again: stop any review still chewing on this session.
+  if (sessionId) reviews.get(sessionId)?.abort();
   const model = typeof body.model === "string" && body.model ? body.model : undefined;
   // Anything not on the allowlist is dropped rather than passed through — an
   // unrecognised --effort makes the CLI exit before the stream starts.
@@ -297,6 +342,9 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     // Redundant with the parsed 'done' event, but guarantees the client has the
     // resumable session id even if the result line was malformed.
     if (finalSession) send({ type: "session", sessionId: finalSession });
+    // Self-improvement pass. Only ever started for a foreground turn (this
+    // handler is the only caller and never sets `review`), so it can't recurse.
+    if (finalSession && !ac.signal.aborted) startReview(finalSession);
   } catch (err) {
     if (err instanceof OperatorNotConfiguredError) {
       send({ type: "error", message: err.message });

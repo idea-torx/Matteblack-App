@@ -66,6 +66,14 @@ setup, and there is no room for a new setup inside thirty seconds. When the brie
 *one take*, *seamless*, or the piece is under a minute, every join is `frame`. Reference seams earn
 their place in longer pieces, at scene breaks and for coverage inside a scene that runs for minutes.
 
+**The one exception inside thirty seconds: a character's first appearance.** A `frame` seam takes a
+single seed frame and nothing else, so no still can ride on it; only a `reference` seam carries plates.
+When a character with a plate (§2, Subject stills) enters partway through, make *that* join `reference`
+— tail of about 10 seconds, the whole cast's plates plus the newcomer's in `referenceUrls` — and write
+them entering from off-frame, never appearing in place: a person walking in is the one cut a viewer
+does not see. Every join after it goes back to `frame`. A walk-on with no plate is written into the
+chunk by description alone and needs no seam change.
+
 **`tailSeconds` defaults to 6 and costs nothing extra.** Use 3 at a scene break, where the camera changes
 and you want the old setup to have as little pull as possible; keep 6 for coverage inside one location,
 where the extra seconds carry more identity and motion across the cut.
@@ -134,10 +142,14 @@ paraphrase; drift in the words is drift in the picture.
   mid-twenties, warm low London accent, dry and unhurried."* State the accent twice in every chunk, once
   here and once beside the lines, and put the wrong accents and the wrong gender in the negative prompt.
   One mention drifts by the third chunk.
-- **Subject stills** — one approved still per character (keyframe-then-animate, §1), generated before
-  the first clip. Pass the same URLs as `referenceUrls` on every `reference` continuation: the tail
-  carries only the last few seconds, and these stills are what hold a face together once the scene is
-  many chunks old. Record the URLs in the cut (§9) so the next piece inherits the cast.
+- **Subject stills** — one approved still per character, including anyone who arrives late
+  (keyframe-then-animate, §1), generated before the first clip. Before generating any, ask the user
+  once where the cast comes from: **generated from scratch** (describe each, approve each still),
+  **pulled from a repo** (existing character art or brand mascots via `list_repos`), or **made up by
+  you** with no plates (fastest; faces are whatever the model invents). Pass the same URLs as
+  `referenceUrls` on every `reference` continuation: the tail carries only the last few seconds, and
+  these stills are what hold a face together once the scene is many chunks old. Record the URLs in
+  the cut (§9) so the next piece inherits the cast.
 
 Keep it lean. **Prompt bloat feeds morphing** — an overloaded prompt gives the model more to reinvent at
 every seam. Say each thing once, clearly, and stop.

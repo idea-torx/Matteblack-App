@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { resolveLocalPath } from "../utils/localPath.js";
+import { applyExactPatch } from "../skills/patchText.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -89,6 +90,10 @@ function authHeaders(ep: Endpoint): Record<string, string> {
   const h: Record<string, string> = { "content-type": "application/json" };
   // J3 will enforce this token via middleware; harmless for the app to ignore now.
   if (ep.token) h["x-matteblack-token"] = ep.token;
+  // Which writer this is, for the skill-library write guard. The after-turn
+  // review pass gets its own MCP config with MB_SKILL_ACTOR=review; every other
+  // client (a live operator turn, Claude Desktop) is a foreground operator.
+  h["x-falforge-actor"] = process.env.MB_SKILL_ACTOR === "review" ? "review" : "operator";
   return h;
 }
 
@@ -495,6 +500,20 @@ const READ_TOOLS: Tool[] = [
         body: { type: "string", description: "The full markdown document." },
       },
       required: ["slug", "body"],
+    },
+  },
+  {
+    name: "patch_skill",
+    description:
+      "Make one small exact edit to an existing skill — the right tool when the user corrects how you handled something, or you learn a better way to do a class of task. `old` must appear EXACTLY once in the skill (copy it verbatim from get_skill, whitespace included); it is replaced by `new`, or deleted when `new` is empty. Prefer this over rewriting the whole skill with save_skill: it keeps the rest of the document intact. Every write is versioned and the user can restore, so a small correction is cheap.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "The skill slug from list_skills." },
+        old: { type: "string", description: "The exact existing text to replace. Must occur exactly once." },
+        new: { type: "string", description: "The replacement text. Empty string deletes the matched text." },
+      },
+      required: ["slug", "old", "new"],
     },
   },
   {
@@ -1245,6 +1264,25 @@ async function runSaveSkill(args: Record<string, unknown>): Promise<CallToolResu
   }
 }
 
+async function runPatchSkill(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const slug = typeof args.slug === "string" ? args.slug : "";
+  const oldText = typeof args.old === "string" ? args.old : "";
+  const newText = typeof args.new === "string" ? args.new : "";
+  if (!slug || !oldText) return fail("patch_skill requires a `slug` and a non-empty `old` string.");
+  try {
+    const sk = (await httpJson(ep, "GET", `/api/skills/${encodeURIComponent(slug)}`)) as SkillRow & { body?: string };
+    const patched = applyExactPatch(sk.body ?? "", oldText, newText);
+    if (!patched.ok) return fail(patched.error);
+    await httpJson(ep, "PUT", `/api/skills/${encodeURIComponent(slug)}`, { body: patched.body });
+    return ok(`Patched skill "${slug}".`);
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return fail(`No skill called "${slug}". Call list_skills to see what exists.`);
+    return errToFail(err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Private agent memory + local files
 //
@@ -1361,14 +1399,14 @@ function runListLocalDir(args: Record<string, unknown>): CallToolResult {
 const INSTRUCTIONS = [
   "Matteblack generates images, video, and music locally using the user's own fal.ai key; every result lands on the user's Fal Forge canvas (a separate window they keep open beside this chat).",
   "",
-  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
+  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill` / `patch_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths, live git state and authoring flag, and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply. `checkout_branch` moves a clone onto the branch the user names. On repos where the user enabled authoring you may edit files and call `commit_repo`, which commits to a working branch and opens a PR: never the default branch, never a merge, and never installing or running the project. On every other repo you are read-only — say so rather than trying another route.",
   "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
   "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
   "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
   "LOCAL FILES: `list_local_dir` and `read_local_file` read this machine directly by absolute path (or ~/...). When the user points at a brief, script, brand guide, copy deck or repo, open it and use what it actually says rather than asking them to paste it. Credentials files are refused by design — don't try to route around that.",
-  "SKILLS: the user keeps reusable recipes — video scripts, house styles, prompt formulas — as markdown in their skill library. Check `list_skills` when they name a skill, ask for 'the usual', or want something you've built before, and follow the skill's prompts verbatim rather than improvising a fresh one. When a run turns out well or the user says to remember it, call `save_skill` with the ACTUAL prompts and settings you used so it reproduces exactly.",
+  "SKILLS: the user keeps reusable recipes — video scripts, house styles, prompt formulas — as markdown in their skill library. Check `list_skills` when they name a skill, ask for 'the usual', or want something you've built before, and follow the skill's prompts verbatim rather than improvising a fresh one. When a run turns out well or the user says to remember it, call `save_skill` with the ACTUAL prompts and settings you used so it reproduces exactly. The library is your own runbook too: when the user corrects how you did something, fix the skill that governed it with `patch_skill` (one exact edit) instead of only remembering it. Every write is versioned and restorable, so a small correction is cheap. Never rewrite a pinned skill or one the user edited by hand without asking.",
   "",
   "COST: the user pays fal.ai directly with their own key, so prices are real money, at cost, and vary hugely — a sound effect is under a cent, a 5s 1080p Seedance clip is over three dollars. Check `estimate_cost` before anything expensive (any video, or a large batch), state the figure, and get a yes before spending. Quote the number plainly ('about $3.40'); don't editorialise about it. For a multi-shot piece, price and approve the WHOLE sequence once, up front — then generate every shot without asking again. Re-asking between shots strands a half-finished sequence, which is worse than the spend.",
   "",
@@ -1418,6 +1456,7 @@ async function main(): Promise<void> {
     if (name === "save_cut") return runSaveCut(args);
     if (name === "list_cuts") return runListCuts(args);
     if (name === "save_skill") return runSaveSkill(args);
+    if (name === "patch_skill") return runPatchSkill(args);
     if (name !== "generate_media" && name !== "generate_music" && name !== "generate_voiceover"
         && name !== "transform_media" && name !== "continue_video") {
       return fail(`Unknown tool: ${name}`);
