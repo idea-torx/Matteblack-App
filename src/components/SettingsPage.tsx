@@ -1415,21 +1415,30 @@ function SetupSection() {
             )}
           </div>
         ))}
-        {isDesktopApp() && (
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-info">
-              <span className="settings-toggle-label">This Mac</span>
-              <span className="settings-toggle-desc">The frameless window has no File menu, so these live here.</span>
-            </div>
-            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.connectToClaude?.(); }}>Connect to Claude…</button>
-            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.openDataFolder?.(); }}>Data folder</button>
-            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.checkForUpdates?.(); }}>Check for updates</button>
-          </div>
-        )}
         <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.
         </div>
       </div>
+
+      {isDesktopApp() && (
+        <div className="settings-card settings-card--full">
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Fal Forge</span>
+              <span className="settings-toggle-desc">Version {__APP_VERSION__} · this Mac</span>
+            </div>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.checkForUpdates?.(); }}>Check for updates</button>
+          </div>
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Local files and agents</span>
+              <span className="settings-toggle-desc">The frameless window has no File menu, so these live here.</span>
+            </div>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.connectToClaude?.(); }}>Connect to Claude…</button>
+            <button type="button" className="settings-btn-secondary" onClick={() => { void desktopBridge()?.openDataFolder?.(); }}>Data folder</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
