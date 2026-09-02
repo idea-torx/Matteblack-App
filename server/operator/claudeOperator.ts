@@ -22,7 +22,7 @@ import { operatorSystemPrompt } from "../skills/builtin.js";
 import { skillIndex, pinnedInstructions } from "../skills/skillStore.js";
 import { memoryInstructions } from "../skills/agentMemory.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
-import { getOperatorRunner } from "../config/userConfig.js";
+import { getOperatorRunner, getOperatorModels } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
 import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
@@ -461,13 +461,17 @@ export async function operatorLogin(id: RunnerId): Promise<boolean> {
 /** Whether the operator is usable, and what each runner's binary looks like. */
 export function operatorStatus(): {
   binaryFound: boolean; binaryPath: string; runner: RunnerId;
-  runners: { id: RunnerId; label: string; binaryFound: boolean; binaryPath: string; models: Runner["models"] }[];
+  runners: { id: RunnerId; label: string; binaryFound: boolean; binaryPath: string; models: Runner["models"]; catalog: Runner["models"] }[];
 } {
   const active = getOperatorRunner();
   refreshOpencodeModels();
   const runners = RUNNERS.map((r) => {
     const bin = r.resolveBinary();
-    return { id: r.id, label: r.label, binaryFound: bin.found, binaryPath: bin.path, models: r.models };
+    // `models` is what the panel offers: the user's picks when they made any
+    // that still exist in the catalog, else everything.
+    const picks = new Set(getOperatorModels(r.id));
+    const chosen = r.models.filter((m) => picks.has(m.id));
+    return { id: r.id, label: r.label, binaryFound: bin.found, binaryPath: bin.path, models: chosen.length ? chosen : r.models, catalog: r.models };
   });
   // binaryFound/binaryPath stay the ACTIVE runner's, which is what the panel's
   // "not configured" banner has always keyed off.

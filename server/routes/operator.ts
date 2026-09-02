@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { runOperator, operatorStatus, operatorAuth, operatorLogin, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, RUNNERS, type OperatorEvent, type EffortLevel, type RunnerId } from "../operator/claudeOperator.js";
-import { setUserConfig } from "../config/userConfig.js";
+import { setUserConfig, setOperatorModels } from "../config/userConfig.js";
 import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
@@ -165,6 +165,14 @@ router.post("/api/operator/runner", requireAuth, (req: AuthRequest, res) => {
     return;
   }
   setUserConfig({ operatorRunner: runner as RunnerId });
+  res.json(operatorStatus());
+});
+
+/** Which of a runner's catalog the panel dropdown offers. Empty = all. */
+router.post("/api/operator/models", requireAuth, (req: AuthRequest, res) => {
+  const { runner, ids } = (req.body || {}) as { runner?: unknown; ids?: unknown };
+  if (!RUNNERS.some((r) => r.id === runner) || !Array.isArray(ids)) { res.status(400).json({ error: "bad request" }); return; }
+  setOperatorModels(runner as RunnerId, ids.filter((v): v is string => typeof v === "string").slice(0, 50));
   res.json(operatorStatus());
 });
 

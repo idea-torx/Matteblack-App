@@ -1417,7 +1417,7 @@ function SetupSection() {
 /** Which agent CLI drives the in-app operator. Driven entirely by the runner
  *  list GET /api/operator/status returns, so a third runner needs no UI work. */
 function ProvidersSection() {
-  type RunnerRow = { id: string; label: string; binaryFound: boolean; binaryPath: string };
+  type RunnerRow = { id: string; label: string; binaryFound: boolean; binaryPath: string; models?: { id: string; label: string }[]; catalog?: { id: string; label: string }[] };
   const [runners, setRunners] = useState<RunnerRow[]>([]);
   const [active, setActive] = useState<string>("claude");
   const [error, setError] = useState<string | null>(null);
@@ -1497,6 +1497,32 @@ function ProvidersSection() {
             />
           </label>
         ))}
+        {/* Model picks, for runners with a catalog worth pruning. Ticked = in the
+            panel dropdown; nothing ticked = whole catalog. */}
+        {runners.filter((r) => r.binaryFound && (r.catalog?.length ?? 0) > 6).map((r) => {
+          const picks = new Set(r.models?.length === r.catalog?.length ? [] : (r.models ?? []).map((m) => m.id));
+          const save = (ids: string[]) => load("/api/operator/models", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runner: r.id, ids }),
+          });
+          return (
+            <div key={`models-${r.id}`} className="settings-toggle-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+              <span className="settings-toggle-label">{r.label} models in the dropdown</span>
+              <span className="settings-toggle-desc">Tick the ones you use. None ticked shows all {r.catalog?.length}.</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "2px 12px" }}>
+                {(r.catalog ?? []).map((m) => (
+                  <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={picks.has(m.id)}
+                      onChange={(e) => save(e.target.checked ? [...picks, m.id] : [...picks].filter((id) => id !== m.id))}
+                    />
+                    <span className="settings-toggle-desc">{m.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
         <div className="settings-card-note">
           Switching provider starts a fresh operator conversation — sessions can't move between CLIs.
         </div>

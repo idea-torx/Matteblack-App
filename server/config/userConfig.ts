@@ -27,6 +27,8 @@ export interface UserConfig {
    *  operator, by CLI server name. Off by default: having a server configured
    *  in the CLI is not consent to hand it to the in-app agent. */
   connectors?: { claude?: string[]; codex?: string[]; opencode?: string[] };
+  /** Model ids the panel dropdown shows, per runner. Unset/empty = the whole catalog. */
+  operatorModels?: { claude?: string[]; codex?: string[]; opencode?: string[] };
 }
 
 type ConfigKey = keyof UserConfig;
@@ -118,4 +120,12 @@ export function maskKey(key: string | undefined): string | null {
   if (!key) return null;
   const tail = key.slice(-4);
   return `…${tail}`;
+}
+
+export function getOperatorModels(runner: OperatorRunner): string[] {
+  return load().operatorModels?.[runner] ?? [];
+}
+
+export function setOperatorModels(runner: OperatorRunner, ids: string[]): void {
+  setUserConfig({ operatorModels: { ...(load().operatorModels ?? {}), [runner]: ids } });
 }
