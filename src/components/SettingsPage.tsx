@@ -1311,14 +1311,23 @@ function logoDomain(name: string, url?: string): string | undefined {
   } catch { return undefined; }
 }
 
+/** Vendors whose apex /favicon.ico 404s — checked by hand, so a broken one
+ *  here means they moved it, not that the fallback is wrong. */
+const LOGO_URL: Record<string, string> = {
+  "figma.com": "https://static.figma.com/app/icon/1/favicon.svg",
+  "notion.so": "https://www.notion.so/front-static/favicon.ico",
+  "brew.sh": "https://brew.sh/assets/img/homebrew.svg",
+};
+
 function ServiceLogo({ name, url }: { name: string; url?: string }) {
   const [failed, setFailed] = useState(false);
   const domain = logoDomain(name, url);
+  const src = domain ? LOGO_URL[domain] || `https://${domain}/favicon.ico` : undefined;
   const letter = (name.replace(/^claude\.ai /i, "").trim()[0] || "?").toUpperCase();
   return (
     <span className="settings-logo" aria-hidden="true">
-      {domain && !failed
-        ? <img src={`https://${domain}/favicon.ico`} alt="" loading="lazy" onError={() => setFailed(true)} />
+      {src && !failed
+        ? <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
         : letter}
     </span>
   );
