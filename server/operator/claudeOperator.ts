@@ -25,6 +25,7 @@ import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
 import { getOperatorRunner } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
+import { opencodeRunner } from "./runners/opencode.js";
 import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
@@ -193,7 +194,7 @@ export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 // Runner registry
 // ---------------------------------------------------------------------------
 
-export type RunnerId = "claude" | "codex";
+export type RunnerId = "claude" | "codex" | "opencode";
 
 /** Everything a runner needs to build one command line. Assembled below so the
  *  runners stay pure argv-and-parse: no config reads, no filesystem. */
@@ -230,10 +231,12 @@ export interface Runner {
   spawnArgs(ctx: RunnerContext): string[];
   /** Prompt on stdin instead of argv, when the CLI prefers it. */
   stdinText?(ctx: RunnerContext): string;
+  /** Extra env for the spawn, for a CLI whose config arrives that way. */
+  env?(ctx: RunnerContext): Record<string, string>;
   parseLine(obj: Record<string, unknown>): OperatorEvent[];
 }
 
-export const RUNNERS: Runner[] = [claudeRunner, codexRunner];
+export const RUNNERS: Runner[] = [claudeRunner, codexRunner, opencodeRunner];
 
 /** Session ids are runner-specific — handing a Claude id to `codex exec resume`
  *  is a hard error — so every non-default runner's ids carry its prefix. */
@@ -340,7 +343,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     let child;
     try {
       child = spawn(bin.path, args, {
-        env: childEnv,
+        env: { ...childEnv, ...(runner.env?.(ctx) ?? {}) },
         cwd: REPOS_DIR,
         // Close stdin unless the runner writes the prompt there (claude takes it
         // via -p and otherwise waits ~3s for piped input).

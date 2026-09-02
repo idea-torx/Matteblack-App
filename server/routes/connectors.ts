@@ -41,9 +41,9 @@ router.post("/api/connectors/add", requireAuth, async (req: AuthRequest, res) =>
 
 /** Both mutating routes below name an EXISTING server, so re-listing is the
  *  validation: a name the CLIs don't know is not something we act on. */
-async function resolve(body: unknown): Promise<{ runner: "claude" | "codex"; name: string } | null> {
+async function resolve(body: unknown): Promise<{ runner: "claude" | "codex" | "opencode"; name: string } | null> {
   const { runner, name } = (body || {}) as { runner?: unknown; name?: unknown };
-  if ((runner !== "claude" && runner !== "codex") || typeof name !== "string") return null;
+  if ((runner !== "claude" && runner !== "codex" && runner !== "opencode") || typeof name !== "string") return null;
   const known = await listConnectors();
   return known.some((c) => c.runner === runner && c.name === name) ? { runner, name } : null;
 }

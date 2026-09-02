@@ -1505,7 +1505,7 @@ function ProvidersSection() {
   );
 }
 
-type ConnectorRow = { runner: "claude" | "codex"; name: string; url?: string; command?: string; status: "connected" | "needs_auth" | "unknown"; enabled: boolean };
+type ConnectorRow = { runner: "claude" | "codex" | "opencode"; name: string; url?: string; command?: string; status: "connected" | "needs_auth" | "unknown"; enabled: boolean };
 type CatalogRow = { id: string; label: string; url: string; blurb: string };
 type HiggsfieldStatus = { installed: boolean; loggedIn: boolean; account: string; skills: number };
 
@@ -1564,7 +1564,7 @@ function ConnectorsSection() {
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">{r.name}</span>
               <span className="settings-toggle-desc">
-                {r.runner === "claude" ? "Claude Code" : "Codex"} · {r.status === "connected" ? "Connected" : r.status === "needs_auth" ? "Needs sign-in" : "Unknown"}
+                {r.runner === "claude" ? "Claude Code" : r.runner === "opencode" ? "OpenCode" : "Codex"} · {r.status === "connected" ? "Connected" : r.status === "needs_auth" ? "Needs sign-in" : "Unknown"}
                 {r.url || r.command ? ` · ${r.url || r.command}` : ""}
               </span>
             </div>

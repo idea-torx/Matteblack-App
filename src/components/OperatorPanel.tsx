@@ -1002,7 +1002,8 @@ export function OperatorPanel({
   const ready = status?.binaryFound === true;
   // The header brands the route that's actually running, not the app's default.
   const isCodex = runner === "codex";
-  const brand = isCodex ? "Codex" : "Claude";
+  const isOpenCode = runner === "opencode";
+  const brand = isCodex ? "Codex" : isOpenCode ? "OpenCode" : "Claude";
   const aliveLabel = streaming ? `${brand} is thinking` : `${brand} is online`;
 
   return (
@@ -1013,9 +1014,12 @@ export function OperatorPanel({
           aria-label={aliveLabel}
           title={streaming ? `${brand} is thinking…` : `${brand} is online`}
         >
-          {isCodex
-            ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
-            : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
+          {isOpenCode
+            // ponytail: text mark rather than a fourth SVG component.
+            ? <span aria-label="OpenCode" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.04em", opacity: streaming ? 0.6 : 1 }}>oc</span>
+            : isCodex
+              ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
+              : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
         </div>
         <div className="operator-brand">
           <span className="operator-brand__name">{brand}</span>

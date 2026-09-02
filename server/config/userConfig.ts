@@ -10,6 +10,10 @@
 import fs from "node:fs";
 import { CONFIG_PATH, ensureDataDir } from "./runtime.js";
 
+/** Same union as RunnerId in the operator; declared here so config stays
+ *  import-free of the operator (which imports this file). */
+export type OperatorRunner = "claude" | "codex" | "opencode";
+
 export interface UserConfig {
   /** fal.ai API key — the core generation engine. */
   falKey?: string;
@@ -18,11 +22,11 @@ export interface UserConfig {
   /** Optional override for the `claude` binary path (auto-detected otherwise). */
   claudeCodePath?: string;
   /** Which agent CLI drives the in-app operator. Default "claude". */
-  operatorRunner?: "claude" | "codex";
+  operatorRunner?: "claude" | "codex" | "opencode";
   /** MCP servers (Google Drive, Figma, …) the user has switched ON for the
    *  operator, by CLI server name. Off by default: having a server configured
    *  in the CLI is not consent to hand it to the in-app agent. */
-  connectors?: { claude?: string[]; codex?: string[] };
+  connectors?: { claude?: string[]; codex?: string[]; opencode?: string[] };
 }
 
 type ConfigKey = keyof UserConfig;
@@ -84,18 +88,19 @@ export function getAnthropicKey(): string | undefined {
 
 /** Which CLI runs the operator. Unknown/unset falls back to Claude Code, so a
  *  hand-edited config can never leave the panel pointing at nothing. */
-export function getOperatorRunner(): "claude" | "codex" {
-  return load().operatorRunner === "codex" ? "codex" : "claude";
+export function getOperatorRunner(): OperatorRunner {
+  const r = load().operatorRunner;
+  return r === "codex" || r === "opencode" ? r : "claude";
 }
 
 /** Connector names the user has enabled, per runner. Always both keys. */
-export function getEnabledConnectors(): Record<"claude" | "codex", string[]> {
+export function getEnabledConnectors(): Record<OperatorRunner, string[]> {
   const c = load().connectors;
-  return { claude: c?.claude ?? [], codex: c?.codex ?? [] };
+  return { claude: c?.claude ?? [], codex: c?.codex ?? [], opencode: c?.opencode ?? [] };
 }
 
 /** Flip one connector on or off. Returns the new enabled map. */
-export function setConnectorEnabled(runner: "claude" | "codex", name: string, enabled: boolean): Record<"claude" | "codex", string[]> {
+export function setConnectorEnabled(runner: OperatorRunner, name: string, enabled: boolean): Record<OperatorRunner, string[]> {
   const cur = getEnabledConnectors();
   const next = new Set(cur[runner]);
   if (enabled) next.add(name); else next.delete(name);
