@@ -26,6 +26,8 @@ import { registerCheckpointFlush, scheduleCanvasFlush, flushCanvasNow } from "./
 import notificationRoutes from "./routes/notifications.js";
 import agentRoutes from "./routes/agent.js";
 import operatorRoutes from "./routes/operator.js";
+import operatorJobRoutes from "./routes/operatorJobs.js";
+import { startScheduler } from "./operator/scheduler.js";
 import skillRoutes from "./routes/skills.js";
 import customModelRoutes from "./routes/customModels.js";
 import setupRoutes from "./routes/setup.js";
@@ -3205,6 +3207,7 @@ app.post("/api/canvas/beacon-flush", injectUserId, async (req: AuthRequest, res:
 app.use(agentRoutes);
 app.use(brandIqRoutes);
 app.use(operatorRoutes);
+app.use(operatorJobRoutes);
 seedBuiltinSkills();
 app.use(skillRoutes);
 app.use(customModelRoutes);
@@ -3669,6 +3672,8 @@ async function start() {
   console.log("[startup] canvas_node_tombstones table ready.");
 
   startSessionCleanup();
+  // Scheduled operator runs (cron in the machine's local time zone).
+  startScheduler();
   deduplicateCanvasNodes().catch((err) => {
     console.error("[startup] Canvas node dedup failed:", err);
   });

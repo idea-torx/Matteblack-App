@@ -92,6 +92,7 @@ export const codexRunner: Runner = {
       // through our tools, it doesn't run the user's machine.
       "-c", `sandbox_mode="read-only"`,
       "-c", `tools.web_search=false`,
+      "-c", `model_auto_compact_token_limit=100000`, // matches Claude's --autocompact 100000
     );
     // The user's own MCP servers, re-declared: --ignore-user-config drops their
     // config.toml wholesale, so anything they switched on in Settings has to be

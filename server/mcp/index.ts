@@ -107,7 +107,7 @@ function authHeaders(ep: Endpoint): Record<string, string> {
 
 async function httpJson(
   ep: Endpoint,
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   route: string,
   body?: unknown,
   timeoutMs = 15000,
@@ -292,6 +292,35 @@ const READ_TOOLS: Tool[] = [
         id: { type: "string", description: "The asset/job id from list_canvas." },
         path: { type: "string", description: "Destination folder or file path (absolute, ~/…, or a bare folder name like Downloads)." },
       },
+      required: ["id"],
+    },
+  },
+  {
+    name: "schedule_job",
+    description:
+      "Schedule an operator run to happen automatically, unattended — \"every Monday at 9 make three new variants of the hero shot\". The prompt runs as a fresh operator turn at each occurrence; results land on the user's canvas and a notification fires. `cron` is a standard 5-field expression (minute hour day-of-month month day-of-week) interpreted in the USER'S LOCAL TIME ZONE. Examples: \"0 9 * * 1\" = Mondays 09:00 local, \"0 9 * * *\" = every day 09:00, \"0 9 * * 1-5\" = weekdays 09:00, \"0 * * * *\" = hourly on the hour, \"30 18 1 * *\" = the 1st of each month at 18:30.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short name for the job, shown in Settings and in the notification." },
+        prompt: { type: "string", description: "What the operator should do on each run. Write it as a complete standalone instruction — there is no conversation history at run time." },
+        cron: { type: "string", description: "5-field cron, local time. e.g. \"0 9 * * 1\" for Mondays 09:00." },
+      },
+      required: ["name", "prompt", "cron"],
+    },
+  },
+  {
+    name: "list_jobs",
+    description:
+      "List the user's scheduled operator runs: id, name, cron, whether enabled, next and last run, and the last result or error. Use before delete_job to get an id.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "delete_job",
+    description: "Delete one scheduled operator run. Get the id from list_jobs.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "The job id from list_jobs." } },
       required: ["id"],
     },
   },
@@ -1021,6 +1050,65 @@ async function runSaveAsset(args: Record<string, unknown>): Promise<CallToolResu
   }
 }
 
+// --- Scheduled operator runs -----------------------------------------------
+// Cron is interpreted in the app machine's LOCAL time zone.
+
+interface SchedJobRow {
+  id: string; name: string; cron: string; enabled: boolean;
+  next_run_at: string | null; last_run_at: string | null;
+  last_result: string | null; last_error: string | null;
+}
+
+async function runScheduleJob(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
+  const cron = typeof args.cron === "string" ? args.cron.trim() : "";
+  if (!name || !prompt || !cron) return fail("schedule_job requires `name`, `prompt` and `cron`.");
+  try {
+    const data = (await httpJson(ep, "POST", "/api/operator/jobs", { name, prompt, cron })) as { job?: SchedJobRow };
+    const job = data.job;
+    if (!job) return fail("The app did not return the created job.");
+    return ok(`Scheduled "${job.name}" (${job.cron}, local time). Next run: ${job.next_run_at ?? "unknown"}. Job id: ${job.id}`);
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runListJobs(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const data = (await httpJson(ep, "GET", "/api/operator/jobs")) as { jobs?: SchedJobRow[] };
+    const jobs = data.jobs ?? [];
+    if (jobs.length === 0) return ok("No scheduled runs yet. Create one with schedule_job.");
+    const lines = [`${jobs.length} scheduled run(s):`, ""];
+    for (const j of jobs) {
+      lines.push(`\u2022 ${j.name} — ${j.cron} (local time)${j.enabled ? "" : " [paused]"}`);
+      lines.push(`  id: ${j.id}  next: ${j.next_run_at ?? "—"}  last: ${j.last_run_at ?? "never"}`);
+      if (j.last_error) lines.push(`  last error: ${j.last_error.slice(0, 160)}`);
+      else if (j.last_result) lines.push(`  last result: ${j.last_result.slice(0, 160)}`);
+    }
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runDeleteJob(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const id = typeof args.id === "string" ? args.id : "";
+  if (!id) return fail("delete_job requires an `id` (from list_jobs).");
+  try {
+    await httpJson(ep, "DELETE", `/api/operator/jobs/${encodeURIComponent(id)}`);
+    return ok(`Deleted scheduled run ${id}.`);
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
 async function runGetAsset(args: Record<string, unknown>): Promise<CallToolResult> {
   const ep = readEndpoint();
   if (!ep) return fail(NOT_RUNNING);
@@ -1547,6 +1635,9 @@ async function main(): Promise<void> {
     if (name === "list_canvas") return runListCanvas(args);
     if (name === "get_asset") return runGetAsset(args);
     if (name === "save_asset") return runSaveAsset(args);
+    if (name === "schedule_job") return runScheduleJob(args);
+    if (name === "list_jobs") return runListJobs();
+    if (name === "delete_job") return runDeleteJob(args);
     if (name === "estimate_cost") return runEstimateCost(args);
     if (name === "recall") return runRecall();
     if (name === "remember") return runRemember(args);

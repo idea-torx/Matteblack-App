@@ -18,6 +18,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:unit": "node --import tsx --test src/lib/mentionCore.test.ts",
+    "test:scheduler": "cross-env LOCAL_MODE=false DATABASE_URL=postgres://unused node --import tsx --test server/operator/scheduler.cron.test.ts",
     "migrate:r2": "tsx server/migrate-to-r2.ts",
     "electron:prep": "vite build && npm run build:server && npm run build:mcp",
     "electron:dev": "npm run electron:prep && electron .",

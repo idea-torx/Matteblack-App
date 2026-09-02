@@ -148,6 +148,10 @@ export const claudeRunner: Runner = {
       ...(grants.length ? [] : ["--strict-mcp-config"]),
       "--allowedTools", [...ctx.allowedTools, ...grants].join(","),
       "--append-system-prompt", ctx.systemPrompt,
+      // Compact at 100k tokens instead of the model's full window: long
+      // sessions replay their whole transcript every turn, so a smaller window
+      // caps per-turn spend. Same figure as Codex's model_auto_compact_token_limit.
+      "--autocompact", "100000",
     ];
     if (ctx.sessionId) args.push("--resume", ctx.sessionId);
     // ponytail: cheapest model for the bookkeeping pass, unless one was asked for.

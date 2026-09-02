@@ -692,6 +692,28 @@ export async function initDB() {
     ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fal_request_id TEXT DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_jobs_fal_request_id ON jobs (fal_request_id) WHERE fal_request_id IS NOT NULL;
 
+    -- Scheduled operator runs. The cron column is a 5-field expression, interpreted
+    -- in the SERVER machine local time zone (see server/operator/scheduler.ts).
+    CREATE TABLE IF NOT EXISTS operator_jobs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      cron TEXT NOT NULL,
+      runner TEXT DEFAULT NULL,
+      model TEXT DEFAULT NULL,
+      effort TEXT DEFAULT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      last_run_at TIMESTAMPTZ DEFAULT NULL,
+      next_run_at TIMESTAMPTZ DEFAULT NULL,
+      last_result TEXT DEFAULT NULL,
+      last_error TEXT DEFAULT NULL,
+      fails INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_operator_jobs_due ON operator_jobs(next_run_at) WHERE enabled;
+
     CREATE TABLE IF NOT EXISTS credit_config (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       generation_type TEXT UNIQUE NOT NULL,
