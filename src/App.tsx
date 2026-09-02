@@ -2229,6 +2229,7 @@ function App() {
           <OperatorPanel
             onClose={() => setAgentOpen(false)}
             onBusyChange={setAgentBusy}
+            projectId={activeProjectId || undefined}
             getCanvasContext={() => {
               // Snapshot the open canvas + viewport so operator generations land
               // where the user is looking (first gen) and cascade from there.

@@ -237,7 +237,12 @@ function loadChat(): { messages: ChatMessage[]; sessionId?: string } {
  * old conversation and typing resumes it on claude's side too rather than
  * starting cold with a transcript pasted above it.
  */
-type ChatSession = { id: string; title: string; sessionId?: string; messages: ChatMessage[]; updatedAt: number };
+type ChatSession = { id: string; title: string; sessionId?: string; messages: ChatMessage[]; updatedAt: number;
+  /** Which project this thread belongs to. Threads are scoped so switching
+   *  project switches the agent's context with it — one canvas's conversation
+   *  is noise in another. Undefined only on threads written before scoping;
+   *  those are adopted by whichever project is open when they're first seen. */
+  projectId?: string };
 type ChatStore = { activeId: string; sessions: ChatSession[] };
 
 function chatTitle(messages: ChatMessage[]): string {
@@ -413,6 +418,7 @@ export function OperatorPanel({
   getCanvasContext,
   canvasReferenceImages,
   seedPrompt,
+  projectId,
 }: {
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
@@ -425,6 +431,8 @@ export function OperatorPanel({
   /** Text dropped into the composer from elsewhere (e.g. the Skills panel).
    *  Carries a nonce so sending the same text twice still re-seeds. */
   seedPrompt?: { text: string; nonce: number } | null;
+  /** The open project. Threads are filtered and stamped with it. */
+  projectId?: string;
 }) {
   const [status, setStatus] = useState<OperatorStatus | null>(null);
   // Both of these have to come from the SAME store read. Seeding `messages`
@@ -468,6 +476,14 @@ export function OperatorPanel({
   const [pins, setPins] = useState<{ slug: string; title: string }[]>([]);
   const [pinError, setPinError] = useState("");
   const chatIdRef = useRef<string>(chats.activeId);
+  // Everything the user navigates — history list, back/forward, the activity
+  // grid, the "last chat" card — reads this, not the raw store. Writes still
+  // go through the whole store so another project's threads survive.
+  const pid = projectId || undefined;
+  const sessions = useMemo(
+    () => chats.sessions.filter((s) => s.projectId === pid),
+    [chats.sessions, pid],
+  );
   const sessionIdRef = useRef<string | undefined>(
     chats.sessions.find((s) => s.id === chats.activeId)?.sessionId,
   );
@@ -856,6 +872,8 @@ export function OperatorPanel({
   // empty store also greys out the history button that would have restored it.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  const pidRef = useRef(pid);
+  pidRef.current = pid;
   const commitChats = useCallback(() => {
     setChats((prev) => {
       const id = chatIdRef.current;
@@ -864,10 +882,13 @@ export function OperatorPanel({
       const next: ChatStore = msgs.length
         ? {
             activeId: id,
+            // The cap is per project: a global slice would let a busy canvas
+            // evict a quiet one's history.
             sessions: [
-              { id, title: chatTitle(msgs), sessionId: sessionIdRef.current, messages: msgs.slice(-CHAT_MAX_MESSAGES), updatedAt: Date.now() },
-              ...rest,
+              { id, title: chatTitle(msgs), sessionId: sessionIdRef.current, messages: msgs.slice(-CHAT_MAX_MESSAGES), updatedAt: Date.now(), projectId: pidRef.current },
+              ...rest.filter((s) => s.projectId === pidRef.current),
             ].slice(0, CHAT_MAX_SESSIONS)
+              .concat(rest.filter((s) => s.projectId !== pidRef.current))
           }
         // An empty draft must never erase what's stored: only switch the
         // pointer. Deleting is an explicit user action (deleteChat).
@@ -891,6 +912,31 @@ export function OperatorPanel({
     saveTimerRef.current = setTimeout(() => { saveTimerRef.current = null; commitChats(); }, CHAT_SAVE_THROTTLE_MS);
   }, [messages, streaming, commitChats]);
 
+  // Switching project swaps the whole conversation. The outgoing thread is
+  // already committed by the save effect; we adopt any pre-scoping threads into
+  // whatever project is open the first time they're seen, then open this
+  // project's most recent thread, or a blank one if it has none yet.
+  // null (not undefined) so the very first run always reconciles: the stored
+  // activeId can belong to a project other than the one open at mount.
+  const prevPidRef = useRef<string | undefined | null>(null);
+  useEffect(() => {
+    let store = chats;
+    if (store.sessions.some((s) => s.projectId === undefined)) {
+      store = { ...store, sessions: store.sessions.map((s) => (s.projectId === undefined ? { ...s, projectId: pid } : s)) };
+      saveChats(store);
+      setChats(store);
+    }
+    if (prevPidRef.current === pid) return;
+    prevPidRef.current = pid;
+    abortRef.current?.abort();
+    const mine = store.sessions.filter((s) => s.projectId === pid).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    chatIdRef.current = mine?.id ?? newChatId();
+    sessionIdRef.current = mine?.sessionId;
+    setMessages(mine?.messages ?? []);
+    setHistoryOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid]);
+
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
   const newChat = useCallback(() => {
     if (streaming) return;
@@ -909,7 +955,7 @@ export function OperatorPanel({
    *  A turn in flight is aborted rather than blocking the switch — a run that
    *  never finishes used to lock the user out of their own history. */
   const openChat = useCallback((id: string) => {
-    const s = chats.sessions.find((x) => x.id === id);
+    const s = sessions.find((x) => x.id === id);
     if (!s) return;
     if (streaming) { commitChats(); abortRef.current?.abort(); }
     setHistoryOpen(false);
@@ -917,7 +963,7 @@ export function OperatorPanel({
     sessionIdRef.current = s.sessionId;
     setMessages(s.messages);
     setChats((prev) => { const next = { ...prev, activeId: s.id }; saveChats(next); return next; });
-  }, [chats.sessions, streaming, commitChats]);
+  }, [sessions, streaming, commitChats]);
 
   const { user } = useAuth();
   const firstName = (user?.displayName || "").trim().split(/\s+/)[0] || "";
@@ -926,23 +972,23 @@ export function OperatorPanel({
   // that actually has something in it, and never the blank one being looked at.
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const activity = useMemo(() => activityGrid(chats.sessions), [chats.sessions]);
+  const activity = useMemo(() => activityGrid(sessions), [sessions]);
 
   // Own tooltip rather than the native title attribute: title waits about a
   // second before it shows and is easy to miss on an 11px square.
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
 
-  const lastChat = chats.sessions
+  const lastChat = sessions
     .filter((s) => s.id !== chats.activeId && s.messages.length > 0)
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
   // Back / forward walk the thread list (newest first), so ← is "older".
-  const chatIndex = chats.sessions.findIndex((s) => s.id === chatIdRef.current);
+  const chatIndex = sessions.findIndex((s) => s.id === chatIdRef.current);
   const step = useCallback((delta: number) => {
-    const i = chats.sessions.findIndex((s) => s.id === chatIdRef.current);
-    const target = chats.sessions[(i < 0 ? -1 : i) + delta];
+    const i = sessions.findIndex((s) => s.id === chatIdRef.current);
+    const target = sessions[(i < 0 ? -1 : i) + delta];
     if (target) openChat(target.id);
-  }, [chats.sessions, openChat]);
+  }, [sessions, openChat]);
 
   const deleteChat = useCallback((id: string) => {
     setChats((prev) => { const next = { ...prev, sessions: prev.sessions.filter((s) => s.id !== id) }; saveChats(next); return next; });
@@ -979,7 +1025,7 @@ export function OperatorPanel({
             type="button"
             className="agent-panel__new agent-panel__new--icon"
             onClick={() => step(1)}
-            disabled={chatIndex < 0 || chatIndex >= chats.sessions.length - 1}
+            disabled={chatIndex < 0 || chatIndex >= sessions.length - 1}
             aria-label="Older chat"
             title="Older chat"
           >
@@ -1003,7 +1049,7 @@ export function OperatorPanel({
             type="button"
             className={`agent-panel__new agent-panel__new--icon${historyOpen ? " agent-panel__new--on" : ""}`}
             onClick={() => setHistoryOpen((v) => !v)}
-            disabled={chats.sessions.length === 0}
+            disabled={sessions.length === 0}
             aria-label="Chat history"
             title="Chat history"
           >
@@ -1033,7 +1079,7 @@ export function OperatorPanel({
 
       {historyOpen && (
         <div className="operator-history">
-          {chats.sessions.map((s) => (
+          {sessions.map((s) => (
             <div key={s.id} className={`operator-history__row${s.id === chatIdRef.current ? " operator-history__row--active" : ""}`}>
               <button type="button" className="operator-history__open" onClick={() => openChat(s.id)}>
                 <span className="operator-history__title">{s.title}</span>
