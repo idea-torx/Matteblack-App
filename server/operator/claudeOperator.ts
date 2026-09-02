@@ -367,6 +367,10 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
         stdio: [stdinText === undefined ? "ignore" : "pipe", "pipe", "pipe"],
         shell: useShell,
         windowsHide: true,
+        // Own process group so abort can kill the whole tree: the npm codex
+        // shim forwards SIGTERM but the native binary shrugs it off and keeps
+        // the thread writer lock.
+        detached: process.platform !== "win32",
       });
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
@@ -381,7 +385,15 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     let stderrBuf = "";
     let stdoutBuf = "";
 
-    const onAbort = () => { try { child.kill(); } catch { /* already gone */ } };
+    const killTree = (sig: NodeJS.Signals) => {
+      try { if (child.pid && process.platform !== "win32") process.kill(-child.pid, sig); else child.kill(sig); } catch { /* already gone */ }
+    };
+    const onAbort = () => {
+      killTree("SIGTERM");
+      // ponytail: 2s grace then SIGKILL the group; tune if codex learns to exit on SIGTERM.
+      const t = setTimeout(() => killTree("SIGKILL"), 2000);
+      child.once("close", () => clearTimeout(t));
+    };
     if (opts.signal) {
       if (opts.signal.aborted) onAbort();
       else opts.signal.addEventListener("abort", onAbort, { once: true });
