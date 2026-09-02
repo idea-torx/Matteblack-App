@@ -58,6 +58,11 @@ const PREFERENCES_SECTIONS: Section[] = [
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>,
   },
   {
+    id: "scheduled-runs",
+    label: "Scheduled runs",
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
+  },
+  {
     id: "notifications",
     label: "Notifications",
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
@@ -110,6 +115,7 @@ const SECTION_LABELS: Record<string, string> = {
   usage: "Usage",
   providers: "Providers",
   notifications: "Notifications",
+  "scheduled-runs": "Scheduled runs",
   general: "Workspace",
   members: "Members",
   invitations: "Invitations",
@@ -253,6 +259,7 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
             {activeSection === "security" && <SecuritySection onDeleted={() => setActiveSection("auth")} />}
             {activeSection === "subscription" && <SubscriptionSection />}
             {activeSection === "providers" && <><SetupSection /><ProvidersSection /></>}
+            {activeSection === "scheduled-runs" && <ScheduledRunsSection />}
             {activeSection === "notifications" && <NotificationsSection />}
             {activeSection === "general" && <GeneralSection />}
             {activeSection === "members" && <MembersSection />}
@@ -1396,6 +1403,140 @@ function ProvidersSection() {
         ))}
         <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
           Switching provider starts a fresh operator conversation — sessions can't move between CLIs.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type OperatorJob = {
+  id: string; name: string; prompt: string; cron: string; enabled: boolean;
+  last_run_at: string | null; next_run_at: string | null;
+  last_result: string | null; last_error: string | null; fails: number;
+};
+
+const CRON_PRESETS: { label: string; cron: string }[] = [
+  { label: "Hourly", cron: "0 * * * *" },
+  { label: "Daily 9am", cron: "0 9 * * *" },
+  { label: "Weekdays 9am", cron: "0 9 * * 1-5" },
+  { label: "Mondays 9am", cron: "0 9 * * 1" },
+];
+
+function fmtWhen(v: string | null): string {
+  if (!v) return "\u2014";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "\u2014" : d.toLocaleString();
+}
+
+function ScheduledRunsSection() {
+  const [jobs, setJobs] = useState<OperatorJob[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [cron, setCron] = useState("0 9 * * 1");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/operator/jobs", { credentials: "include" });
+      if (!res.ok) { setError(`Couldn't load scheduled runs (${res.status})`); return; }
+      const data = await res.json();
+      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      setError(null);
+    } catch { setError("Network error"); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const send = async (url: string, init: RequestInit) => {
+    setBusy(true);
+    try {
+      const res = await fetch(url, { credentials: "include", headers: { "Content-Type": "application/json" }, ...init });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `Request failed (${res.status})`);
+        return false;
+      }
+      setError(null);
+      return true;
+    } catch { setError("Network error"); return false; }
+    finally { setBusy(false); }
+  };
+
+  const create = async () => {
+    if (!name.trim() || !prompt.trim() || !cron.trim()) { setError("Name, prompt and schedule are all required"); return; }
+    const okd = await send("/api/operator/jobs", { method: "POST", body: JSON.stringify({ name, prompt, cron }) });
+    if (okd) { setName(""); setPrompt(""); await load(); }
+  };
+
+  const patch = async (id: string, body: Record<string, unknown>) => {
+    if (await send(`/api/operator/jobs/${id}`, { method: "PATCH", body: JSON.stringify(body) })) await load();
+  };
+  const remove = async (id: string) => {
+    if (await send(`/api/operator/jobs/${id}`, { method: "DELETE" })) await load();
+  };
+  const runNow = async (id: string) => {
+    if (await send(`/api/operator/jobs/${id}/run`, { method: "POST" })) await load();
+  };
+
+  return (
+    <div className="settings-notifications-wrap">
+      <h2 className="settings-section-title">Scheduled runs</h2>
+      {error && <div className="settings-toggle-desc" role="alert">{error}</div>}
+
+      <div className="settings-card settings-card--full">
+        {jobs.length === 0 && <div className="settings-toggle-desc">No scheduled runs yet.</div>}
+        {jobs.map((j) => (
+          <div className="settings-toggle-row" key={j.id}>
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{j.name}</span>
+              <span className="settings-toggle-desc">
+                <code>{j.cron}</code> · next {fmtWhen(j.next_run_at)} · last {fmtWhen(j.last_run_at)}
+              </span>
+              {j.last_error
+                ? <span className="settings-toggle-desc" style={{ color: "var(--danger, #d66)" }}>
+                    {j.fails >= 3 ? "Paused after 3 failures: " : ""}{j.last_error.slice(0, 200)}
+                  </span>
+                : j.last_result && <span className="settings-toggle-desc">{j.last_result.slice(0, 200)}</span>}
+            </div>
+            <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void runNow(j.id)}>Run now</button>
+            <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void remove(j.id)}>Delete</button>
+            <button
+              type="button"
+              className={`rpanel-toggle ${j.enabled ? "rpanel-toggle--on" : ""}`}
+              aria-pressed={j.enabled}
+              aria-label={j.enabled ? "Disable" : "Enable"}
+              disabled={busy}
+              onClick={() => void patch(j.id, { enabled: !j.enabled })}
+            >
+              <span className="rpanel-toggle-knob" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="settings-card settings-card--full">
+        <div className="settings-toggle-info" style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+          <span className="settings-toggle-label">New scheduled run</span>
+          <input
+            type="text" placeholder="Name (e.g. Hero shot variants)"
+            value={name} onChange={(e) => setName(e.target.value)}
+          />
+          <textarea
+            rows={4} placeholder="What should the operator do? Write it as a complete standalone instruction."
+            value={prompt} onChange={(e) => setPrompt(e.target.value)}
+          />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {CRON_PRESETS.map((p) => (
+              <button key={p.cron} type="button" className="settings-btn-primary" onClick={() => setCron(p.cron)}>{p.label}</button>
+            ))}
+          </div>
+          <input type="text" placeholder="0 9 * * 1" value={cron} onChange={(e) => setCron(e.target.value)} />
+          <span className="settings-toggle-desc">
+            Five-field cron, in this machine's local time zone: minute hour day-of-month month day-of-week.
+          </span>
+          <div>
+            <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void create()}>Add scheduled run</button>
+          </div>
         </div>
       </div>
     </div>
