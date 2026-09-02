@@ -70,7 +70,7 @@ import {
 import type { LibraryMatch } from "../utils/canvasUtils";
 import type { ResizeHandle } from "../hooks/useResizeHandles";
 import { Minimap } from "./canvas/Minimap";
-import { CanvasNodeComponent } from "./canvas/CanvasNodeComponent";
+import { CanvasNodeComponent, liveHtmlUrls } from "./canvas/CanvasNodeComponent";
 import { ZoomToolbar } from "./canvas/ZoomToolbar";
 import {
   usePresenceChannel,
@@ -120,7 +120,7 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved, snap, onDragEnd }: { n
   // Read the live document once the iframe for this markup has loaded.
   useEffect(() => {
     let live = true;
-    setEls([]); setPicked([]);
+    if (!(htmlUrl && liveHtmlUrls.has(htmlUrl))) { setEls([]); setPicked([]); }
     const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-html-node="${node.id}"]`);
     if (!frame) return;
     const read = () => { const doc = frame.contentDocument; if (live && doc?.body) setEls(walkLive(doc)); };
@@ -148,7 +148,7 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved, snap, onDragEnd }: { n
     setSaving(true);
     fetch("/api/canvas/html-save", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, html: "<!doctype html>\n" + doc.documentElement.outerHTML }) })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then(onMoved)
+      .then((r: { src: string; mapUrl: string; htmlUrl: string }) => { liveHtmlUrls.add(r.htmlUrl); onMoved(r); })
       .catch(() => {})
       .finally(() => setSaving(false));
   };

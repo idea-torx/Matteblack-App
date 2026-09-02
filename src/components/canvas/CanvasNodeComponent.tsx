@@ -17,6 +17,17 @@ import { enqueueDirty } from "../../services/CanvasStore";
 import { buildDWithRadius } from "../../utils/svgPathModel";
 import type { PathData } from "../../utils/svgPathModel";
 
+// html_urls the live frame already shows (our own saves): no reload for those.
+export const liveHtmlUrls = new Set<string>();
+const frameKeys = new Map<string, string>();
+function liveFrameKey(node: CanvasNode): string {
+  const url = String(node.metadata?.html_url);
+  const prev = frameKeys.get(node.id);
+  if (prev && liveHtmlUrls.has(url)) return prev;
+  frameKeys.set(node.id, url);
+  return url;
+}
+
 export type CanvasNodeProps = {
   node: CanvasNode;
   isSelected: boolean;
@@ -476,7 +487,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         <>
         <img className="freeform-canvas__node-img" src={node.src} alt="" draggable={false} />
         <iframe
-          key={String(node.metadata.html_url)}
+          key={liveFrameKey(node)}
           data-html-node={node.id}
           className="freeform-canvas__node-html"
           sandbox="allow-same-origin"
