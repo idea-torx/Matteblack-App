@@ -117,7 +117,7 @@ const REVIEW_PROMPT = [
   "Signals: the user corrected your style, format, workflow, or approach (frustration is a first-class skill signal); a non-trivial technique or fix emerged; a skill you followed turned out wrong or outdated.",
   "Routing: a correction about how you behave (asking first, verbosity, spend, what to confirm) goes to `operator-system`, which is read every turn; a correction about how a kind of piece is made goes to the skill for that piece.",
   "Preference order: patch the skill that was in play with `patch_skill`; else patch an existing broader skill; else `save_skill` a new class-level skill named for the kind of work, never for today's job.",
-  "Memory is capped: when a lesson about how a kind of piece is made already sits in a memory note, move it into the skill with `patch_skill` and `forget` the note; merge overlapping notes under one slug rather than adding a near-duplicate.",
+  "Memory is small and for the USER only (persona, preferences, `usual-settings`), one or two sentences per note. Any lesson about how a kind of piece is made goes into a skill with `patch_skill`, never into memory; if such a lesson already sits in a memory note, move it into the skill and `forget` the note; merge overlapping notes under one slug rather than adding a near-duplicate.",
   "Settings the user keeps repeating (model, resolution, aspect, duration) are their usual: keep the memory note `usual-settings` current with `remember` so 'my usual' resolves next time.",
   "Do not capture setup or environment failures, claims that a tool is broken, transient errors that resolved, unresolved attempts as if they were a workflow, or one-off narratives.",
   "Never touch a pinned skill or one the user edited by hand.",
@@ -128,6 +128,8 @@ const REVIEW_PROMPT = [
  *  same session cancels it — a live turn owns the transcript, and a review
  *  writing skills underneath it is exactly the race Hermes cancels for. */
 const reviews = new Map<string, AbortController>();
+const lastReviewAt = new Map<string, number>();
+const REVIEW_MIN_GAP_MS = 10 * 60_000;
 
 function startReview(sessionId: string): void {
   reviews.get(sessionId)?.abort();
@@ -331,6 +333,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // jobs would be a worse bug than the one being fixed. The finally block below
   // runs first, so this flag is already true by then.
   let finished = false;
+  let sawToolUse = false;
   req.on("close", () => {
     ac.abort();
     if (finished) return;
@@ -362,14 +365,20 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       model,
       effort,
       signal: ac.signal,
-      onEvent: (e) => send(e),
+      onEvent: (e) => { if (e.type === "tool_use") sawToolUse = true; send(e); },
     });
     // Redundant with the parsed 'done' event, but guarantees the client has the
     // resumable session id even if the result line was malformed.
     if (finalSession) send({ type: "session", sessionId: finalSession });
     // Self-improvement pass. Only ever started for a foreground turn (this
     // handler is the only caller and never sets `review`), so it can't recurse.
-    if (finalSession && !ac.signal.aborted) startReview(finalSession);
+    // Skipped for chat-only turns (nothing was made, so nothing to learn) and
+    // throttled per session: a review rewrites memory, which changes the system
+    // prompt and cold-starts the prompt cache on the next turn.
+    if (finalSession && !ac.signal.aborted && sawToolUse && Date.now() - (lastReviewAt.get(finalSession) ?? 0) > REVIEW_MIN_GAP_MS) {
+      lastReviewAt.set(finalSession, Date.now());
+      startReview(finalSession);
+    }
   } catch (err) {
     if (err instanceof OperatorNotConfiguredError) {
       send({ type: "error", message: err.message });

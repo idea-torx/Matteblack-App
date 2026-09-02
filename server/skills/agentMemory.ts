@@ -20,9 +20,9 @@ import { DATA_DIR } from "../config/runtime.js";
 export const MEMORY_DIR = path.join(DATA_DIR, "agent-memory");
 
 /** ponytail: whole memory is inlined into every operator run, so this is a real
- *  token budget. Past it, oldest notes are dropped. Switch to retrieval if the
- *  agent ever accumulates enough that recency stops being a good filter. */
-const MEMORY_MAX_CHARS = 48_000;
+ *  token budget (~2k tokens). Facts about the user only — how a kind of piece is
+ *  made belongs in a skill, fetched on demand. Past it, oldest notes are dropped. */
+const MEMORY_MAX_CHARS = 8_000;
 
 export type MemoryNote = {
   slug: string;
@@ -87,7 +87,9 @@ export function deleteMemory(slug: string): boolean {
 export function memoryInstructions(): string {
   const HOWTO =
     "\n\nYOUR PRIVATE MEMORY. `remember` (slug + note) writes one fact you have learned about " +
-    "working with this user; reusing a slug replaces a stale note; `forget` drops one. Write a note " +
+    "working with this user; reusing a slug replaces a stale note; `forget` drops one. Keep notes short " +
+    "(one or two sentences) and about the USER — persona, preferences, usual settings; how a kind of " +
+    "piece is made goes into a skill, never into memory. Write a note " +
     "whenever they correct you, state a preference, reject an option, or a workflow lands well — as a " +
     "directive to your future self (\"lead with two options, they reject the first cut\"), not a diary " +
     "entry. This is not shown anywhere in the app and is not the user's document: apply it silently, " +

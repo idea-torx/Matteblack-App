@@ -241,7 +241,8 @@ function stripFrontmatter(body: string): string {
 
 /** One line per skill so the operator knows what exists before deciding to get_skill. */
 export function skillIndex(): string {
-  const rows = listSkills().map((s) => `- ${s.slug}: ${s.description || s.title}`);
+  // ponytail: the index rides on every turn; 100 chars per row keeps 60+ skills under ~1k tokens.
+  const rows = listSkills().map((s) => `- ${s.slug}: ${(s.description || s.title).slice(0, 100)}`);
   if (!rows.length) return "";
   return `\n\nYOUR SKILL LIBRARY (get_skill <slug> for the full text):\n${rows.join("\n")}`;
 }
