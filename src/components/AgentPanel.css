@@ -1407,12 +1407,11 @@
    * blue CTA gradient blooms in over it on a slow loop and recedes —
    * "grey → blue → grey" — so the empty state still announces itself
    * as the call to action without permanently advertising as armed. */
-  /* Inactive keeps the same running ramp, just dimmed. It used to fade a
-   * gradient in and out over a grey chip, which is the pulsing the button
-   * should not do. */
-  color: #fff;
+  /* Inactive keeps the ramp at full strength — dimming the whole chip is what
+   * made it look washed out. Only the arrow softens, which is enough to say
+   * "nothing to send" without draining the colour. */
+  color: rgba(255, 255, 255, 0.6);
   cursor: not-allowed;
-  opacity: 0.45;
   box-shadow: none;
 }
 
@@ -2845,31 +2844,6 @@
 
 /* Second composer button, right of the (+). */
 .agent-panel__upload--doc { left: 43px; }
-
-/* Kept at the end of the file on purpose: the `animation:` shorthands above
- * (including the dark-theme .agent-panel__send:disabled variant) would reset
- * play-state back to running if these came first. See the note by
- * the note above for why the idle loops are paused at all. */
-.agent-panel__send:disabled,
-.agent-panel__send:disabled::after {
-  animation-play-state: paused;
-}
-.agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
-.agent-panel__textarea-wrap:hover .agent-panel__send:disabled::after,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled,
-.agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled::after {
-  animation-play-state: running;
-}
-
-/* The dark-theme rule above re-declares `animation` at higher specificity, so
- * it needs its own pause/run pair rather than inheriting the one above. */
-[data-theme="dark"] .agent-panel__send:disabled {
-  animation-play-state: paused;
-}
-[data-theme="dark"] .agent-panel__textarea-wrap:hover .agent-panel__send:disabled,
-[data-theme="dark"] .agent-panel__textarea-wrap:has(.agent-panel__textarea:focus) .agent-panel__send:disabled {
-  animation-play-state: running;
-}
 
 /* ----- Steps: skill/memory chips + expandable thinking, above the reply ----- */
 .agent-panel__steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
