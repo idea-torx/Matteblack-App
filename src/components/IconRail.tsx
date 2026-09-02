@@ -15,7 +15,6 @@ type IconRailProps = {
   agentOpen: boolean;
   onToggleAgent: () => void;
   // Opens the local API-keys settings modal.
-  onOpenApiKeys?: () => void;
 };
 
 export function IconRail({
@@ -25,7 +24,6 @@ export function IconRail({
   onActivateDesign,
   agentOpen,
   onToggleAgent,
-  onOpenApiKeys,
 }: IconRailProps) {
   const settingsOpen = activeView === "quick-settings";
   const onSettingsToggle = () => onSelectView(settingsOpen ? null : "quick-settings");
@@ -140,22 +138,6 @@ export function IconRail({
       </div>
 
       <div className="icon-rail-bottom">
-        {onOpenApiKeys && (
-          <button
-            type="button"
-            className="icon-rail-btn"
-            onClick={onOpenApiKeys}
-            aria-label="API keys"
-            title="API keys"
-          >
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="7.5" cy="15.5" r="4.5" />
-              <path d="m10.7 12.3 8.3-8.3" />
-              <path d="m16 6 2 2" />
-              <path d="m19 3 2 2" />
-            </svg>
-          </button>
-        )}
         <button
           type="button"
           className={`icon-rail-avatar ${settingsOpen ? "icon-rail-avatar--active" : ""}`}

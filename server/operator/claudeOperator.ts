@@ -442,6 +442,8 @@ export function cleanEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** stdout AND stderr: codex prints "Logged in using ChatGPT" on stderr, and
+ *  reading only stdout made every signed-in account read as signed out. */
 function runCli(runner: Runner, args: string[], timeoutMs: number): Promise<{ stdout: string; code: number | null }> {
   const bin = runner.resolveBinary();
   if (!bin.found) return Promise.resolve({ stdout: "", code: 127 });
@@ -450,6 +452,7 @@ function runCli(runner: Runner, args: string[], timeoutMs: number): Promise<{ st
     const child = spawn(bin.path, args, { env: cleanEnv(), stdio: ["ignore", "pipe", "pipe"], shell: /\.(cmd|bat)$/i.test(bin.path) });
     const timer = setTimeout(() => child.kill(), timeoutMs);
     child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stdout += d; });
     child.on("error", () => { clearTimeout(timer); resolve({ stdout, code: 127 }); });
     child.on("close", (code) => { clearTimeout(timer); resolve({ stdout, code }); });
   });

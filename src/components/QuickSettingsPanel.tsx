@@ -134,7 +134,7 @@ export function QuickSettingsPanel({
   return (
     <aside className="qs-panel" role="dialog" aria-label="Account">
       <div className="qs-header">
-        <span className="qs-title">Account</span>
+        <span className="qs-title">{isLocal ? "Settings" : "Account"}</span>
         <button type="button" className="qs-close" onClick={onClose} aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -143,7 +143,7 @@ export function QuickSettingsPanel({
       </div>
 
       <div className="qs-body">
-        {user ? (
+        {user && !isLocal ? (
           <div className="qs-account-card">
             <div className="qs-account-card-row">
               <span className="qs-avatar qs-avatar--lg">
@@ -162,7 +162,7 @@ export function QuickSettingsPanel({
               </div>
             </div>
           </div>
-        ) : !authLoading ? (
+        ) : !authLoading && !isLocal ? (
           <div className="qs-guest">
             <button
               type="button"
@@ -174,7 +174,7 @@ export function QuickSettingsPanel({
           </div>
         ) : null}
 
-        {user && (
+        {user && !isLocal && (
           <div className="qs-credits-card">
             <div className="qs-credits-card-header">
               <span className="qs-credits-label">CREDITS</span>
@@ -212,7 +212,7 @@ export function QuickSettingsPanel({
           </div>
         )}
 
-        {user && (
+        {user && !isLocal && (
           <div className="qs-grid">
             {!isLocal && (
               <button type="button" className="qs-grid-card" onClick={() => onSettingsOpen("subscription")}>
@@ -279,8 +279,40 @@ export function QuickSettingsPanel({
           </div>
         )}
 
+        {isLocal && (
+          <div className="qs-grid">
+            <button type="button" className="qs-grid-card" onClick={() => onSettingsOpen("providers")}>
+              <span className="qs-grid-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="7.5" cy="15.5" r="4.5" />
+                  <path d="m10.7 12.3 8.3-8.3" /><path d="m16 6 2 2" /><path d="m19 3 2 2" />
+                </svg>
+              </span>
+              <span className="qs-grid-label">Providers</span>
+              <span className="qs-grid-sub">fal.ai key and agents</span>
+              <svg className="qs-grid-corner" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="7 17 17 7" /><polyline points="9 7 17 7 17 15" />
+              </svg>
+            </button>
+            <button type="button" className="qs-grid-card" onClick={() => onSettingsOpen("connectors")}>
+              <span className="qs-grid-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 2v6" /><path d="M15 2v6" />
+                  <path d="M6 8h12v3a6 6 0 0 1-12 0z" />
+                  <path d="M12 17v5" />
+                </svg>
+              </span>
+              <span className="qs-grid-label">Connectors</span>
+              <span className="qs-grid-sub">MCP servers and tools</span>
+              <svg className="qs-grid-corner" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="7 17 17 7" /><polyline points="9 7 17 7 17 15" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         <div className="qs-utility-row">
-          {user && (
+          {user && !isLocal && (
             <button
               ref={inboxAnchorRef}
               type="button"
@@ -299,7 +331,7 @@ export function QuickSettingsPanel({
               {unreadCount > 0 && <span className="qs-row-badge">{unreadCount}</span>}
             </button>
           )}
-          {user && (
+          {(user || isLocal) && (
           <button
             type="button"
             className="qs-utility-btn"
@@ -339,7 +371,7 @@ export function QuickSettingsPanel({
 
         <div className="qs-spacer" />
 
-        {user && (
+        {user && !isLocal && (
           <div className="qs-signout-card">
             <button
               type="button"
