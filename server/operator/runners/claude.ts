@@ -33,6 +33,11 @@ export function resolveClaudeBinary(): { path: string; found: boolean } {
   return { path: "claude", found: false }; // last resort: rely on PATH
 }
 
+/** claude namespaces a server's tools as mcp__<key>__<tool>, where <key> is the
+ *  server name with every non-alphanumeric replaced. A bare `mcp__<key>` in
+ *  --allowedTools grants every tool that server has. */
+export const mcpKey = (name: string) => name.replace(/[^a-zA-Z0-9]/g, "_");
+
 /** Strips the mcp__<serverKey>__ namespace off a tool name for display. */
 const TOOL_PREFIX_RE = /^mcp__falforge__/;
 
@@ -128,13 +133,20 @@ export const claudeRunner: Runner = {
   notFoundMessage:
     "Claude Code isn't installed. Install it, run `claude` once to sign in to your subscription, then reopen this panel.",
   spawnArgs(ctx: RunnerContext): string[] {
+    // The user's own MCP servers (Settings → Connectors). --strict-mcp-config
+    // loads ONLY --mcp-config, so it has to come off for any of them to exist —
+    // which also readmits the rest of the user's servers. They stay unusable:
+    // --allowedTools is still an explicit allowlist, and only the connectors the
+    // user switched on get a grant. A `falforge` entry in their own config is
+    // shadowed by ours, same name, so the tool namespace is unchanged.
+    const grants = (ctx.connectors ?? []).map((c) => `mcp__${mcpKey(c.name)}`);
     const args = [
       "-p", ctx.message,
       "--output-format", "stream-json",
       "--verbose", // required for stream-json to emit intermediate events
       "--mcp-config", ctx.mcpConfigPath,
-      "--strict-mcp-config",
-      "--allowedTools", ctx.allowedTools.join(","),
+      ...(grants.length ? [] : ["--strict-mcp-config"]),
+      "--allowedTools", [...ctx.allowedTools, ...grants].join(","),
       "--append-system-prompt", ctx.systemPrompt,
     ];
     if (ctx.sessionId) args.push("--resume", ctx.sessionId);

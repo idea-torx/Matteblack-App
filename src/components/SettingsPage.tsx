@@ -58,6 +58,11 @@ const PREFERENCES_SECTIONS: Section[] = [
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>,
   },
   {
+    id: "connectors",
+    label: "Connectors",
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>,
+  },
+  {
     id: "notifications",
     label: "Notifications",
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
@@ -109,6 +114,7 @@ const SECTION_LABELS: Record<string, string> = {
   subscription: "Subscription",
   usage: "Usage",
   providers: "Providers",
+  connectors: "Connectors",
   notifications: "Notifications",
   general: "Workspace",
   members: "Members",
@@ -253,6 +259,7 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
             {activeSection === "security" && <SecuritySection onDeleted={() => setActiveSection("auth")} />}
             {activeSection === "subscription" && <SubscriptionSection />}
             {activeSection === "providers" && <><SetupSection /><ProvidersSection /></>}
+            {activeSection === "connectors" && <ConnectorsSection />}
             {activeSection === "notifications" && <NotificationsSection />}
             {activeSection === "general" && <GeneralSection />}
             {activeSection === "members" && <MembersSection />}
@@ -1396,6 +1403,116 @@ function ProvidersSection() {
         ))}
         <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
           Switching provider starts a fresh operator conversation — sessions can't move between CLIs.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ConnectorRow = { runner: "claude" | "codex"; name: string; url?: string; command?: string; status: "connected" | "needs_auth" | "unknown"; enabled: boolean };
+type CatalogRow = { id: string; label: string; url: string; blurb: string };
+
+/** The user's external MCP servers, and a catalog to add popular ones. Nothing
+ *  here handles a credential: adding registers a URL with the CLI, and signing
+ *  in is the CLI's own browser flow. */
+function ConnectorsSection() {
+  const [rows, setRows] = useState<ConnectorRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/connectors", { credentials: "include" });
+      if (res.ok) { const d = await res.json(); setRows(d.connectors || []); setCatalog(d.catalog || []); }
+    } catch { /* offline */ }
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    void load();
+    // Adding and signing in both finish outside the app — a browser tab or a
+    // Terminal window — so coming back is the cue to re-probe.
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
+
+  const post = async (path: string, body: unknown, key: string) => {
+    setBusy(key);
+    try {
+      await fetch(`/api/connectors/${path}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+    } catch { /* load() reports the real state */ }
+    await load();
+    setBusy(null);
+  };
+
+  // A claude.ai connector is listed as "claude.ai Figma", not "figma", so match
+  // on the normalised tail rather than the raw name — otherwise the catalog
+  // offers to add what the user already has.
+  const norm = (v: string) => v.toLowerCase().replace(/^claude\.ai /, "").replace(/[^a-z0-9]/g, "");
+  const present = new Set(rows.map((r) => norm(r.name)));
+
+  return (
+    <div className="settings-notifications-wrap">
+      <h2 className="settings-section-title">Connectors</h2>
+      <div className="settings-card settings-card--full">
+        {loading && <div className="settings-toggle-desc">Checking your MCP servers…</div>}
+        {!loading && !rows.length && <div className="settings-toggle-desc">No MCP servers configured yet — add one from the catalog below.</div>}
+        {rows.map((r) => (
+          <label className="settings-toggle-row" key={`${r.runner}:${r.name}`} style={{ cursor: "pointer" }}>
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{r.name}</span>
+              <span className="settings-toggle-desc">
+                {r.runner === "claude" ? "Claude Code" : "Codex"} · {r.status === "connected" ? "Connected" : r.status === "needs_auth" ? "Needs sign-in" : "Unknown"}
+                {r.url || r.command ? ` · ${r.url || r.command}` : ""}
+              </span>
+            </div>
+            {r.status === "needs_auth" && (
+              <button
+                type="button"
+                className="settings-btn-primary"
+                disabled={busy !== null}
+                onClick={(e) => { e.preventDefault(); void post("login", { runner: r.runner, name: r.name }, `login:${r.name}`); }}
+              >
+                {busy === `login:${r.name}` ? "Finish sign-in…" : "Sign in"}
+              </button>
+            )}
+            <input
+              type="checkbox"
+              checked={r.enabled}
+              disabled={busy !== null}
+              onChange={(e) => void post("enable", { runner: r.runner, name: r.name, enabled: e.target.checked }, `en:${r.name}`)}
+            />
+          </label>
+        ))}
+        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+          Switched-on servers become tools the operator can call. Anything you connect at claude.ai → Settings
+          → Connectors shows up here automatically.
+        </div>
+      </div>
+
+      <h2 className="settings-section-title">Catalog</h2>
+      <div className="settings-card settings-card--full">
+        {catalog.filter((c) => !present.has(norm(c.id)) && !present.has(norm(c.label))).map((c) => (
+          <div className="settings-toggle-row" key={c.id}>
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{c.label}</span>
+              <span className="settings-toggle-desc">{c.blurb}</span>
+            </div>
+            <button
+              type="button"
+              className="settings-btn-primary"
+              disabled={busy !== null}
+              onClick={() => void post("add", { id: c.id }, `add:${c.id}`)}
+            >
+              {busy === `add:${c.id}` ? "Adding…" : "Add"}
+            </button>
+          </div>
+        ))}
+        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+          Adding registers the server with your CLIs. Most then need one sign-in, in your browser.
         </div>
       </div>
     </div>

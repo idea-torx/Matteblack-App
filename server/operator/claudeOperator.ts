@@ -11,7 +11,8 @@
  * this same app over HTTP and land results on the canvas. We only expose the
  * matteblack tools (`--allowedTools`) and load only our MCP server
  * (`--strict-mcp-config`), so the operator can generate but not touch the
- * filesystem or the user's other MCP servers.
+ * filesystem or the user's other MCP servers — except the ones they explicitly
+ * switched on in Settings > Connectors (see ./connectors.ts).
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -24,6 +25,7 @@ import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
 import { getOperatorRunner } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
+import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
 /** Claude's stream-json parser, re-exported from where it now lives. */
@@ -205,6 +207,9 @@ export interface RunnerContext {
   mcp: { command: string; args: string[]; env: Record<string, string> };
   /** The written --mcp-config file (Claude only; Codex takes -c overrides). */
   mcpConfigPath: string;
+  /** The user's own MCP servers they switched on in Settings → Connectors.
+   *  Empty on the review pass, and for a user who enabled none. */
+  connectors?: RuntimeConnector[];
 }
 
 export interface Runner {
@@ -264,11 +269,11 @@ export interface RunOperatorOptions {
  * onEvent, resolve when the process exits. Rejects only on spawn failure — tool
  * and generation errors surface as events.
  */
-export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: string }> {
+export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: string }> {
   const runnerId = opts.runner ?? getOperatorRunner();
   const runner = RUNNERS.find((r) => r.id === runnerId) ?? claudeRunner;
   const bin = runner.resolveBinary();
-  if (!bin.found) return Promise.reject(new OperatorNotConfiguredError(runner.notFoundMessage));
+  if (!bin.found) throw new OperatorNotConfiguredError(runner.notFoundMessage);
 
   // Attached repos are checked out here; pin cwd so file tools reach them and
   // nothing else on the user's disk. Constant regardless of how many repos are
@@ -311,6 +316,9 @@ export function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: str
     allowedTools,
     mcp,
     mcpConfigPath: writeMcpConfig(opts.review === true, mcp),
+    // The bookkeeping pass writes memory and skills; it has no business
+    // reaching the user's Drive or inbox.
+    connectors: opts.review === true ? [] : await runtimeConnectors(runner.id),
   };
   const args = runner.spawnArgs(ctx);
   const stdinText = runner.stdinText?.(ctx);

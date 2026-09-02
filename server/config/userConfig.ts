@@ -19,6 +19,10 @@ export interface UserConfig {
   claudeCodePath?: string;
   /** Which agent CLI drives the in-app operator. Default "claude". */
   operatorRunner?: "claude" | "codex";
+  /** MCP servers (Google Drive, Figma, …) the user has switched ON for the
+   *  operator, by CLI server name. Off by default: having a server configured
+   *  in the CLI is not consent to hand it to the in-app agent. */
+  connectors?: { claude?: string[]; codex?: string[] };
 }
 
 type ConfigKey = keyof UserConfig;
@@ -82,6 +86,21 @@ export function getAnthropicKey(): string | undefined {
  *  hand-edited config can never leave the panel pointing at nothing. */
 export function getOperatorRunner(): "claude" | "codex" {
   return load().operatorRunner === "codex" ? "codex" : "claude";
+}
+
+/** Connector names the user has enabled, per runner. Always both keys. */
+export function getEnabledConnectors(): Record<"claude" | "codex", string[]> {
+  const c = load().connectors;
+  return { claude: c?.claude ?? [], codex: c?.codex ?? [] };
+}
+
+/** Flip one connector on or off. Returns the new enabled map. */
+export function setConnectorEnabled(runner: "claude" | "codex", name: string, enabled: boolean): Record<"claude" | "codex", string[]> {
+  const cur = getEnabledConnectors();
+  const next = new Set(cur[runner]);
+  if (enabled) next.add(name); else next.delete(name);
+  persist({ ...load(), connectors: { ...cur, [runner]: [...next] } });
+  return getEnabledConnectors();
 }
 
 /** Optional explicit `claude` binary path override from config. */

@@ -93,6 +93,23 @@ export const codexRunner: Runner = {
       "-c", `sandbox_mode="read-only"`,
       "-c", `tools.web_search=false`,
     );
+    // The user's own MCP servers, re-declared: --ignore-user-config drops their
+    // config.toml wholesale, so anything they switched on in Settings has to be
+    // handed back in as overrides. ponytail: the OAuth token store is assumed to
+    // survive --ignore-user-config — unverified, no signed-in Codex to test
+    // against. If a connector comes back needing auth mid-run, that is the bug.
+    for (const c of ctx.connectors ?? []) {
+      const k = `mcp_servers.${c.name}`;
+      if (c.url) args.push("-c", `${k}.url=${tomlStr(c.url)}`);
+      else if (c.command) {
+        args.push("-c", `${k}.command=${tomlStr(c.command)}`);
+        if (c.args?.length) args.push("-c", `${k}.args=[${c.args.map(tomlStr).join(",")}]`);
+        if (c.env && Object.keys(c.env).length) {
+          args.push("-c", `${k}.env={${Object.entries(c.env).map(([n, v]) => `${n}=${tomlStr(v)}`).join(",")}}`);
+        }
+      } else continue;
+      args.push("-c", `${k}.default_tools_approval_mode="approve"`);
+    }
     const effort = codexEffort(ctx.effort ?? (ctx.review ? "low" : undefined));
     if (effort) args.push("-c", `model_reasoning_effort=${tomlStr(effort)}`);
     // --ignore-user-config also drops the user's chosen model, and Codex's
