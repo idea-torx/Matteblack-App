@@ -1541,6 +1541,10 @@ const MODEL_WHITELIST: Record<string, ModelEntry> = {
   // endpoint takes image_url and end_image_url, so the mode is which of the two
   // the caller fills, not a different model.
   "h3-max": { kind: "video", tier: "quick", label: "MiniMax H3 Max", t2: "h3-max-t2v", i2: "h3-max-i2v", i2_first_last: "h3-max-i2v", i2_multi: "h3-max-r2v" },
+  // Turbo ships only t2v and i2v — no reference-to-video endpoint — so it has
+  // no i2_multi and can't back seam="reference" chaining. Opt-in by name only;
+  // it is never a tier default.
+  "h3-turbo": { kind: "video", tier: "quick", label: "MiniMax H3 Max Turbo", t2: "h3-turbo-t2v", i2: "h3-turbo-i2v", i2_first_last: "h3-turbo-i2v" },
 };
 
 // Three explicit ways the user can want references attached to a video:
@@ -1622,6 +1626,13 @@ const MODEL_ALIASES: Record<string, string> = {
   "minimax h3": "h3-max",
   "minimax h3 max": "h3-max",
   "hailuo": "h3-max",
+  "turbo": "h3-turbo",
+  "h3 turbo": "h3-turbo",
+  "h3-turbo": "h3-turbo",
+  "h3 max turbo": "h3-turbo",
+  "minimax turbo": "h3-turbo",
+  "minimax h3 turbo": "h3-turbo",
+  "minimax h3 max turbo": "h3-turbo",
 };
 // Resolve an explicit-model name to a ModelEntry. The concrete variant
 // (t2 / i2 / flf / multi) is picked later by the caller based on refs +
@@ -1744,9 +1755,9 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max"],
+        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max", "h3-turbo"],
         description:
-          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form).",
+          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form), 'h3-turbo' (MiniMax H3 Max Turbo — same ladder, faster, text-to-video and image-to-video only, no reference-to-video and no long-form chaining).",
       },
       tier: {
         type: "string",

@@ -285,6 +285,26 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     return acc;
   }, {}),
 
+  // H3 Max Turbo: fal publishes no price for these two endpoints yet, so they
+  // inherit H3 Max's per-second rate and are marked "approx" rather than
+  // quoted as fact. falPricing.ts overwrites both from the live API on the
+  // first refresh; until then an estimate here is a guess with the right
+  // order of magnitude, not a verified rate.
+  ...(["t2v", "i2v"] as const).reduce<Record<string, Rule>>((acc, v) => {
+    acc[`h3-turbo-${v}`] = {
+      endpoint: `minimax/h3-max-turbo/${v === "t2v" ? "text-to-video" : "image-to-video"}`,
+      unitPrice: 0.08,
+      unit: "seconds",
+      cost: (p) => {
+        const secs = n(p, "duration", 5);
+        const lo = (p.resolution ?? "768p").toLowerCase().startsWith("480");
+        const rate = lo ? 0.05 : 0.08;
+        return { usd: rate * secs, accuracy: "approx", basis: `~$${rate}/s x ${secs}s (${lo ? "480P" : "768P"}, H3 Max rate)` };
+      },
+    };
+    return acc;
+  }, {}),
+
   // MiniMax H3 Max: flat per-second, two resolution tiers. Standard rates
   // (fal's launch promo halves these until 2026-09-01; we quote the standard
   // rate so an estimate never comes in under the bill).
