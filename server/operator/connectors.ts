@@ -44,17 +44,15 @@ export interface RuntimeConnector {
  *  is not. */
 export const CATALOG: { id: string; label: string; url: string; blurb: string }[] = [
   { id: "google-drive", label: "Google Drive", url: "https://drivemcp.googleapis.com/mcp/v1", blurb: "Read docs, sheets and files from Drive." },
+  { id: "dropbox", label: "Dropbox", url: "https://mcp.dropbox.com/mcp", blurb: "Files and folders in your Dropbox (open beta)." },
   { id: "gmail", label: "Gmail", url: "https://gmailmcp.googleapis.com/mcp/v1", blurb: "Search and read mail." },
   { id: "google-calendar", label: "Google Calendar", url: "https://calendarmcp.googleapis.com/mcp/v1", blurb: "Read and create events." },
   { id: "figma", label: "Figma", url: "https://mcp.figma.com/mcp", blurb: "Pull frames, screenshots and design tokens." },
   { id: "notion", label: "Notion", url: "https://mcp.notion.com/mcp", blurb: "Read and write pages and databases." },
   { id: "linear", label: "Linear", url: "https://mcp.linear.app/mcp", blurb: "Issues, projects and cycles." },
   { id: "github", label: "GitHub", url: "https://api.githubcopilot.com/mcp/", blurb: "Repos, issues and pull requests." },
-  { id: "sentry", label: "Sentry", url: "https://mcp.sentry.dev/mcp", blurb: "Errors and performance issues." },
-  { id: "vercel", label: "Vercel", url: "https://mcp.vercel.com", blurb: "Projects, deployments and logs." },
   { id: "atlassian", label: "Atlassian", url: "https://mcp.atlassian.com/v1/mcp", blurb: "Jira and Confluence." },
   { id: "canva", label: "Canva", url: "https://mcp.canva.com/mcp", blurb: "Designs and brand assets." },
-  { id: "stripe", label: "Stripe", url: "https://mcp.stripe.com", blurb: "Customers, payments and products." },
   { id: "cloudflare", label: "Cloudflare", url: "https://bindings.mcp.cloudflare.com/mcp", blurb: "Workers, KV, R2 and D1." },
   { id: "monday", label: "monday.com", url: "https://mcp.monday.com/mcp", blurb: "Boards, items and updates." },
 ];
