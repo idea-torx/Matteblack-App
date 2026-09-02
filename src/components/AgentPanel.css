@@ -2998,3 +2998,22 @@
 .agent-step--thinking summary::before { content: "▸ "; }
 .agent-step--thinking[open] summary::before { content: "▾ "; }
 .agent-step__text { padding: 4px 8px 6px; white-space: pre-wrap; font-size: 11px; line-height: 1.4; opacity: 0.75; }
+
+/* Steps chips in light mode: the base rules are dark-theme values (pale
+ * slate / indigo / red text), which wash out to unreadable on a white
+ * bubble. Same hues, darkened past 4.5:1. */
+[data-theme="light"] .agent-step {
+  border-color: rgba(71, 85, 105, 0.28);
+  background: rgba(71, 85, 105, 0.08);
+  color: rgba(51, 65, 85, 0.95);
+}
+[data-theme="light"] .agent-step--running {
+  border-color: rgba(79, 70, 229, 0.35);
+  background: rgba(99, 102, 241, 0.12);
+  color: rgba(55, 48, 163, 0.95);
+}
+[data-theme="light"] .agent-step--failed {
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.08);
+  color: rgba(153, 27, 27, 0.95);
+}

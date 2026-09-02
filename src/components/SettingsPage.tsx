@@ -1263,6 +1263,67 @@ function SubscriptionSection() {
 
 /** Setup — probe the local components the app shells out to, and install the
  *  missing ones in a real Terminal window. */
+/* ─── Service logos ───────────────────────────────────────────────────────
+ * A row reads far faster with the vendor's own mark in front of it. We pull
+ * the favicon straight from the vendor's domain — no third-party icon proxy,
+ * so the only host contacted is the one whose logo is shown — and fall back
+ * to a monogram tile when it 404s or the row has no domain at all (local
+ * binaries like Git and FFmpeg mostly do have one). */
+const LOGO_DOMAIN: Record<string, string> = {
+  homebrew: "brew.sh",
+  git: "git-scm.com",
+  ffmpeg: "ffmpeg.org",
+  "claude code": "claude.ai",
+  "claude code cli": "claude.ai",
+  "openai codex": "openai.com",
+  "openai codex cli": "openai.com",
+  higgsfield: "higgsfield.ai",
+  "higgsfield cli": "higgsfield.ai",
+  github: "github.com",
+  atlassian: "atlassian.com",
+  canva: "canva.com",
+  notion: "notion.so",
+  figma: "figma.com",
+  "monday.com": "monday.com",
+  cloudflare: "cloudflare.com",
+  lovable: "lovable.dev",
+  kit: "kit.com",
+  n8n: "n8n.io",
+  clockwise: "getclockwise.com",
+  linear: "linear.app",
+  slack: "slack.com",
+  dropbox: "dropbox.com",
+  gmail: "google.com",
+  "google drive": "google.com",
+  "google calendar": "google.com",
+};
+
+function logoDomain(name: string, url?: string): string | undefined {
+  const key = name.toLowerCase().replace(/^claude\.ai /, "").trim();
+  if (LOGO_DOMAIN[key]) return LOGO_DOMAIN[key];
+  if (!url) return undefined;
+  try {
+    // MCP endpoints live on a subdomain of the vendor's own site
+    // (mcp.figma.com, drivemcp.googleapis.com) — the apex serves the logo.
+    const host = new URL(url).hostname;
+    const parts = host.split(".");
+    return parts.length > 2 ? parts.slice(-2).join(".") : host;
+  } catch { return undefined; }
+}
+
+function ServiceLogo({ name, url }: { name: string; url?: string }) {
+  const [failed, setFailed] = useState(false);
+  const domain = logoDomain(name, url);
+  const letter = (name.replace(/^claude\.ai /i, "").trim()[0] || "?").toUpperCase();
+  return (
+    <span className="settings-logo" aria-hidden="true">
+      {domain && !failed
+        ? <img src={`https://${domain}/favicon.ico`} alt="" loading="lazy" onError={() => setFailed(true)} />
+        : letter}
+    </span>
+  );
+}
+
 function SetupSection() {
   type SetupRow = { id: string; label: string; found: boolean; path: string; install: string | null; note?: string };
   const [rows, setRows] = useState<SetupRow[]>([]);
@@ -1298,6 +1359,7 @@ function SetupSection() {
       <div className="settings-card settings-card--full">
         {rows.map((r) => (
           <div className="settings-toggle-row" key={r.id}>
+            <ServiceLogo name={r.label} />
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">{r.label}</span>
               <span className="settings-toggle-desc">
@@ -1318,7 +1380,7 @@ function SetupSection() {
             )}
           </div>
         ))}
-        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+        <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.
         </div>
       </div>
@@ -1382,6 +1444,7 @@ function ProvidersSection() {
         {error && <div className="settings-toggle-desc" role="alert">{error}</div>}
         {runners.map((r) => (
           <label className="settings-toggle-row" key={r.id} style={{ cursor: "pointer" }}>
+            <ServiceLogo name={r.label} />
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">{r.label}</span>
               <span className="settings-toggle-desc">
@@ -1408,7 +1471,7 @@ function ProvidersSection() {
             />
           </label>
         ))}
-        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+        <div className="settings-card-note">
           Switching provider starts a fresh operator conversation — sessions can't move between CLIs.
         </div>
       </div>
@@ -1471,6 +1534,7 @@ function ConnectorsSection() {
         {!loading && !rows.length && <div className="settings-toggle-desc">No MCP servers configured yet — add one from the catalog below.</div>}
         {rows.map((r) => (
           <label className="settings-toggle-row" key={`${r.runner}:${r.name}`} style={{ cursor: "pointer" }}>
+            <ServiceLogo name={r.name} url={r.url} />
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">{r.name}</span>
               <span className="settings-toggle-desc">
@@ -1496,7 +1560,7 @@ function ConnectorsSection() {
             />
           </label>
         ))}
-        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+        <div className="settings-card-note">
           Switched-on servers become tools the operator can call. Anything you connect at claude.ai → Settings
           → Connectors shows up here automatically.
         </div>
@@ -1505,6 +1569,7 @@ function ConnectorsSection() {
       <h2 className="settings-section-title">Higgsfield</h2>
       <div className="settings-card settings-card--full">
         <div className="settings-toggle-row">
+          <ServiceLogo name="Higgsfield CLI" />
           <div className="settings-toggle-info">
             <span className="settings-toggle-label">Higgsfield CLI</span>
             <span className="settings-toggle-desc">
@@ -1521,7 +1586,7 @@ function ConnectorsSection() {
             {busy === "hf" ? "Working…" : !hf?.installed ? "Install" : !hf?.loggedIn ? "Sign in" : "Update skills"}
           </button>
         </div>
-        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+        <div className="settings-card-note">
           A second generation route on your Higgsfield plan (Seedance, Kling, Veo, Soul, GPT Image…). Sign-in is the
           CLI's own browser login; the official Higgsfield skills are mirrored into your skill library.
         </div>
@@ -1531,6 +1596,7 @@ function ConnectorsSection() {
       <div className="settings-card settings-card--full">
         {catalog.filter((c) => !present.has(norm(c.id)) && !present.has(norm(c.label))).map((c) => (
           <div className="settings-toggle-row" key={c.id}>
+            <ServiceLogo name={c.label} url={c.url} />
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">{c.label}</span>
               <span className="settings-toggle-desc">{c.blurb}</span>
@@ -1545,7 +1611,7 @@ function ConnectorsSection() {
             </button>
           </div>
         ))}
-        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+        <div className="settings-card-note">
           Adding registers the server with your CLIs. Most then need one sign-in, in your browser.
         </div>
       </div>

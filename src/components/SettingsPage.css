@@ -3048,3 +3048,96 @@
   flex-shrink: 0;
   opacity: 0.75;
 }
+
+/* ─── List rows: logo, text, action, control ──────────────────────────────
+ * These rows carry up to four things and used to be laid out with
+ * space-between, so the action button landed at a different x on every row
+ * (wherever the status text happened to end). The text column takes the
+ * slack instead, which puts every button and every checkbox on the same
+ * right-hand rail. */
+.settings-toggle-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-toggle-desc {
+  overflow-wrap: anywhere;
+}
+.settings-toggle-row > .settings-btn-primary,
+.settings-toggle-row > .settings-btn-secondary {
+  flex: 0 0 auto;
+  min-width: 92px;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+.settings-toggle-row > input[type="checkbox"],
+.settings-toggle-row > input[type="radio"] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.settings-logo {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(var(--tint-rgb), 0.07);
+  border: 1px solid rgba(var(--tint-rgb), 0.06);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+.settings-logo img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+/* The trailing explainer under a list — a note about the card, not another
+ * row in it, so it sits below the last separator rather than inside the
+ * row rhythm. */
+.settings-card-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(var(--tint-rgb), 0.03);
+}
+
+/* Section headings inside a scrolling settings page: 20px was display-sized
+ * for a title that repeats every few hundred pixels down the page. */
+.settings-notifications-wrap .settings-section-title {
+  font-size: 15px;
+  letter-spacing: 0;
+  margin: 0 0 10px;
+}
+.settings-notifications-wrap .settings-card + .settings-section-title {
+  margin-top: 24px;
+}
+.settings-notifications-wrap + .settings-notifications-wrap {
+  margin-top: 24px;
+}
+
+/* The panel overlaps the window's top drag sliver (.app-titlebar--top, z 41),
+ * and a drag region swallows the mouse events under it — which is why the
+ * close button in the header did nothing. Sit above the sliver and make the
+ * header itself the drag surface for that stretch, with its controls opting
+ * back out. */
+.settings-panel {
+  z-index: 42;
+}
+.settings-panel-header {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.settings-panel-header button,
+.settings-panel-header input,
+.settings-panel-header a {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

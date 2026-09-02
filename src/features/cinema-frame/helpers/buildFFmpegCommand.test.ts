@@ -16,7 +16,7 @@ const clip = (id: string, extra: Partial<TimelineClip> = {}): TimelineClip =>
   ({
     id,
     type: "video",
-    sourceUrl: `/uploads/${id}.mp4`,
+    src: `/uploads/${id}.mp4`,
     startOffset: 0,
     duration: 5,
     trimStart: 0,
@@ -85,7 +85,7 @@ console.log("buildFFmpegCommand: all checks passed");
 {
   const st = {
     ...state(false),
-    tracks: [{ id: "v1", type: "video", muted: false, clips: [clip("vid"), clip("card", { type: "image", sourceUrl: "/uploads/card.png", startOffset: 5, duration: 3 })] }],
+    tracks: [{ id: "v1", type: "video", muted: false, clips: [clip("vid"), clip("card", { type: "image", src: "/uploads/card.png", startOffset: 5, duration: 3 })] }],
   } as TimelineState;
   const f = new Map([["vid", "vid.mp4"], ["card", "card.png"]]);
   const out = buildFFmpegCommand(st, f, cfg, 8, info).args.join(" ");
@@ -97,7 +97,7 @@ console.log("buildFFmpegCommand: all checks passed");
 
 // Every branch caps the H.264 level at 5.1 — iOS refuses anything above.
 {
-  const st = { ...state(false), tracks: [{ id: "v1", type: "video", muted: false, clips: [clip("vid"), clip("card", { type: "image", sourceUrl: "/uploads/card.png", startOffset: 5, duration: 3 })] }] } as TimelineState;
+  const st = { ...state(false), tracks: [{ id: "v1", type: "video", muted: false, clips: [clip("vid"), clip("card", { type: "image", src: "/uploads/card.png", startOffset: 5, duration: 3 })] }] } as TimelineState;
   const out = buildFFmpegCommand(st, new Map([["vid", "vid.mp4"], ["card", "card.png"]]), cfg, 8, info).args.join(" ");
   assert.match(out, /-level:v 5\.1/, "re-encode branch pins level 5.1");
   console.log("h264 level cap: ok");
