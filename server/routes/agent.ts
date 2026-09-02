@@ -2817,16 +2817,10 @@ export function buildGenerateBody(
   // video — pick family first, then concrete variant from the user's mode.
   // resolveAgentReferences already drops refs when kind=video and mode is
   // unset, so by this point hasRef implies the user supplied a mode.
-  const familyKey = useExplicit
-    ? (useExplicit.t2.startsWith("veo3.1-lite") ? "veo3.1-lite"
-       : useExplicit.t2.startsWith("kling-o3-4k") ? "kling-o3-4k"
-       : useExplicit.t2.startsWith("kling-o3-pro") ? "kling-o3-pro"
-       : useExplicit.t2.startsWith("h3-max") ? "h3-max"
-       : useExplicit.t2.startsWith("gemini-omni") ? "gemini-omni"
-       : useExplicit.t2.startsWith("seedance-2.5") ? "seedance-2.5"
-       : "seedance-2.0")
-    : resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null);
-  const family = MODEL_WHITELIST[familyKey];
+  // The explicit entry IS the family: a name-by-name chain here silently sent
+  // every family it didn't list (h3-turbo) to Seedance 2.0 at $10 a clip.
+  const family = useExplicit
+    ?? MODEL_WHITELIST[resolveVideoModelFamily(tool.tier, hasRef && tool.videoReferenceMode != null)];
   let model: string;
   let notice: string | undefined;
   if (!hasRef || tool.videoReferenceMode == null) {

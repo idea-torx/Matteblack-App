@@ -61,3 +61,10 @@ console.log("agent custom model: all checks passed");
 // Importing agent.ts boots PGlite against MATTEBLACK_DATA_DIR in the background;
 // leave before it writes into the temp dir we just removed.
 process.exit(0);
+
+// A whitelisted video family the old name-by-name chain didn't list (h3-turbo)
+// fell through to Seedance 2.0 at $10 a clip. Seedance is never a fallthrough.
+const turbo = gen({ kind: "video", explicitModel: "h3-turbo" });
+assert.equal(turbo.resolvedModel, "h3-turbo-t2v");
+assert.equal(gen({ kind: "video", explicitModel: "h3 max turbo" }).resolvedModel, "h3-turbo-t2v");
+assert.equal(gen({ kind: "video", explicitModel: "no-such-model" }).resolvedModel, "h3-max-t2v");
