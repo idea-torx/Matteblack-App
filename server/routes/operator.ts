@@ -116,6 +116,7 @@ const REVIEW_PROMPT = [
   "Signals: the user corrected your style, format, workflow, or approach (frustration is a first-class skill signal); a non-trivial technique or fix emerged; a skill you followed turned out wrong or outdated.",
   "Routing: a correction about how you behave (asking first, verbosity, spend, what to confirm) goes to `operator-system`, which is read every turn; a correction about how a kind of piece is made goes to the skill for that piece.",
   "Preference order: patch the skill that was in play with `patch_skill`; else patch an existing broader skill; else `save_skill` a new class-level skill named for the kind of work, never for today's job.",
+  "Memory is capped: when a lesson about how a kind of piece is made already sits in a memory note, move it into the skill with `patch_skill` and `forget` the note; merge overlapping notes under one slug rather than adding a near-duplicate.",
   "Settings the user keeps repeating (model, resolution, aspect, duration) are their usual: keep the memory note `usual-settings` current with `remember` so 'my usual' resolves next time.",
   "Do not capture setup or environment failures, claims that a tool is broken, transient errors that resolved, unresolved attempts as if they were a workflow, or one-off narratives.",
   "Never touch a pinned skill or one the user edited by hand.",

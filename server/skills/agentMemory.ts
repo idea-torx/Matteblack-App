@@ -22,7 +22,7 @@ export const MEMORY_DIR = path.join(DATA_DIR, "agent-memory");
 /** ponytail: whole memory is inlined into every operator run, so this is a real
  *  token budget. Past it, oldest notes are dropped. Switch to retrieval if the
  *  agent ever accumulates enough that recency stops being a good filter. */
-const MEMORY_MAX_CHARS = 24_000;
+const MEMORY_MAX_CHARS = 48_000;
 
 export type MemoryNote = {
   slug: string;

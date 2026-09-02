@@ -259,6 +259,25 @@ is a clip where you could remove three seconds and lose nothing.
   is 20 seconds and the idea only has three beats in it, add beats — a complication, an objection, a
   second attempt — rather than stretching what you have.
 
+### Dialogue budget across chunks — split the words before you cut the picture
+
+The recurring failure: chunk one is two words and a walk, chunk two is six lines and the pitch. It happens
+because the script is written whole and then cut where the *picture* changes, so the establishing chunk
+gets the bible and the payoff chunk gets every line. The viewer hears a silent opening and a crammed close.
+
+- **Count first.** Before any prompt, list every line for the whole piece with its word count, then deal
+  them across the chunks so no chunk is more than one line or a handful of words heavier than another.
+- **Establishing happens under dialogue, never before it.** The first chunk's first line lands in its
+  first second, while the geography and the walk are still being set up. A chunk with no line until the
+  seam is a silent chunk, however much it moves.
+- **Rebalance by beat, not by trimming.** When a chunk is heavy, move a whole beat and its line into the
+  earlier chunk. Shortening lines leaves the count uneven and the delivery rushed. Moving chunk one's
+  content invalidates the frame seam after it — re-shoot both.
+- **The closing chunk carries the shortest last line**, so the end card has air.
+- Pacing paragraph, every chunk: *"only [N] short lines, spread evenly across the runtime, room to
+  breathe."* Negatives, every chunk: `crowded dialogue, four lines, extra dialogue, improvised extra lines,
+  silent opening`.
+
 ### One action at a time, inside each beat
 
 Each **beat** is one point and one action. Two actions in a single beat gets you a beat that does neither.
