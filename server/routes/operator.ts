@@ -128,17 +128,25 @@ const REVIEW_PROMPT = [
 /** At most one review in flight per session. The user taking another turn on the
  *  same session cancels it — a live turn owns the transcript, and a review
  *  writing skills underneath it is exactly the race Hermes cancels for. */
-const reviews = new Map<string, AbortController>();
+const reviews = new Map<string, { ac: AbortController; done: Promise<void> }>();
+// Abort the in-flight review and wait for its process to exit: codex holds a
+// per-thread writer lock, so a resume spawned too early fails with
+// "thread-store conflict". ponytail: 5s cap, then spawn anyway.
+async function stopReview(sessionId: string): Promise<void> {
+  const r = reviews.get(sessionId);
+  if (!r) return;
+  r.ac.abort();
+  await Promise.race([r.done, new Promise((res) => setTimeout(res, 5000))]);
+}
 const lastReviewAt = new Map<string, number>();
 const REVIEW_MIN_GAP_MS = 10 * 60_000;
 
 function startReview(sessionId: string, botId?: string): void {
-  reviews.get(sessionId)?.abort();
+  reviews.get(sessionId)?.ac.abort();
   const ac = new AbortController();
-  reviews.set(sessionId, ac);
   // Fire and forget: never streamed to the client, never awaited, so `event:
   // end` has already gone out by the time this runs.
-  runOperator({
+  const done = runOperator({
     message: REVIEW_PROMPT,
     sessionId,
     // ponytail: lowest effort — this is a bookkeeping pass. The cheap-model
@@ -151,7 +159,8 @@ function startReview(sessionId: string, botId?: string): void {
     onEvent: (e) => { if (e.type === "error") console.error("[operator] review:", e.message); },
   })
     .catch((err) => console.error("[operator] review failed:", err))
-    .finally(() => { if (reviews.get(sessionId) === ac) reviews.delete(sessionId); });
+    .finally(() => { if (reviews.get(sessionId)?.ac === ac) reviews.delete(sessionId); });
+  reviews.set(sessionId, { ac, done });
 }
 
 router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
@@ -292,7 +301,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   }
   const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : undefined;
   // The user has the floor again: stop any review still chewing on this session.
-  if (sessionId) reviews.get(sessionId)?.abort();
+  if (sessionId) await stopReview(sessionId);
   const model = typeof body.model === "string" && body.model ? body.model : undefined;
   // Anything not on the allowlist is dropped rather than passed through — an
   // unrecognised --effort makes the CLI exit before the stream starts.
