@@ -53,9 +53,9 @@
  *
  * These are the RAW stops, at full saturation, in both themes — a tinted wash
  * or the darkened -fg form turns the ramp to mud, and the ramp is the point.
- * Legibility comes from flipping the glyph dark against a solid chip instead
- * of desaturating the colour: every stop is light enough to carry near-black
- * (5.6:1 at the worst, periwinkle; 12.5:1 at the best, amber). */
+ * The glyph is white on the chip. On mid-tone stops white is the lower-
+ * contrast choice — amber sits at 1.6:1 — so if these ever need to clear the
+ * 3:1 non-text bar, darken the chip rather than tinting the glyph. */
 .icon-rail-btn { --rail-color: var(--c-periwinkle); }
 .icon-rail-btn[aria-label="Matte Agent"] { --rail-color: var(--c-cyan); }
 .icon-rail-btn[aria-label="Toolkit"] { --rail-color: var(--c-mint); }
@@ -65,7 +65,7 @@
 .icon-rail-btn[aria-label="Design"] { --rail-color: var(--c-coral); }
 
 .icon-rail-btn:hover {
-  color: #101014;
+  color: #ffffff;
   background: var(--rail-color);
 }
 
@@ -75,7 +75,7 @@
    * brand blue so the current section is unmistakable. The :hover
    * companion keeps the blue stable on hover (otherwise the base
    * .icon-rail-btn:hover rule reverts the colour to text-primary). */
-  color: #101014;
+  color: #ffffff;
   background: var(--rail-color);
 }
 
