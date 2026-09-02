@@ -744,6 +744,9 @@ Use it for every H3 shot. Use it with \`bridge\`/\`storyboard\` when there is mo
 - \`aspectRatio\`: 21:9, 16:9, 4:3, 1:1, 3:4, 9:16.
 - Variants: \`h3-max-t2v\` (prompt only), \`h3-max-i2v\` (a starting frame), \`h3-max-r2v\` (reference images
   or a reference video). Set \`videoReferenceMode\` yourself; never ask the user which mode was meant.
+- Turbo: \`h3-turbo-t2v\` / \`h3-turbo-i2v\` (or \`model: "h3-turbo"\`) — fal's post-trained H3 Max, same
+  duration/resolution ladder, faster. No r2v, so it cannot back \`seam: "reference"\` chains. Use it when
+  the user says "turbo".
 
 ## Duration decides the structure — this is the whole skill
 
