@@ -593,7 +593,7 @@
   height: 24px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--gradient-brand-diag);
+  background: var(--gradient-brand-radial);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -674,7 +674,7 @@
   height: 32px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--gradient-brand-diag);
+  background: var(--gradient-brand-radial);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -700,7 +700,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--gradient-brand-diag);
+  background: var(--gradient-brand-radial);
   flex-shrink: 0;
 }
 
@@ -710,7 +710,7 @@
   height: 64px;
   border-radius: 50%;
   border: 2px solid rgba(var(--tint-rgb), 0.08);
-  background: var(--gradient-brand-diag);
+  background: var(--gradient-brand-radial);
   cursor: pointer;
   overflow: hidden;
   flex-shrink: 0;

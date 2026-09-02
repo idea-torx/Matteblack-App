@@ -100,11 +100,18 @@
   --gradient-brand: linear-gradient(90deg,
     #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
     #EE9A52 62.5%, #E8795F 75%, #DE7B96 87.5%, #A874D2 100%);
-  /* Diagonal form, for avatars and other small round surfaces where a
-   * left-to-right sweep would only show two or three stops. */
+  /* Diagonal form, for small round surfaces where a left-to-right sweep would
+   * only show two or three stops. */
   --gradient-brand-diag: linear-gradient(135deg,
     #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
     #EE9A52 62.5%, #E8795F 75%, #DE7B96 87.5%, #A874D2 100%);
+  /* Radial form, for avatars. On a circle even the diagonal only crosses the
+   * ramp once, so most stops land in the clipped corners; concentric rings put
+   * all nine inside the disc. The off-centre origin at 30% 30% gives the
+   * highlight a light source instead of a bullseye. */
+  --gradient-brand-radial: radial-gradient(circle at 30% 28%,
+    #7B8CE8 0%, #63C2DC 14%, #7FD3A0 28%, #C6D673 42%, #F3CB5C 56%,
+    #EE9A52 68%, #E8795F 80%, #DE7B96 90%, #A874D2 100%);
 
   /* ─── Semantic roles ───────────────────────────────────────────────────
    * One ramp stop per function. `--x` is the solid fill (chosen so white text
