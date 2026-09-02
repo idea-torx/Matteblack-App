@@ -26,6 +26,15 @@ import { getOperatorRunner, getOperatorModels } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
 import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
+
+// Operator children run in their own process groups (see spawn), so they
+// outlive the server unless it takes them down: an orphaned codex keeps the
+// thread writer lock and every later resume fails with "thread-store
+// conflict". Electron's before-quit SIGTERMs us; reap the groups on the way out.
+const liveKills = new Set<(sig: NodeJS.Signals) => void>();
+const reapOperators = () => { for (const k of liveKills) k("SIGKILL"); liveKills.clear(); };
+// index.ts's SIGTERM handler ends in process.exit, which fires this.
+process.on("exit", reapOperators);
 import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
@@ -388,6 +397,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     const killTree = (sig: NodeJS.Signals) => {
       try { if (child.pid && process.platform !== "win32") process.kill(-child.pid, sig); else child.kill(sig); } catch { /* already gone */ }
     };
+    liveKills.add(killTree);
     const onAbort = () => {
       killTree("SIGTERM");
       // ponytail: 2s grace then SIGKILL the group; tune if codex learns to exit on SIGTERM.
@@ -434,6 +444,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     });
 
     child.on("close", (code) => {
+      liveKills.delete(killTree);
       opts.signal?.removeEventListener("abort", onAbort);
       if (code !== 0 && code !== null) {
         const detail = stderrBuf.trim().split("\n").slice(-3).join(" ").slice(0, 400);
