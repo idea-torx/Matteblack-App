@@ -82,44 +82,74 @@ import {
 export type { ReferenceImage, CanvasNode, PendingPlacement };
 
 /**
- * Element picker for a rendered-HTML node: the boxes from its element map,
- * scaled to the node, on top of the selection handles. Click picks one piece,
+ * Element picker for a rendered-HTML node: boxes read from its live iframe
+ * document, scaled to the node, on top of the selection handles. Drags move
+ * the real elements; the drop saves the markup and re-renders the PNG. Click picks one piece,
  * shift-click adds. Deeper elements come later in document order and so sit on
  * top, which is what makes a click land on the word rather than its wrapper.
  * ponytail: picks are local to the mount; deselecting the node clears them.
  */
-type MapEl = { tag: string; text: string; bbox: [number, number, number, number] };
+type LiveEl = { el: HTMLElement; tag: string; text: string; bbox: [number, number, number, number] };
+/** Same walk as the renderer's ELEMENT_MAP, over the live iframe document. */
+function walkLive(doc: Document): LiveEl[] {
+  const skip = new Set(["script", "style", "br", "html", "head"]);
+  const W = doc.documentElement.clientWidth, H = doc.documentElement.clientHeight;
+  const out: LiveEl[] = [];
+  for (const el of Array.from(doc.body?.querySelectorAll<HTMLElement>("*") ?? [])) {
+    const tag = el.tagName.toLowerCase();
+    if (skip.has(tag)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) continue;
+    if (r.width * r.height > 0.9 * W * H) continue;
+    const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" ");
+    const text = (own.trim() || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    out.push({ el, tag, text, bbox: [r.left, r.top, r.width, r.height] });
+    if (out.length >= 400) break;
+  }
+  return out;
+}
 function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void; onMoved: (r: { src: string; mapUrl: string; htmlUrl: string }) => void }) {
-  const mapUrl = node.metadata?.map_url as string | undefined;
+  const htmlUrl = node.metadata?.html_url as string | undefined;
   const pw = (node.metadata?.pixel_width as number) || node.width;
   const ph = (node.metadata?.pixel_height as number) || node.height;
-  const [els, setEls] = useState<MapEl[]>([]);
+  const [els, setEls] = useState<LiveEl[]>([]);
   const [picked, setPicked] = useState<number[]>([]);
-  // Drag offset in canvas px while a picked element is being nudged.
-  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean; justPicked: boolean } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; moved: boolean; justPicked: boolean; base: Map<number, string> } | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Read the live document once the iframe for this markup has loaded.
   useEffect(() => {
     let live = true;
-    setEls([]); setPicked([]); setDrag(null);
-    if (mapUrl) fetch(mapUrl, { credentials: "include" }).then((r) => r.ok ? r.json() : []).then((m) => { if (live && Array.isArray(m)) setEls(m); }).catch(() => {});
-    return () => { live = false; };
-  }, [mapUrl]);
+    setEls([]); setPicked([]);
+    const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-html-node="${node.id}"]`);
+    if (!frame) return;
+    const read = () => { const doc = frame.contentDocument; if (live && doc?.body) setEls(walkLive(doc)); };
+    if (frame.contentDocument?.readyState === "complete" && frame.contentDocument.body?.childElementCount) read();
+    frame.addEventListener("load", read);
+    return () => { live = false; frame.removeEventListener("load", read); };
+  }, [node.id, htmlUrl]);
   useEffect(() => {
-    onPick(picked.map((i) => ({ nodeId: node.id, ...els[i] })).filter((e) => e.tag));
+    onPick(picked.map((i) => els[i]).filter(Boolean).map((e) => ({ nodeId: node.id, tag: e.tag, text: e.text, bbox: e.bbox.map(Math.round) as [number, number, number, number] })));
   }, [picked, els, node.id, onPick]);
   useEffect(() => () => onPick([]), [onPick]);
-  if (!mapUrl || els.length === 0) return null;
+  if (els.length === 0) return null;
   const sx = node.width / pw, sy = node.height / ph;
-  // Drop: nudge every picked element by the same delta, in the render's CSS px.
-  // The server re-renders with the translate baked into the markup and the
-  // node's src/map update over the canvas broadcast.
-  const commit = (ids: number[], dx: number, dy: number) => {
-    const moves = ids.map((i) => ({ i, dx: Math.round(dx / sx), dy: Math.round(dy / sy) }));
-    // Boxes stay offset until the new map arrives (the mapUrl effect clears it), or snap back on failure.
-    fetch("/api/canvas/html-move", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, moves }) })
+  const doc = els[0].el.ownerDocument;
+  // Live nudge: prepend a translate to each picked element's computed transform.
+  const nudge = (ids: number[], dx: number, dy: number, base: Map<number, string>) => {
+    for (const i of ids) {
+      const e = els[i]; if (!e) continue;
+      const b = base.get(i) ?? "";
+      e.el.style.transform = `translate(${Math.round(dx / sx)}px, ${Math.round(dy / sy)}px)${b ? " " + b : ""}`;
+    }
+    setEls(walkLive(doc));
+  };
+  const commit = () => {
+    setSaving(true);
+    fetch("/api/canvas/html-save", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, html: "<!doctype html>\n" + doc.documentElement.outerHTML }) })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then(onMoved)
-      .catch(() => setDrag(null));
+      .catch(() => {})
+      .finally(() => setSaving(false));
   };
   return (
     <>
@@ -130,17 +160,16 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; 
             key={i}
             className={`freeform-canvas__html-el${isPicked ? " freeform-canvas__html-el--picked" : ""}`}
             title={`<${el.tag}> ${el.text}`}
-            style={{
-              left: el.bbox[0] * sx, top: el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy,
-              transform: isPicked && drag ? `translate(${drag.dx}px, ${drag.dy}px)` : undefined,
-            }}
+            style={{ left: el.bbox[0] * sx, top: el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy, opacity: saving ? 0.5 : undefined }}
             onPointerDown={(e) => {
               e.stopPropagation();
-              if (e.button !== 0) return;
-              // Pick on press so a drag can start on an unpicked element.
+              if (e.button !== 0 || saving) return;
               const justPicked = !isPicked;
-              if (justPicked) setPicked((prev) => e.shiftKey ? [...prev, i] : [i]);
-              dragRef.current = { x: e.clientX, y: e.clientY, moved: false, justPicked };
+              const ids = justPicked ? (e.shiftKey ? [...picked, i] : [i]) : picked;
+              if (justPicked) setPicked(ids);
+              const base = new Map<number, string>();
+              for (const j of ids) { const t = els[j] && getComputedStyle(els[j].el).transform; base.set(j, t && t !== "none" ? t : ""); }
+              dragRef.current = { x: e.clientX, y: e.clientY, moved: false, justPicked, base };
               e.currentTarget.setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => {
@@ -149,14 +178,13 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; 
               const dx = (e.clientX - d.x) / zoom, dy = (e.clientY - d.y) / zoom;
               if (!d.moved && Math.hypot(dx, dy) * zoom < 3) return;
               d.moved = true;
-              setDrag({ dx, dy });
+              nudge([...d.base.keys()], dx, dy, d.base);
             }}
             onPointerUp={(e) => {
               const d = dragRef.current;
               dragRef.current = null;
               if (!d) return;
-              if (d.moved) commit(picked.includes(i) ? picked : [...picked, i], (e.clientX - d.x) / zoom, (e.clientY - d.y) / zoom);
-              // Plain click on an already-picked element unpicks it (shift-click toggles it out of a set).
+              if (d.moved) commit();
               else if (!d.justPicked) setPicked((prev) => e.shiftKey ? prev.filter((p) => p !== i) : (prev.length === 1 ? [] : [i]));
             }}
             onClick={(e) => e.stopPropagation()}
