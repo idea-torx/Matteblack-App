@@ -73,10 +73,10 @@ const APPLY_MOVES = `((moves) => {
   for (const m of moves) {
     const el = visible[m.i];
     if (!el) continue;
-    const prev = /translate\\((-?[\\d.]+)px,\\s*(-?[\\d.]+)px\\)/.exec(el.style.transform || "");
-    const x = (prev ? Number(prev[1]) : 0) + m.dx, y = (prev ? Number(prev[2]) : 0) + m.dy;
-    el.style.transform = (el.style.transform || "").replace(/translate\\([^)]*\\)\\s*/, "") + \` translate(\${Math.round(x)}px, \${Math.round(y)}px)\`;
-    el.style.transform = el.style.transform.trim();
+    // Prepend to the computed matrix so stylesheet transforms (centering
+    // translateX(-50%), rotations) survive and earlier moves accumulate.
+    const base = getComputedStyle(el).transform;
+    el.style.transform = "translate(" + Math.round(m.dx) + "px, " + Math.round(m.dy) + "px)" + (base === "none" ? "" : " " + base);
   }
   return "<!doctype html>\\n" + document.documentElement.outerHTML;
 })`;
