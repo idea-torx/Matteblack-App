@@ -1508,7 +1508,7 @@ function ProvidersSection() {
             <div key={`models-${r.id}`} className="settings-toggle-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
               <span className="settings-toggle-label">{r.label} models in the dropdown</span>
               <span className="settings-toggle-desc">Tick the ones you use. None ticked shows all {r.catalog?.length}.</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "2px 12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {(r.catalog ?? []).map((m) => (
                   <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
                     <input

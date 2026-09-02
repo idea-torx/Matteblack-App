@@ -127,5 +127,6 @@ export function getOperatorModels(runner: OperatorRunner): string[] {
 }
 
 export function setOperatorModels(runner: OperatorRunner, ids: string[]): void {
-  setUserConfig({ operatorModels: { ...(load().operatorModels ?? {}), [runner]: ids } });
+  const cfg = load();
+  persist({ ...cfg, operatorModels: { ...(cfg.operatorModels ?? {}), [runner]: ids } });
 }
