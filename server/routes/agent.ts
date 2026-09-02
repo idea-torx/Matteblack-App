@@ -4939,6 +4939,17 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       if (parsed.kind === "video" && referenceUrls.length > 0 && parsed.videoReferenceMode == null) {
         parsed.videoReferenceMode = referenceUrls.length === 1 ? "first_frame" : "references";
       }
+      // A clip handed in as an image reference (the operator "continuing" a
+      // video through generate_media instead of continue_video) fails at fal
+      // as an unreadable image. Hand over its last frame instead.
+      if (parsed.kind === "video") {
+        for (let i = 0; i < referenceUrls.length; i++) {
+          if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(referenceUrls[i])) {
+            try { referenceUrls[i] = await extractLastFrame(referenceUrls[i]); }
+            catch (err) { res.status(400).json({ error: `Couldn't read a frame from ${referenceUrls[i]}: ${err instanceof Error ? err.message : String(err)}` }); return; }
+          }
+        }
+      }
       const seedanceAllowed = parsed.kind === "video" ? await isSeedanceAllowed(userId) : true;
       const built = buildGenerateBody(parsed, referenceUrls, canvasId, workspaceId, seedanceAllowed);
       if (!built) { res.status(400).json({ error: "This request couldn't be mapped to a supported generation." }); return; }
