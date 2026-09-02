@@ -274,6 +274,38 @@ const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "see_canvas",
+    description:
+      "See the layout of the canvas the user is looking at right now: every node with its id, type, label, position and size. This is the spatial view (list_canvas is the generation log). Call it before arranging anything, and again afterwards to confirm.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "arrange_canvas",
+    description:
+      "Move and/or resize nodes on the canvas the user is looking at. Call see_canvas FIRST to get real node ids and current geometry — never guess an id. Coordinates are canvas world units (the same numbers see_canvas reports), not screen pixels; x,y is the node's top-left. Never move a node marked locked; locked nodes and ids not on this canvas are skipped and reported back. The bot's cursor walks to each node as it moves, so the user watches it happen — send the whole layout in one call rather than one call per node.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        moves: {
+          type: "array",
+          description: "Up to 200 moves, applied in order.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Node id from see_canvas." },
+              x: { type: "number", description: "New left edge, canvas units. Omit to keep." },
+              y: { type: "number", description: "New top edge, canvas units. Omit to keep." },
+              width: { type: "number", description: "New width. Omit to keep the current size." },
+              height: { type: "number", description: "New height. Omit to keep the current size." },
+            },
+            required: ["id"],
+          },
+        },
+      },
+      required: ["moves"],
+    },
+  },
+  {
     name: "get_asset",
     description:
       "Fetch one asset by id (from list_canvas). Returns its metadata and, for images, an inline thumbnail so you can see the result and decide next steps.",
@@ -1002,6 +1034,70 @@ async function runListCanvas(args: Record<string, unknown>): Promise<CallToolRes
   }
 }
 
+type CanvasNodeRow = {
+  id: string; type: string; label: string;
+  x: number; y: number; width: number; height: number; locked: boolean;
+};
+
+async function runSeeCanvas(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const data = (await httpJson(ep, "GET", "/api/agent/canvas")) as {
+      canvasId: string;
+      viewport?: { x: number; y: number; width: number; height: number; zoom?: number } | null;
+      nodes?: CanvasNodeRow[];
+    };
+    const nodes = data.nodes ?? [];
+    const v = data.viewport;
+    const lines = [
+      v
+        ? `Viewport: (${Math.round(v.x)}, ${Math.round(v.y)}) ${Math.round(v.width)}\u00d7${Math.round(v.height)}${v.zoom ? ` at ${v.zoom.toFixed(2)}x` : ""}`
+        : "Viewport: unknown",
+      "",
+    ];
+    if (nodes.length === 0) {
+      lines.push("The canvas is empty.");
+      return ok(lines.join("\n"));
+    }
+    lines.unshift(`${nodes.length} node(s) on the canvas, in creation order:`, "");
+    for (const n of nodes) {
+      lines.push(
+        `\u2022 ${n.id} [${n.type}] "${(n.label || "").slice(0, 60)}" at (${Math.round(n.x)}, ${Math.round(n.y)}) ${Math.round(n.width)}\u00d7${Math.round(n.height)}${n.locked ? " locked" : ""}`,
+      );
+    }
+    lines.push("", "Pass these ids to arrange_canvas to lay them out. Never move a node marked locked.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runArrangeCanvas(args: Record<string, unknown>): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  const moves = args.moves;
+  if (!Array.isArray(moves) || moves.length === 0) {
+    return fail("arrange_canvas requires a non-empty `moves` array. Call see_canvas first for the node ids.");
+  }
+  try {
+    const data = (await httpJson(ep, "POST", "/api/agent/canvas/arrange", { moves })) as {
+      moved?: string[];
+      skipped?: { id: string; reason: string }[];
+    };
+    const moved = data.moved ?? [];
+    const skipped = data.skipped ?? [];
+    const lines = [`Moved ${moved.length} node(s).`];
+    if (skipped.length > 0) {
+      lines.push(`Skipped ${skipped.length}:`);
+      for (const s of skipped) lines.push(`  \u2022 ${s.id} \u2014 ${s.reason}`);
+    }
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
 /** Loopback-fetch an image and return it as an inline MCP image block (the MCP
  *  server can reach loopback URLs that the Claude client cannot). Returns null if
  *  not an image, unreachable, or too large to inline. */
@@ -1681,7 +1777,7 @@ function runListLocalDir(args: Record<string, unknown>): CallToolResult {
 const INSTRUCTIONS = [
   "Matteblack generates images, video, and music locally using the user's own fal.ai key; every result lands on the user's Fal Forge canvas (a separate window they keep open beside this chat).",
   "",
-  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed — including models added at runtime), `search_fal_models` / `get_fal_model_schema` / `add_model` (find a model on fal.ai and install it into the app when nothing installed fits), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill` / `patch_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
+  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `see_canvas` (the canvas layout \u2014 every node's id, position and size) and `arrange_canvas` (move/resize them, the bot's cursor walking the canvas as it goes), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed — including models added at runtime), `search_fal_models` / `get_fal_model_schema` / `add_model` (find a model on fal.ai and install it into the app when nothing installed fits), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill` / `patch_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths, live git state and authoring flag, and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply. `checkout_branch` moves a clone onto the branch the user names. On repos where the user enabled authoring you may edit files and call `commit_repo`, which commits to a working branch and opens a PR: never the default branch, never a merge, and never installing or running the project. On every other repo you are read-only — say so rather than trying another route.",
   "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
@@ -1727,6 +1823,8 @@ async function main(): Promise<void> {
     if (name === "get_fal_model_schema") return runGetFalModelSchema(args);
     if (name === "add_model") return runAddModel(args);
     if (name === "list_canvas") return runListCanvas(args);
+    if (name === "see_canvas") return runSeeCanvas();
+    if (name === "arrange_canvas") return runArrangeCanvas(args);
     if (name === "get_asset") return runGetAsset(args);
     if (name === "save_asset") return runSaveAsset(args);
     if (name === "schedule_job") return runScheduleJob(args);

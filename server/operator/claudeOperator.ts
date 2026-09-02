@@ -79,6 +79,8 @@ export const OPERATOR_MCP_TOOL_NAMES = [
   "transform_media",
   "list_models",
   "list_canvas",
+  "see_canvas",
+  "arrange_canvas",
   "get_asset",
   "list_skills",
   "get_skill",

@@ -322,7 +322,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // canvas they have open, at their viewport. Read back in /api/agent/tool.
   const canvasId = typeof body.canvasId === "string" && body.canvasId ? body.canvasId : undefined;
   const viewport = parseViewport(body.viewport);
-  if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio });
+  if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio, botName: botPersona?.name });
 
   // Ground truth about recent generations, injected every turn. The operator's
   // own history is lossy in exactly the moment it matters: interrupting a turn

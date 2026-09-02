@@ -31,6 +31,18 @@ import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 import { extractLastFrame, extractTailClip, probeMinDimension, VideoTailError, DEFAULT_TAIL_SECONDS } from "../utils/videoTail.js";
 import { getOperatorContext, noteOperatorJob } from "../services/operatorCanvasContext.js";
+import crypto from "node:crypto";
+import { getPresenceTransport } from "./canvas.js";
+import {
+  addSession as presenceAddSession,
+  removeSession as presenceRemoveSession,
+  setCursor as presenceSetCursor,
+} from "../services/presence/PresenceRegistry.js";
+import {
+  broadcastPresenceCursor,
+  broadcastPresenceJoin,
+  broadcastPresenceLeave,
+} from "../services/presence/presenceBroadcast.js";
 
 const router = Router();
 
@@ -5115,6 +5127,167 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
   } catch (err) {
     console.error("[agent/tool] error:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Canvas layout, for the operator. `list_canvas` shows *generations*; these two
+// show and move the *nodes* — the operator's eyes and hands for tidying up.
+// Both act on the canvas the user is currently looking at (the operator context
+// set at the top of the turn), so neither takes a canvas id.
+// ---------------------------------------------------------------------------
+
+/** Resolve the canvas this operator turn is looking at, or answer 400. */
+function operatorCanvas(userId: string, res: Response): string | null {
+  const canvasId = getOperatorContext(userId)?.canvasId;
+  if (!canvasId) {
+    res.status(400).json({ error: "No canvas in view. Open a project first." });
+    return null;
+  }
+  return canvasId;
+}
+
+// Backs `see_canvas`.
+router.get("/api/agent/canvas", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const canvasId = operatorCanvas(req.userId!, res);
+  if (!canvasId) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, node_type, label, x, y, width, height, locked
+         FROM canvas_nodes WHERE canvas_id = $1 ORDER BY created_at`,
+      [canvasId],
+    );
+    res.json({
+      canvasId,
+      viewport: getOperatorContext(req.userId!)?.viewport ?? null,
+      nodes: rows.map((r) => ({
+        id: r.id as string,
+        type: r.node_type as string,
+        label: (r.label as string | null) ?? "",
+        x: Number(r.x), y: Number(r.y),
+        width: Number(r.width), height: Number(r.height),
+        locked: !!r.locked,
+      })),
+    });
+  } catch (err) {
+    console.error("[agent/canvas] list error:", err);
+    res.status(500).json({ error: "Failed to read the canvas" });
+  }
+});
+
+export type ArrangeMove = { id: string; x?: number; y?: number; width?: number; height?: number };
+
+const MAX_MOVES = 200;
+const STEP_MS = 250;
+
+/** Validate an `arrange_canvas` payload. Exported for the self-check in
+ *  agent.arrange.test.ts — the model sends these ids and numbers straight from
+ *  its own head, so this is a trust boundary. */
+export function parseArrangeMoves(moves: unknown): { moves: ArrangeMove[] } | { errors: string[] } {
+  if (!Array.isArray(moves) || moves.length === 0) return { errors: ["moves must be a non-empty array"] };
+  if (moves.length > MAX_MOVES) return { errors: [`Too many moves (${moves.length}); max ${MAX_MOVES}.`] };
+  const errors: string[] = [];
+  const typed: ArrangeMove[] = [];
+  for (const raw of moves as ArrangeMove[]) {
+    const id = typeof raw?.id === "string" ? raw.id : "";
+    if (!UUID_RE.test(id)) { errors.push(`Bad node id: ${JSON.stringify(raw?.id)}`); continue; }
+    let bad = false;
+    for (const k of ["x", "y", "width", "height"] as const) {
+      const v = raw[k];
+      if (v === undefined) continue;
+      if (typeof v !== "number" || !Number.isFinite(v)) { errors.push(`Node ${id}: ${k} must be a finite number`); bad = true; }
+      else if ((k === "width" || k === "height") && v < 0) { errors.push(`Node ${id}: ${k} must be >= 0`); bad = true; }
+    }
+    if (bad) continue;
+    if (raw.x === undefined && raw.y === undefined && raw.width === undefined && raw.height === undefined) {
+      errors.push(`Node ${id}: nothing to change`);
+      continue;
+    }
+    typed.push({ id, x: raw.x, y: raw.y, width: raw.width, height: raw.height });
+  }
+  return errors.length > 0 ? { errors } : { moves: typed };
+}
+
+// Backs `arrange_canvas`. Applies the moves one at a time, with the bot's
+// presence cursor hopping to each node first — so the user watches it walk the
+// canvas rather than everything teleporting at once.
+router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const canvasId = operatorCanvas(userId, res);
+  if (!canvasId) return;
+
+  const parsed = parseArrangeMoves((req.body || {}).moves);
+  if ("errors" in parsed) { res.status(400).json({ error: "Invalid moves", details: parsed.errors }); return; }
+  const typed = parsed.moves;
+
+  const sessionId = crypto.randomUUID();
+  let joined = false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, x, y, width, height, locked FROM canvas_nodes
+        WHERE canvas_id = $1 AND id = ANY($2::uuid[])`,
+      [canvasId, typed.map((m) => m.id)],
+    );
+    const byId = new Map(rows.map((r) => [r.id as string, r]));
+
+    const moved: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    const applicable: ArrangeMove[] = [];
+    for (const m of typed) {
+      const node = byId.get(m.id);
+      if (!node) skipped.push({ id: m.id, reason: "not on this canvas" });
+      else if (node.locked) skipped.push({ id: m.id, reason: "locked" });
+      else applicable.push(m);
+    }
+
+    const transport = getPresenceTransport();
+    if (applicable.length > 0) {
+      const add = presenceAddSession(canvasId, {
+        sessionId,
+        userId,
+        displayName: getOperatorContext(userId)?.botName || "Agent",
+        avatarUrl: null,
+        role: "owner",
+        bindingToken: crypto.randomBytes(24).toString("hex"),
+      });
+      joined = true;
+      broadcastPresenceJoin(transport, canvasId, add.user, sessionId);
+    }
+
+    for (const m of applicable) {
+      const node = byId.get(m.id)!;
+      const x = m.x ?? Number(node.x);
+      const y = m.y ?? Number(node.y);
+      const w = m.width ?? Number(node.width);
+      const h = m.height ?? Number(node.height);
+
+      // Cursor first, then the move — the user sees the bot reach for the node.
+      presenceSetCursor(canvasId, sessionId, x + w / 2, y + h / 2);
+      broadcastPresenceCursor(transport, canvasId, { sessionId, userId, x: x + w / 2, y: y + h / 2 });
+
+      const updated = await pool.query(
+        `UPDATE canvas_nodes SET x = $1, y = $2, width = $3, height = $4
+          WHERE canvas_id = $5 AND id = $6 RETURNING *`,
+        [x, y, w, h, canvasId, m.id],
+      );
+      if (updated.rows[0] && redisClient) {
+        redisSetNodes(canvasId, [updated.rows[0] as RedisNodeUpdate]).catch(() => { /* cache best-effort */ });
+        scheduleCanvasFlush();
+      }
+      broadcastCanvasUpdate(canvasId, "");
+      moved.push(m.id);
+      await new Promise((r) => setTimeout(r, STEP_MS));
+    }
+
+    res.json({ moved, skipped });
+  } catch (err) {
+    console.error("[agent/canvas] arrange error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Failed to arrange the canvas" });
+  } finally {
+    if (joined) {
+      presenceRemoveSession(canvasId, sessionId);
+      broadcastPresenceLeave(getPresenceTransport(), canvasId, sessionId, userId);
+    }
   }
 });
 
