@@ -83,6 +83,19 @@
   --c-rose: #DE7B96;
   --c-violet: #A874D2;
 
+  /* Theme-aware form of each stop, for text, icons, and any hairline that has
+   * to stay visible. Raw in dark; the light block darkens all nine. Every
+   * role's -fg below aliases one of these, so a stop is corrected once. */
+  --c-periwinkle-fg: var(--c-periwinkle);
+  --c-cyan-fg: var(--c-cyan);
+  --c-mint-fg: var(--c-mint);
+  --c-chartreuse-fg: var(--c-chartreuse);
+  --c-amber-fg: var(--c-amber);
+  --c-orange-fg: var(--c-orange);
+  --c-coral-fg: var(--c-coral);
+  --c-rose-fg: var(--c-rose);
+  --c-violet-fg: var(--c-violet);
+
   /* The wordmark gradient itself, for display type and hero surfaces. */
   --gradient-brand: linear-gradient(90deg,
     #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
@@ -92,15 +105,21 @@
    * One ramp stop per function. `--x` is the solid fill (chosen so white text
    * on it clears 4.5:1 in BOTH themes); `--x-fg` is the same hue as text or an
    * icon on the theme's own ground. Light theme redefines only -fg. */
-  --info: #23809A;        --info-fg: var(--c-cyan);
-  --success: #2E8651;     --success-fg: var(--c-mint);
-  --warning: #96710B;     --warning-fg: var(--c-amber);
-  --danger: #D6421F;      --danger-fg: var(--c-coral);
-  --pending: #6F7D25;     --pending-fg: var(--c-chartreuse);
+  --info: #23809A;        --info-fg: var(--c-cyan-fg);
+  --success: #2E8651;     --success-fg: var(--c-mint-fg);
+  --warning: #96710B;     --warning-fg: var(--c-amber-fg);
+  --danger: #D6421F;      --danger-fg: var(--c-coral-fg);
+  --pending: #6F7D25;     --pending-fg: var(--c-chartreuse-fg);
   /* Media kinds — the canvas and library colour nodes by what they are. */
-  --kind-video: #B85E12;  --kind-video-fg: var(--c-orange);
-  --kind-audio: #D04269;  --kind-audio-fg: var(--c-rose);
-  --kind-edit: #985ACA;   --kind-edit-fg: var(--c-violet);
+  --kind-video: #B85E12;  --kind-video-fg: var(--c-orange-fg);
+  --kind-audio: #D04269;  --kind-audio-fg: var(--c-rose-fg);
+  --kind-edit: #985ACA;   --kind-edit-fg: var(--c-violet-fg);
+
+  /* Channel triplets, for the rgba(…, alpha) tints and glows that are all
+   * over this codebase. Kept in step with the hexes above by hand. */
+  --accent-rgb: 87, 108, 226;
+  --danger-rgb: 214, 66, 31;
+  --success-rgb: 46, 134, 81;
 
   /* Accent — the ramp's leading periwinkle, deepened so white label text on a
    * solid accent fill clears 4.5:1. --accent-bright is the raw stop, for
@@ -195,14 +214,18 @@
   /* Brand ramp: the raw stops are theme-independent. Only the -fg role
    * variants change — every stop sits between 1.4:1 and 3.0:1 on this
    * background, so text and icons take the darkened form instead. */
-  --info-fg: #20778F;
-  --success-fg: #2B7C4B;
-  --warning-fg: #8A680A;
-  --danger-fg: #C63D1D;
-  --pending-fg: #677422;
-  --kind-video-fg: #AA5711;
-  --kind-audio-fg: #C9325C;
-  --kind-edit-fg: #904EC6;
+  --c-periwinkle-fg: #4A61DF;
+  --c-cyan-fg: #20778F;
+  --c-mint-fg: #2B7C4B;
+  --c-chartreuse-fg: #677422;
+  --c-amber-fg: #8A680A;
+  --c-orange-fg: #AA5711;
+  --c-coral-fg: #C63D1D;
+  --c-rose-fg: #C9325C;
+  --c-violet-fg: #904EC6;
+  /* The role -fg tokens alias the stops above, so they correct themselves. */
+  --danger-rgb: 198, 61, 29;
+  --success-rgb: 43, 124, 75;
 
   /* Accent — identical across themes; the fill is already contrast-safe. */
   --accent: #576CE2;

@@ -72,7 +72,7 @@
 }
 [data-theme="dark"] .gh-tiles {
   --gh-read: var(--success-fg);
-  --gh-write: #a78bfa;
+  --gh-write: var(--c-violet-fg);
 }
 
 .gh-tile {

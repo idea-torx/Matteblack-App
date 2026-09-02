@@ -305,7 +305,7 @@
 .canvas-gen--selected .canvas-gen-img-inner {
   box-shadow:
     0 0 0 2px var(--accent),
-    0 0 20px rgba(59, 130, 246, 0.35),
+    0 0 20px rgba(var(--accent-rgb), 0.35),
     0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -328,11 +328,11 @@
 
 .canvas-gen-badge--make {
   color: #60a5fa;
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .canvas-gen-badge--edit {
-  color: #a78bfa;
+  color: var(--c-violet-fg);
   background: rgba(139, 92, 246, 0.12);
 }
 
@@ -348,7 +348,7 @@
 
 .canvas-gen-badge--remove {
   color: var(--danger-fg);
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(var(--danger-rgb), 0.12);
 }
 
 .canvas-gen-label {

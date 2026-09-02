@@ -1008,7 +1008,7 @@
 
 .settings-theme-btn--active {
   color: var(--text-primary);
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   border-color: var(--accent);
 }
 
@@ -1453,9 +1453,9 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(59, 130, 246, 0.95) 0%,
-    rgba(59, 130, 246, 0.55) 30%,
-    rgba(59, 130, 246, 0) 70%
+    rgba(var(--accent-rgb), 0.95) 0%,
+    rgba(var(--accent-rgb), 0.55) 30%,
+    rgba(var(--accent-rgb), 0) 70%
   );
   /* Trace the perimeter of the ring with rounded corners matching the card. */
   offset-path: rect(0 100% 100% 0 round 10px);
@@ -1707,7 +1707,7 @@
   color: var(--danger);
   font-size: 12px;
   padding: 6px 12px;
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(var(--danger-rgb), 0.08);
   border-radius: 6px;
   margin: 8px 0;
 }
@@ -1822,7 +1822,7 @@
 
 .settings-user-card--active {
   background: rgba(var(--tint-rgb), 0.06);
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 .settings-user-avatar {

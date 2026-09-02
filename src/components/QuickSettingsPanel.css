@@ -152,15 +152,15 @@
 }
 
 .qs-role-pill--plan {
-  background: rgba(59, 130, 246, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   color: #93bbfd;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
 }
 
 .qs-role-pill--admin {
-  background: rgba(34, 197, 94, 0.16);
+  background: rgba(var(--success-rgb), 0.16);
   color: #86efac;
-  border: 1px solid rgba(34, 197, 94, 0.32);
+  border: 1px solid rgba(var(--success-rgb), 0.32);
 }
 
 .qs-account-email {

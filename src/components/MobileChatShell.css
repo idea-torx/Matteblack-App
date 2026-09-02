@@ -251,10 +251,10 @@
 
 .mcs-drawer-row--danger {
   color: #fecaca;
-  border-color: rgba(239, 68, 68, 0.25);
+  border-color: rgba(var(--danger-rgb), 0.25);
 }
 
 .mcs-drawer-row--danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(var(--danger-rgb), 0.08);
+  border-color: rgba(var(--danger-rgb), 0.4);
 }

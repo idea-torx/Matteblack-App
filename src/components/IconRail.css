@@ -47,9 +47,22 @@
   transition: color 0.12s, background 0.12s;
 }
 
+/* Each rail destination owns one stop of the brand ramp, top to bottom in the
+ * same order the gradient runs. Keyed off aria-label rather than nth-child so
+ * reordering the rail doesn't silently reshuffle the colours. --c-*-fg is the
+ * theme-aware form: the raw stops are 1.4:1 on the light rail and would leave
+ * half these icons invisible. */
+.icon-rail-btn { --rail-color: var(--c-periwinkle-fg); }
+.icon-rail-btn[aria-label="Matte Agent"] { --rail-color: var(--c-cyan-fg); }
+.icon-rail-btn[aria-label="Toolkit"] { --rail-color: var(--c-mint-fg); }
+.icon-rail-btn[aria-label="Skills"] { --rail-color: var(--c-chartreuse-fg); }
+.icon-rail-btn[aria-label="GitHub"] { --rail-color: var(--c-amber-fg); }
+.icon-rail-btn[aria-label="Library"] { --rail-color: var(--c-orange-fg); }
+.icon-rail-btn[aria-label="Design"] { --rail-color: var(--c-coral-fg); }
+
 .icon-rail-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: var(--rail-color);
+  background: color-mix(in srgb, var(--rail-color) 10%, transparent);
 }
 
 .icon-rail-btn--active,
@@ -58,8 +71,8 @@
    * brand blue so the current section is unmistakable. The :hover
    * companion keeps the blue stable on hover (otherwise the base
    * .icon-rail-btn:hover rule reverts the colour to text-primary). */
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.10);
+  color: var(--rail-color);
+  background: color-mix(in srgb, var(--rail-color) 13%, transparent);
 }
 
 .icon-rail-btn--active::before {
@@ -74,7 +87,7 @@
   bottom: 8px;
   width: 2px;
   border-radius: 0 2px 2px 0;
-  background: var(--accent);
+  background: var(--rail-color);
 }
 
 .icon-rail-btn::after {
@@ -166,12 +179,9 @@
  * no per-theme override is needed for the shell itself. */
 [data-theme="light"] .icon-rail-btn--active,
 [data-theme="light"] .icon-rail-btn--active:hover {
-  /* Same brand blue in light mode, with a slightly softer tint. */
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.12);
-}
-[data-theme="light"] .icon-rail-btn--active::before {
-  background: var(--accent);
+  /* --rail-color already darkens itself for this theme; only the tint needs
+   * to come up, since a 13% wash reads weaker on a light rail. */
+  background: color-mix(in srgb, var(--rail-color) 16%, transparent);
 }
 [data-theme="light"] .icon-rail-btn::after {
   background: var(--bg-tooltip);

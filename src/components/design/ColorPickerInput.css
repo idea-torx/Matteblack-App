@@ -54,7 +54,7 @@
   position: relative;
 }
 .cpicker-hex-wrap:focus-within {
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(var(--accent-rgb), 0.4);
 }
 
 .cpicker-hash {
@@ -231,5 +231,5 @@
 }
 .cpicker-value-input:focus {
   outline: none;
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(var(--accent-rgb), 0.4);
 }

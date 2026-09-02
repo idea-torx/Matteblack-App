@@ -247,7 +247,7 @@
 }
 
 .notif-mark-all-read:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .notif-dropdown-title {

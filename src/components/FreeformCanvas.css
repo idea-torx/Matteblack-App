@@ -45,8 +45,8 @@
 
 .freeform-canvas__marquee {
   position: absolute;
-  border: 1px solid rgba(59, 130, 246, 0.8);
-  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.8);
+  background: rgba(var(--accent-rgb), 0.1);
   pointer-events: none;
   z-index: 9999;
 }
@@ -115,10 +115,10 @@
   pointer-events: none;
   border-radius: inherit;
   box-shadow:
-    inset 0 0 8px 2px rgba(59, 130, 246, 0.7),
-    inset 0 0 30px 8px rgba(59, 130, 246, 0.55),
-    inset 0 0 80px 20px rgba(59, 130, 246, 0.35),
-    inset 0 0 200px 40px rgba(59, 130, 246, 0.15);
+    inset 0 0 8px 2px rgba(var(--accent-rgb), 0.7),
+    inset 0 0 30px 8px rgba(var(--accent-rgb), 0.55),
+    inset 0 0 80px 20px rgba(var(--accent-rgb), 0.35),
+    inset 0 0 200px 40px rgba(var(--accent-rgb), 0.15);
   opacity: 0;
   will-change: opacity;
   animation: edge-glow-pulse 2s ease-in-out forwards;
@@ -152,8 +152,8 @@
   pointer-events: none;
   z-index: 0;
   background-image:
-    linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
+    linear-gradient(to right, rgba(var(--accent-rgb), 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--accent-rgb), 0.08) 1px, transparent 1px);
 }
 
 .freeform-canvas__transform {
@@ -764,7 +764,7 @@
 
 @keyframes toolbar-pulse {
   0%   { transform: scale(1);    box-shadow: var(--panel-float-shadow); }
-  35%  { transform: scale(1.035); box-shadow: var(--panel-float-shadow), 0 6px 22px rgba(59, 130, 246, 0.18); }
+  35%  { transform: scale(1.035); box-shadow: var(--panel-float-shadow), 0 6px 22px rgba(var(--accent-rgb), 0.18); }
   100% { transform: scale(1);    box-shadow: var(--panel-float-shadow); }
 }
 
@@ -856,12 +856,12 @@
 }
 
 .freeform-canvas__zoom-btn--active {
-  background: rgba(59, 130, 246, 0.2);
-  color: rgba(59, 130, 246, 0.9);
+  background: rgba(var(--accent-rgb), 0.2);
+  color: rgba(var(--accent-rgb), 0.9);
 }
 
 .freeform-canvas__zoom-btn--active:hover {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
 }
 
 .freeform-canvas__zoom-pct {
@@ -917,11 +917,11 @@
   color: var(--text-primary);
 }
 [data-theme="light"] .freeform-canvas__zoom-btn--active {
-  background: rgba(59, 130, 246, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   color: rgba(37, 99, 235, 1);
 }
 [data-theme="light"] .freeform-canvas__zoom-btn--active:hover {
-  background: rgba(59, 130, 246, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
 }
 [data-theme="light"] .freeform-canvas__bulk-download-btn {
   color: var(--text-secondary);
@@ -988,7 +988,7 @@
 }
 
 .freeform-canvas__context-item--danger:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(var(--danger-rgb), 0.15);
   color: var(--danger-fg);
 }
 
@@ -1021,7 +1021,7 @@
 }
 
 .freeform-canvas__context-item--in-library {
-  color: #a78bfa;
+  color: var(--c-violet-fg);
 }
 
 .freeform-canvas__context-item--disabled,
@@ -1417,7 +1417,7 @@
   font-size: 10px;
   font-weight: 600;
   color: #fff;
-  background: rgba(59, 130, 246, 0.85);
+  background: rgba(var(--accent-rgb), 0.85);
   border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;

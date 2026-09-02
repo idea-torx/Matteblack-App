@@ -440,8 +440,8 @@ export function StyleGuidePage() {
               <div className="sg-input-group-label">Text Input (.rpanel-search style)</div>
               <div className="sg-input-row">
                 <input className="rpanel-search" type="text" placeholder="Default input" style={{ marginBottom: 0 }} readOnly />
-                <input className="rpanel-search" type="text" placeholder="Focus state" style={{ marginBottom: 0, borderColor: "rgba(59, 130, 246, 0.5)", background: "rgba(255, 255, 255, 0.05)" }} readOnly />
-                <input className="rpanel-search" type="text" defaultValue="Error state" style={{ marginBottom: 0, borderColor: "#ef4444", background: "rgba(239, 68, 68, 0.05)" }} readOnly />
+                <input className="rpanel-search" type="text" placeholder="Focus state" style={{ marginBottom: 0, borderColor: "rgba(var(--accent-rgb), 0.5)", background: "rgba(255, 255, 255, 0.05)" }} readOnly />
+                <input className="rpanel-search" type="text" defaultValue="Error state" style={{ marginBottom: 0, borderColor: "#ef4444", background: "rgba(var(--danger-rgb), 0.05)" }} readOnly />
                 <input className="rpanel-search" type="text" placeholder="Disabled" style={{ marginBottom: 0, opacity: 0.4 }} disabled />
               </div>
             </div>

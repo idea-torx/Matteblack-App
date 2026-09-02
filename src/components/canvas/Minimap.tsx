@@ -30,7 +30,7 @@ const lightColors = {
   group: "rgba(0, 0, 0, 0.05)",
   groupStroke: "rgba(0, 0, 0, 0.12)",
   groupLabel: "rgba(0, 0, 0, 0.4)",
-  viewport: "rgba(59, 130, 246, 0.6)",
+  viewport: "rgba(87, 108, 226, 0.6)",
 };
 
 export function Minimap({ nodes, panX, panY, zoom, viewportWidth, viewportHeight, onNavigate, selectedIds }: {

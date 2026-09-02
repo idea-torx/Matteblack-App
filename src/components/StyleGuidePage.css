@@ -160,12 +160,12 @@
 }
 
 .sg-copy-btn:hover {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(var(--accent-rgb), 0.2);
 }
 
 .sg-copy-btn--copied {
   color: var(--success);
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(var(--success-rgb), 0.1);
 }
 
 .sg-typo-list {

@@ -1044,7 +1044,7 @@
 
 .brandiq-color-cell-actions .brandiq-btn--ghost:hover:not([disabled]) {
   color: var(--danger);
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(var(--danger-rgb), 0.1);
 }
 
 /* ─── Asset rows ─── */
@@ -1189,7 +1189,7 @@
 /* ─── Brief proposal review surface ─── */
 .brandiq-proposal {
   border: 1px solid var(--accent);
-  background: rgba(59, 130, 246, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
   padding: 12px;
   border-radius: 8px;
   display: flex;

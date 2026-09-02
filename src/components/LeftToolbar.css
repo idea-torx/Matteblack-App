@@ -495,7 +495,7 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: #a78bfa;
+  color: var(--c-violet-fg);
   background: rgba(167, 139, 250, 0.12);
   padding: 1px 5px;
   border-radius: 4px;

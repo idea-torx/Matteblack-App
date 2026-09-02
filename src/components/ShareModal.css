@@ -86,7 +86,7 @@
 }
 
 [data-theme="light"] .share-modal-error {
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 /* Toggle row — Anyone with the link */

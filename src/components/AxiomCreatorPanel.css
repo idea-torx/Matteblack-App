@@ -173,7 +173,7 @@
 }
 
 .axiom-bucket-add:hover {
-  background: rgba(59, 130, 246, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .axiom-bucket-new {
@@ -435,7 +435,7 @@
 }
 
 .folder-drop-zone--active {
-  background: rgba(59, 130, 246, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
