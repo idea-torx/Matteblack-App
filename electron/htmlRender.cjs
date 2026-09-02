@@ -132,7 +132,11 @@ async function renderOnce(html, w, h, moves) {
     await win.loadFile(tmp);
     await win.webContents.executeJavaScript(SETTLE);
     let moved;
-    if (moves && moves.length) moved = await win.webContents.executeJavaScript(`${APPLY_MOVES}(${JSON.stringify(moves)})`);
+    if (moves && moves.length) {
+      // Surface the page-side error text; Electron's own is just "script failed".
+      moved = await win.webContents.executeJavaScript(`(() => { try { return ${APPLY_MOVES}(${JSON.stringify(moves)}); } catch (e) { return { error: String(e && e.stack || e) }; } })()`);
+      if (moved && moved.error) throw new Error(`apply moves: ${moved.error}`);
+    }
     // capturePage grabs at the display's scale factor, so a retina Mac hands
     // back 2x. Lay out at the requested CSS pixels and downsample to them — the
     // output size is then the same on any machine, supersampled where it can be.

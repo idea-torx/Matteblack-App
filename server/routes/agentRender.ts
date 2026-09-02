@@ -336,7 +336,7 @@ router.post("/api/canvas/html-move", requireAuth, async (req: AuthRequest, res) 
       [src, JSON.stringify({ html_url: htmlUrl, map_url: mapUrl }), nodeId, canvasId],
     );
     broadcastCanvasUpdate(canvasId, "");
-    res.json({ nodeId, src, mapUrl });
+    res.json({ nodeId, src, mapUrl, htmlUrl });
   } catch (err) {
     console.error("[canvas/html-move] failed:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Move failed." });

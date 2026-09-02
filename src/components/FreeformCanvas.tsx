@@ -89,7 +89,7 @@ export type { ReferenceImage, CanvasNode, PendingPlacement };
  * ponytail: picks are local to the mount; deselecting the node clears them.
  */
 type MapEl = { tag: string; text: string; bbox: [number, number, number, number] };
-function HtmlElementPicker({ node, zoom, onPick }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void }) {
+function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void; onMoved: (r: { src: string; mapUrl: string; htmlUrl: string }) => void }) {
   const mapUrl = node.metadata?.map_url as string | undefined;
   const pw = (node.metadata?.pixel_width as number) || node.width;
   const ph = (node.metadata?.pixel_height as number) || node.height;
@@ -117,7 +117,8 @@ function HtmlElementPicker({ node, zoom, onPick }: { node: CanvasNode; zoom: num
     const moves = ids.map((i) => ({ i, dx: Math.round(dx / sx), dy: Math.round(dy / sy) }));
     // Boxes stay offset until the new map arrives (the mapUrl effect clears it), or snap back on failure.
     fetch("/api/canvas/html-move", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, moves }) })
-      .then((r) => { if (!r.ok) setDrag(null); })
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then(onMoved)
       .catch(() => setDrag(null));
   };
   return (
@@ -3281,7 +3282,7 @@ export function FreeformCanvas({
               ) : selectionBox ? null : (
                 <>
                   {node.metadata?.kind === "html" && selectedIds.size === 1 && onElementPick && (
-                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} />
+                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} onMoved={({ src, mapUrl, htmlUrl }) => setNodes((prev) => prev.map((n) => n.id === node.id ? { ...n, src, metadata: { ...n.metadata, map_url: mapUrl, html_url: htmlUrl } } : n))} />
                   )}
                   {(["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <div
