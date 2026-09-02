@@ -3145,3 +3145,7 @@
 /* The two panels now butt together, so the seam between them shouldn't be two
  * rounded corners with a sliver of canvas showing through. */
 .settings-panel { border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+/* Inline brand marks are single-colour paths, so they take the row's text
+ * colour rather than sitting as a foreign-coloured square. */
+.settings-logo--brand { color: var(--text-primary); }
