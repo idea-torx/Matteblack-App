@@ -237,6 +237,8 @@ export interface Runner {
 }
 
 export const RUNNERS: Runner[] = [claudeRunner, codexRunner, opencodeRunner];
+// Warm the catalog at boot so the panel's first status already has it.
+refreshOpencodeModels();
 
 /** Session ids are runner-specific — handing a Claude id to `codex exec resume`
  *  is a hard error — so every non-default runner's ids carry its prefix. */
