@@ -2,8 +2,8 @@
 
 For collaborators. Ten minutes, most of it downloading.
 
-The repo is **private**, so you need to be signed in to GitHub with access to
-`idea-torx/FalForge` before the download links will work.
+The repo is public, so anyone can download it. Contributors need to be signed in
+to GitHub with collaborator access before pushing branches.
 
 Two ways in:
 
@@ -22,8 +22,8 @@ Needs [Node 22+](https://nodejs.org) and `git`. The first install pulls Electron
 so budget a few hundred MB and a couple of minutes.
 
 ```bash
-git clone https://github.com/idea-torx/FalForge.git
-cd FalForge
+git clone https://github.com/idea-torx/Matteblack-App.git
+cd Matteblack-App
 npm install
 npm run electron:dev
 ```
@@ -44,7 +44,7 @@ of the setup is identical.
 
 ## 1. Download
 
-Go to **[Releases](https://github.com/idea-torx/FalForge/releases/latest)** and take
+Go to **[Releases](https://github.com/idea-torx/Matteblack-App/releases/latest)** and take
 the `.dmg` for your Mac:
 
 | Your Mac | File |

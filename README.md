@@ -15,7 +15,7 @@ AI providers directly using **your own API keys**.
 
 > **Just want to use the app?** See **[INSTALL.md](INSTALL.md)** — either
 > `npm run electron:dev` from a clone, or the installer from
-> [Releases](https://github.com/idea-torx/FalForge/releases/latest). The rest of
+> [Releases](https://github.com/idea-torx/Matteblack-App/releases/latest). The rest of
 > this file is for working on the source.
 
 > Converting this into a packaged Windows desktop app? See **[CONVERSION.md](CONVERSION.md)**
