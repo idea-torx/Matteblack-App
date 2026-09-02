@@ -129,7 +129,7 @@ const REVIEW_PROMPT = [
  *  same session cancels it — a live turn owns the transcript, and a review
  *  writing skills underneath it is exactly the race Hermes cancels for. */
 const reviews = new Map<string, { ac: AbortController; done: Promise<void> }>();
-// Abort the in-flight review and wait for its process to exit: codex holds a
+// Abort whatever is running on this thread (review or turn) and wait for its process to exit: codex holds a
 // per-thread writer lock, so a resume spawned too early fails with
 // "thread-store conflict". ponytail: 5s cap, then spawn anyway.
 async function stopReview(sessionId: string): Promise<void> {
@@ -483,7 +483,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   });
 
   try {
-    const { sessionId: finalSession } = await runOperator({
+    const run = runOperator({
       message,
       sessionId,
       model,
@@ -493,6 +493,11 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       signal: ac.signal,
       onEvent: (e) => { if (e.type === "tool_use") sawToolUse = true; send(e); },
     });
+    // A foreground turn holds the thread too: a message sent mid-render must
+    // stop it (same lock story as the review) instead of colliding with it.
+    const entry = { ac, done: run.then(() => undefined, () => undefined) };
+    if (sessionId) { reviews.set(sessionId, entry); entry.done.then(() => { if (reviews.get(sessionId) === entry) reviews.delete(sessionId); }); }
+    const { sessionId: finalSession } = await run;
     // Redundant with the parsed 'done' event, but guarantees the client has the
     // resumable session id even if the result line was malformed.
     if (finalSession) send({ type: "session", sessionId: finalSession });
