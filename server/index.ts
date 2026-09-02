@@ -1522,7 +1522,7 @@ app.get("/api/pricing", requireAuth, async (_req: AuthRequest, res) => {
       video_gen: ["gemini-omni-t2v", "gemini-omni-i2v", "kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-turbo-t2v"],
       remove_bg: ["pixelcut_remove_bg", "remove_bg"],
       resize: ["bria_expand"],
-      upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2"],
+      upscale: ["seedvr-upscale", "topaz-upscale-video", "topaz-upscale-video-gaia2", "bytedance-upscale-video"],
       avatar: ["kling-3.0-mc", "kling-2.6-mc"],
       text_to_vector: ["recraft-v4-vector"],
       image_to_vector: ["recraft-vectorize"],

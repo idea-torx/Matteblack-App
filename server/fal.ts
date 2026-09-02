@@ -1381,6 +1381,28 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  // ByteDance video upscaler: cheapest generative video upscale on fal.
+  // `scale_ratio` overrides target_resolution, so the panel's 1/2/4 factor
+  // maps straight through; fps is the panel's 30/60.
+  "bytedance-upscale-video": {
+    falModelId: "fal-ai/bytedance-upscaler/upscale/video",
+    type: "video",
+    buildInput(params) {
+      const input: Record<string, unknown> = {
+        enhancement_tier: "standard",
+        enhancement_preset: "aigc",
+        fidelity: "high",
+      };
+      const videoUrl = sanitizeUrl(params.video_url);
+      if (videoUrl) input.video_url = videoUrl;
+      const factor = Number(params.upscale_factor);
+      if (Number.isFinite(factor) && factor > 1) input.scale_ratio = Math.min(4, factor);
+      else input.target_resolution = "1080p";
+      const fps = Number(params.target_fps);
+      if (Number.isFinite(fps) && fps > 0) input.target_fps = Math.max(24, Math.min(60, Math.round(fps)));
+      return input;
+    },
+  },
   pixelcut_remove_bg: {
     falModelId: "pixelcut/background-removal",
     type: "image",

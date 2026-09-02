@@ -35,6 +35,7 @@ const MODEL_INFO: Record<string, ModelInfo> = {
   "seedance-2.0-i2v": { displayName: "Seedance 2.0", variation: "Image → Video" },
   "seedance-2.0-r2v": { displayName: "Seedance 2.0", variation: "Reference → Video" },
   "seedvr-upscale": { displayName: "SeedVR Upscale", variation: "Upscale" },
+  "bytedance-upscale-video": { displayName: "ByteDance Video Upscale", variation: "Upscale" },
   "pixelcut_remove_bg": { displayName: "Pixelcut", variation: "Background Removal" },
   "remove_bg": { displayName: "Background Removal", variation: "Background Removal" },
   "bria_expand": { displayName: "Bria Expand", variation: "Resize / Expand" },

@@ -420,6 +420,26 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     },
   },
 
+  // ByteDance: $0.0072/s to 1080p, $0.0144/s to 2K, $0.0288/s to 4K at 30fps;
+  // 60fps doubles. The panel's tier token names the OUTPUT band, so 720p and
+  // 1080p bands both land in the 1080p/2K rates. ponytail: 2x of 768p is ~2K,
+  // so the 1080p band quotes the 2K rate; "approx" until a live price lands.
+  "bytedance-upscale-video": {
+    endpoint: "fal-ai/bytedance-upscaler/upscale/video",
+    unitPrice: 0.0072,
+    unit: "seconds",
+    cost: (p) => {
+      const secs = n(p, "duration", 5);
+      const rates: Record<string, number> = {
+        "720p_30": 0.0072, "720p_60": 0.0144,
+        "1080p_30": 0.0144, "1080p_60": 0.0288,
+        "4k_30": 0.0288, "4k_60": 0.0576,
+      };
+      const rate = rates[(p.resolution ?? "1080p_30").toLowerCase()] ?? 0.0144;
+      return { usd: rate * secs, accuracy: "approx", basis: `~$${rate}/s x ${secs}s (ByteDance)` };
+    },
+  },
+
   // ---- Tools ------------------------------------------------------------
   // Per MEGAPIXEL of output, so cost scales with the image being upscaled.
   "seedvr-upscale": {
