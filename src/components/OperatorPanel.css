@@ -22,6 +22,140 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Sessions | Bots — the mode strip under the header.
+ *
+ * Its own row rather than inline with the header: at 336px the header already
+ * carries the sprite, the brand line and five controls, and a segmented control
+ * squeezed in there reads as an afterthought.
+ * ------------------------------------------------------------------------- */
+.operator-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+  flex-shrink: 0;
+}
+
+.operator-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.06);
+  flex: 0 0 auto;
+}
+
+.operator-seg__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.operator-seg__btn:hover { color: var(--text-primary, #18181b); }
+
+.operator-seg__btn[aria-pressed="true"] {
+  background: #ffffff;
+  color: var(--text-primary, #18181b);
+  box-shadow:
+    0 1px 1px rgba(15, 17, 21, 0.04),
+    0 2px 6px rgba(15, 17, 21, 0.08);
+}
+
+.operator-seg__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.4);
+}
+
+/* The bot picker borrows the composer's model dropdown wholesale — same
+ * chevron, same hover, same dark-mode handling — and only takes the width. */
+.operator-bot-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Inline "new bot" form. No modal: it is two fields, and the panel has nowhere
+ * to put a dialog that wouldn't cover the conversation. */
+.operator-bot-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+  flex-shrink: 0;
+}
+
+.operator-bot-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text-primary, #18181b);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.operator-bot-input::placeholder { color: var(--text-muted, #6b7280); opacity: 0.7; }
+
+.operator-bot-input:focus-visible {
+  outline: none;
+  border-color: var(--matteblack-blue);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.3);
+}
+
+/* $ and /mo sit outside the field so the value the user types is the number
+ * that gets stored (in cents, server-side). */
+.operator-bot-money {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+}
+
+.operator-bot-input--budget {
+  flex: 0 0 auto;
+  width: 52px;
+  text-align: right;
+}
+
+.operator-bot-add {
+  appearance: none;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 7px;
+  background: var(--matteblack-blue);
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 11px;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.12s;
+}
+
+.operator-bot-add:hover { filter: brightness(1.08); }
+.operator-bot-add:active { transform: translateY(0.5px); }
+.operator-bot-add:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.4); }
+
+.operator-bot-error {
+  padding: 0 12px 10px;
+  font-size: 11.5px;
+  color: #b45309;
+}
+
+/* ---------------------------------------------------------------------------
  * Composer footer: model + thinking budget, laid out like Claude Code's own.
  * ------------------------------------------------------------------------- */
 .operator-controls {
@@ -326,6 +460,23 @@
   background: #f4f4f6;
   border-color: rgba(0, 0, 0, 0.3);
 }
+
+[data-theme="dark"] .operator-seg { background: rgba(255, 255, 255, 0.09); }
+[data-theme="dark"] .operator-seg__btn { color: #9a9aa2; }
+[data-theme="dark"] .operator-seg__btn:hover { color: #e8e8ed; }
+[data-theme="dark"] .operator-seg__btn[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  box-shadow: none;
+}
+[data-theme="dark"] .operator-bot-input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e8e8ed;
+}
+[data-theme="dark"] .operator-bot-input::placeholder { color: #9a9aa2; }
+[data-theme="dark"] .operator-bot-money { color: #9a9aa2; }
+[data-theme="dark"] .operator-bot-error { color: #f0b429; }
 
 /* Setup ("Connect your Claude") steps inside the hero. */
 .operator-setup__steps {

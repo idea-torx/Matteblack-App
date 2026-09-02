@@ -412,6 +412,14 @@ function activityGrid(sessions: { updatedAt: number }[]): { cells: Cell[]; month
 let msgSeq = 0;
 const nextId = () => `op-${Date.now()}-${msgSeq++}`;
 
+type PanelMode = "sessions" | "bots";
+/** A named, persistent collaborator: its own durable memory and monthly budget.
+ *  Budget is recorded server-side only; nothing spends against it yet. */
+type Bot = { id: string; name: string; budgetCents: number };
+
+const MODE_STORAGE_KEY = "matteblack.operator.mode";
+const BOT_STORAGE_KEY = "matteblack.operator.botId";
+
 export function OperatorPanel({
   onClose,
   onBusyChange,
@@ -476,10 +484,30 @@ export function OperatorPanel({
   const [pins, setPins] = useState<{ slug: string; title: string }[]>([]);
   const [pinError, setPinError] = useState("");
   const chatIdRef = useRef<string>(chats.activeId);
+  // Sessions | Bots. A session is a chat thread on the open project, sharing
+  // the one agent memory; a bot is a named collaborator with its own durable
+  // memory and budget. Both use the same thread store — a bot's threads are
+  // keyed by its id exactly as a project's are keyed by the project's.
+  const [mode, setMode] = useState<PanelMode>(() => {
+    try { return localStorage.getItem(MODE_STORAGE_KEY) === "bots" ? "bots" : "sessions"; } catch { return "sessions"; }
+  });
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [botId, setBotId] = useState<string>(() => {
+    try { return localStorage.getItem(BOT_STORAGE_KEY) || ""; } catch { return ""; }
+  });
+  const [newBotOpen, setNewBotOpen] = useState(false);
+  const [newBotName, setNewBotName] = useState("");
+  const [newBotBudget, setNewBotBudget] = useState("");
+  const [botError, setBotError] = useState("");
+  const activeBot = bots.find((b) => b.id === botId);
+
   // Everything the user navigates — history list, back/forward, the activity
   // grid, the "last chat" card — reads this, not the raw store. Writes still
   // go through the whole store so another project's threads survive.
-  const pid = projectId || undefined;
+  // In Bots mode the scope is the bot rather than the project, so switching to
+  // a bot swaps in that bot's conversations and nothing else. "bot:" prefixed
+  // so a bot's scope can never collide with a project id.
+  const pid = mode === "bots" ? `bot:${botId || "none"}` : projectId || undefined;
   const sessions = useMemo(
     () => chats.sessions.filter((s) => s.projectId === pid),
     [chats.sessions, pid],
@@ -784,6 +812,7 @@ export function OperatorPanel({
           sessionId: sessionIdRef.current,
           model: model || undefined,
           effort: EFFORT_LEVELS[effortIndex]?.id,
+          botId: mode === "bots" && botId ? botId : undefined,
           canvasId: ctx.canvasId,
           viewport: ctx.viewport,
           selectedNodeIds: ctx.selectedNodeIds?.length ? ctx.selectedNodeIds : undefined,
@@ -829,7 +858,7 @@ export function OperatorPanel({
         abortRef.current = null;
       }
     }
-  }, [input, streaming, refreshStatus, model, effortIndex, handleEvent, patchAssistant, canvasChips, getCanvasContext]);
+  }, [input, streaming, refreshStatus, model, effortIndex, mode, botId, handleEvent, patchAssistant, canvasChips, getCanvasContext]);
 
   const changeModel = useCallback((value: string) => {
     setModel(value);
@@ -921,7 +950,9 @@ export function OperatorPanel({
   const prevPidRef = useRef<string | undefined | null>(null);
   useEffect(() => {
     let store = chats;
-    if (store.sessions.some((s) => s.projectId === undefined)) {
+    // Pre-scoping threads belong to a project, never to a bot: adopt them only
+    // while a project is what's open.
+    if (mode === "sessions" && store.sessions.some((s) => s.projectId === undefined)) {
       store = { ...store, sessions: store.sessions.map((s) => (s.projectId === undefined ? { ...s, projectId: pid } : s)) };
       saveChats(store);
       setChats(store);
@@ -936,6 +967,59 @@ export function OperatorPanel({
     setHistoryOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid]);
+
+  // ── Bots ───────────────────────────────────────────────────────────────────
+  const loadBots = useCallback(async () => {
+    try {
+      const res = await fetch("/api/bots", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { bots?: Bot[] };
+      const list = data.bots ?? [];
+      setBots(list);
+      // A remembered pick that no longer exists (deleted elsewhere) would send a
+      // botId the server rejects, so fall back to the first bot.
+      setBotId((prev) => (list.some((b) => b.id === prev) ? prev : list[0]?.id ?? ""));
+    } catch { /* the panel still works in Sessions mode */ }
+  }, []);
+  useEffect(() => { void loadBots(); }, [loadBots]);
+  useEffect(() => { try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* ignore */ } }, [mode]);
+  useEffect(() => { try { localStorage.setItem(BOT_STORAGE_KEY, botId); } catch { /* ignore */ } }, [botId]);
+
+  const createBot = useCallback(async () => {
+    const name = newBotName.trim();
+    if (!name) { setBotError("Name your bot."); return; }
+    // USD in, cents stored — money never goes near a float in the database.
+    const dollars = Number(newBotBudget.replace(/[$,\s]/g, "") || "0");
+    if (!Number.isFinite(dollars) || dollars < 0) { setBotError("Budget must be a number."); return; }
+    setBotError("");
+    try {
+      const res = await fetch("/api/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, budgetCents: Math.round(dollars * 100) }),
+      });
+      if (!res.ok) { setBotError("Couldn't create that bot."); return; }
+      const { bot } = (await res.json()) as { bot: Bot };
+      setBots((prev) => [...prev, bot]);
+      setBotId(bot.id);
+      setNewBotOpen(false);
+      setNewBotName("");
+      setNewBotBudget("");
+    } catch { setBotError("Couldn't create that bot."); }
+  }, [newBotName, newBotBudget]);
+
+  const deleteBot = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/bots/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) return;
+      setBots((prev) => {
+        const next = prev.filter((b) => b.id !== id);
+        setBotId((cur) => (cur === id ? next[0]?.id ?? "" : cur));
+        return next;
+      });
+    } catch { /* leave the picker as it was */ }
+  }, []);
 
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
   const newChat = useCallback(() => {
@@ -1005,6 +1089,9 @@ export function OperatorPanel({
   const isOpenCode = runner === "opencode";
   const brand = isCodex ? "Codex" : isOpenCode ? "OpenCode" : "Claude";
   const aliveLabel = streaming ? `${brand} is thinking` : `${brand} is online`;
+  // In Bots mode the line names the collaborator, not the CLI behind it — the
+  // sprite and its tooltip still brand the runner that's actually running.
+  const headerName = mode === "bots" ? activeBot?.name || "Bots" : brand;
 
   return (
     <aside className="agent-panel">
@@ -1021,7 +1108,7 @@ export function OperatorPanel({
               : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
         </div>
         <div className="operator-brand">
-          <span className="operator-brand__name">{brand}</span>
+          <span className="operator-brand__name" title={headerName}>{headerName}</span>
         </div>
         <div className="agent-panel__header-actions">
           <button
@@ -1079,6 +1166,98 @@ export function OperatorPanel({
           </button>
         </div>
       </div>
+
+      {/* Nothing to switch between until the CLI is installed — the unavailable
+          state is a single call to action, not a panel. */}
+      {ready && (
+        <div className="operator-modes">
+          <div className="operator-seg" role="group" aria-label="Agent mode">
+            <button
+              type="button"
+              className="operator-seg__btn"
+              aria-pressed={mode === "sessions"}
+              onClick={() => { setMode("sessions"); setHistoryOpen(false); }}
+            >
+              Sessions
+            </button>
+            <button
+              type="button"
+              className="operator-seg__btn"
+              aria-pressed={mode === "bots"}
+              onClick={() => { setMode("bots"); setHistoryOpen(false); }}
+            >
+              Bots
+            </button>
+          </div>
+          {mode === "bots" && (
+            <>
+              <select
+                className="operator-controls__model operator-bot-select"
+                value={botId}
+                onChange={(e) => setBotId(e.target.value)}
+                disabled={streaming || bots.length === 0}
+                aria-label="Bot"
+              >
+                {bots.length === 0 && <option value="">No bots yet</option>}
+                {bots.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={`agent-panel__new agent-panel__new--icon${newBotOpen ? " agent-panel__new--on" : ""}`}
+                onClick={() => { setNewBotOpen((v) => !v); setBotError(""); }}
+                aria-label="New bot"
+                title="New bot"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="agent-panel__new agent-panel__new--icon"
+                onClick={() => { if (activeBot && window.confirm(`Delete ${activeBot.name} and everything it has learned?`)) void deleteBot(activeBot.id); }}
+                disabled={!activeBot || streaming}
+                aria-label="Delete bot"
+                title="Delete bot"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="3 6 21 6" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {ready && mode === "bots" && newBotOpen && (
+        <div className="operator-bot-new">
+          <input
+            className="operator-bot-input"
+            placeholder="Bot name"
+            value={newBotName}
+            autoFocus
+            onChange={(e) => setNewBotName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void createBot(); if (e.key === "Escape") setNewBotOpen(false); }}
+          />
+          <div className="operator-bot-money">
+            <span className="operator-bot-money__sign">$</span>
+            <input
+              className="operator-bot-input operator-bot-input--budget"
+              inputMode="decimal"
+              placeholder="0"
+              value={newBotBudget}
+              onChange={(e) => setNewBotBudget(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void createBot(); if (e.key === "Escape") setNewBotOpen(false); }}
+              aria-label="Monthly budget in dollars"
+            />
+            <span className="operator-bot-money__per">/mo</span>
+          </div>
+          <button type="button" className="operator-bot-add" onClick={() => void createBot()}>Add</button>
+        </div>
+      )}
+      {ready && mode === "bots" && botError && <div className="operator-bot-error">{botError}</div>}
 
       {historyOpen && (
         <div className="operator-history">
