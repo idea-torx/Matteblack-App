@@ -518,10 +518,10 @@ async function connectToClaude() {
 // control overlay), so an OS menu bar would just be a redundant strip above it.
 // Nothing is lost — the three real actions that lived under File are reachable
 // from Settings via the preload API (openDataFolder / connectToClaude /
-// checkForUpdates), and the Edit-menu roles (copy/paste/undo/select-all) are
-// handled natively by Chromium in text fields without a menu to host them.
+// checkForUpdates). Edit roles stay: on macOS Cmd+C/V/A/Z only fire through
+// the application menu, so a null menu breaks copy/paste app-wide.
 function removeApplicationMenu() {
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }]));
 }
 
 // The View menu also carried the devtools/reload accelerators. Keep those as
