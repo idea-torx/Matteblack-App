@@ -46,7 +46,7 @@ const CSP = [
   "font-src 'self' data:",
   "connect-src 'self' https: wss: data: blob:",
   "worker-src 'self' blob:",
-  "frame-src 'none'",
+  "frame-src 'self'", // live HTML nodes are same-origin iframes
   "object-src 'none'",
   "base-uri 'self'",
 ].join("; ");
