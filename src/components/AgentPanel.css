@@ -1371,13 +1371,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  /* The armed send is the brand ramp, scrolling. --gradient-brand-loop runs
-   * the nine stops out and back, so a plain linear position scroll never hits
-   * a seam and needs no fade to hide one. No shadow: the coloured glow it used
-   * to cast read as a blur behind the button. */
-  background: var(--gradient-brand-loop);
-  background-size: 300% 100%;
-  animation: agent-send-ramp 9s linear infinite;
+  /* The armed send travels THROUGH the ramp rather than displaying it. A
+   * scrolled gradient puts every stop inside a 36px window at once, which
+   * averages out to mud no matter how the stops are spaced — the button is
+   * simply too small to hold nine colours. So the fill is one solid stop at a
+   * time, cycling, with a fixed sheen on top for depth. Full saturation at
+   * every frame, and the tween between adjacent stops is the smooth part. */
+  background-color: #7B8CE8;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, rgba(0, 0, 0, 0.10) 100%);
+  animation: agent-send-ramp 18s linear infinite;
   border: none;
   color: #fff;
   cursor: pointer;
@@ -1387,8 +1389,16 @@
 }
 
 @keyframes agent-send-ramp {
-  0%   { background-position:   0% 50%; }
-  100% { background-position: 100% 50%; }
+  0%      { background-color: #7B8CE8; }
+  11.11%  { background-color: #63C2DC; }
+  22.22%  { background-color: #7FD3A0; }
+  33.33%  { background-color: #C6D673; }
+  44.44%  { background-color: #F3CB5C; }
+  55.56%  { background-color: #EE9A52; }
+  66.67%  { background-color: #E8795F; }
+  77.78%  { background-color: #DE7B96; }
+  88.89%  { background-color: #A874D2; }
+  100%      { background-color: #7B8CE8; }
 }
 
 .agent-panel__send:hover:not(:disabled) {
@@ -1422,14 +1432,14 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--gradient-brand-loop);
-  background-size: 300% 100%;
+  background-color: #7B8CE8;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, rgba(0, 0, 0, 0.10) 100%);
   opacity: 0;
   pointer-events: none;
   z-index: 0;
   animation:
-    agent-send-cta-fade  5.5s ease-in-out infinite,
-    agent-send-cta-shift 5.5s ease-in-out infinite;
+    agent-send-cta-fade 5.5s ease-in-out infinite,
+    agent-send-ramp    18s linear      infinite;
 }
 
 /* Keep the arrow icon above the blue overlay. */
@@ -1443,11 +1453,6 @@
   50%      { opacity: 1; }
 }
 
-@keyframes agent-send-cta-shift {
-  0%   { background-position:   0% 50%; }
-  100% { background-position: 100% 50%; }
-}
-
 /* Honor reduced-motion: hold the quiet grey resting state and skip
  * the blue bloom so the button doesn't pulse. */
 @media (prefers-reduced-motion: reduce) {
@@ -1456,9 +1461,9 @@
   .agent-panel__send:disabled::after {
     animation: none;
   }
-  /* Armed still shows the ramp, just held still — losing the colour entirely
-   * would make the armed and inactive states look alike. */
-  .agent-panel__send { background-position: 50% 50%; }
+  /* Armed still shows a ramp colour, just a fixed one — losing the colour
+   * entirely would make the armed and inactive states look alike. */
+  .agent-panel__send { background-color: #7B8CE8; }
   .agent-panel__send:disabled::after {
     opacity: 0;
   }
