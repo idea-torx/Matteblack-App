@@ -115,7 +115,9 @@ one move is an invitation to swap people.
 
 ### Other models
 
-`h3-max` via `continue_video` is the working path and everything above assumes it. Two alternatives
+`h3-max` via `continue_video` is the working path and everything above assumes it. `model: "h3-turbo"`
+runs the same chain on the faster, cheaper H3 Max Turbo (`h3-turbo-i2v`, same 5–15s / 480p–768p ladder);
+Turbo has no r2v, so a `reference` seam on a Turbo chain renders on `h3-max-r2v`. Two alternatives
 remain useful:
 
 - **`veo3.1-lite` + `videoReferenceMode: 'first_last_frame'`** — pins a clip at *both* ends between two

@@ -1691,8 +1691,8 @@ const CONTINUE_VIDEO_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["h3-max", "seedance-2.5"],
-        description: "Model family for this chunk. 'h3-max' (default) or 'seedance-2.5' — seedance takes chunks up to 30s (fewer seams) and does native audio; keep the SAME model across every chunk of one sequence, mixing families drifts the look.",
+        enum: ["h3-max", "h3-turbo", "seedance-2.5"],
+        description: "Model family for this chunk. 'h3-max' (default), 'h3-turbo' (same ladder, faster/cheaper; frame seams only — a reference seam on it rides h3-max-r2v) or 'seedance-2.5' — seedance takes chunks up to 30s (fewer seams) and does native audio; keep the SAME model across every chunk of one sequence, mixing families drifts the look.",
       },
       seam: {
         type: "string",
@@ -2640,7 +2640,7 @@ function selectLogoUrl(
 function snapDurationForModel(model: string, seconds: number): number {
   if (model.startsWith("gemini-omni")) return Math.max(3, Math.min(10, Math.round(seconds)));
   if (model.startsWith("seedance-2.5")) return Math.max(4, Math.min(30, Math.round(seconds)));
-  if (model.startsWith("h3-max")) return Math.max(5, Math.min(15, Math.round(seconds)));
+  if (model.startsWith("h3-")) return Math.max(5, Math.min(15, Math.round(seconds)));
   if (model.startsWith("kling-o3-")) {
     // Clamp to the fal-accepted range; pass every other integer through
     // unchanged so e.g. 8s requests stay at 8s instead of snapping to 5/10.
@@ -4959,7 +4959,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
       const seam = input.seam === "reference" ? "reference" : "frame";
       // seam='frame' rides each family's i2v endpoint (the seed frame is the
       // link); seam='reference' rides its r2v endpoint (tail clip + stills).
-      const family = input.model === "seedance-2.5" ? "seedance-2.5" : "h3-max";
+      const family = input.model === "seedance-2.5" ? "seedance-2.5" : input.model === "h3-turbo" ? "h3-turbo" : "h3-max";
       const duration = snapDurationForModel(family, Number(input.durationSeconds) || 5);
 
       // Pull the handoff off the previous clip. This is the whole technique:
@@ -5003,7 +5003,8 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
 
       const body: Record<string, unknown> = {
         type: "video_gen",
-        model: seam === "reference" ? `${family}-r2v` : `${family}-i2v`,
+        // Turbo has no r2v endpoint; its reference seam borrows H3 Max's.
+        model: seam === "reference" ? `${family === "h3-turbo" ? "h3-max" : family}-r2v` : `${family}-i2v`,
         prompt,
         duration,
         // Inherit the source clip's resolution tier when the caller doesn't
