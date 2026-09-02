@@ -516,8 +516,8 @@ router.get("/api/projects/:workspaceId", async (req: AuthRequest, res: Response)
          LEFT JOIN LATERAL (
            SELECT COALESCE(json_agg(sub.src), '[]'::json) as thumbnails FROM (
              SELECT cn.src FROM canvas_nodes cn
-             WHERE cn.canvas_id = cs.id AND cn.node_type = 'image' AND cn.src IS NOT NULL AND cn.src != ''
-             ORDER BY cn.updated_at DESC LIMIT 3
+             WHERE cn.canvas_id = cs.id AND cn.node_type IN ('image', 'video') AND cn.src IS NOT NULL AND cn.src != ''
+             ORDER BY (cn.node_type = 'video'), cn.updated_at DESC LIMIT 3
            ) sub
          ) th ON true
          WHERE pp.user_id = $1
@@ -549,8 +549,8 @@ router.get("/api/projects/:workspaceId", async (req: AuthRequest, res: Response)
        LEFT JOIN LATERAL (
          SELECT COALESCE(json_agg(sub.src), '[]'::json) as thumbnails FROM (
            SELECT cn.src FROM canvas_nodes cn
-           WHERE cn.canvas_id = cs.id AND cn.node_type = 'image' AND cn.src IS NOT NULL AND cn.src != ''
-           ORDER BY cn.updated_at DESC LIMIT 3
+           WHERE cn.canvas_id = cs.id AND cn.node_type IN ('image', 'video') AND cn.src IS NOT NULL AND cn.src != ''
+           ORDER BY (cn.node_type = 'video'), cn.updated_at DESC LIMIT 3
          ) sub
        ) th ON true
        WHERE cs.workspace_id = $1 ${ownerFilter}

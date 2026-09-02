@@ -650,3 +650,28 @@
   color: var(--text-primary);
   background: var(--panel-bg-solid, #1a1a1f);
 }
+
+/* ─── Covers in light mode ────────────────────────────────────────────────
+ * The empty-cover gradient and the bottom scrim were both dark-theme values,
+ * so a project with no thumbnails sat as a black slab in the middle of a
+ * white page. Same three hues, inverted into a pale wash, and the scrim
+ * loses most of its weight (it only exists to seat the artwork against the
+ * card, there is no text over it). */
+[data-theme="light"] .proj-card-thumb {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(147, 51, 234, 0.13) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(37, 99, 235, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 60% 80%, rgba(16, 185, 129, 0.10) 0%, transparent 50%),
+    linear-gradient(160deg, #f4f4f8 0%, #ececf3 35%, #e6e6ef 65%, #f1f1f6 100%);
+}
+
+[data-theme="light"] .proj-card-thumb-overlay {
+  height: 32%;
+  background: linear-gradient(transparent 0%, rgba(15, 15, 30, 0.12) 100%);
+}
+
+/* Date and count were relying on space-between across the card, which left
+ * them touching whenever the row didn't take the full width. A dot between
+ * them reads the same at any width. */
+.proj-card-meta { justify-content: flex-start; gap: 6px; }
+.proj-card-meta > span + span::before { content: "·"; margin-right: 6px; }

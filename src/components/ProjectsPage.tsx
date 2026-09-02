@@ -324,7 +324,14 @@ export function ProjectsPage({ category, projects, currentProject, onSelect, onC
                   {(project.thumbnails && project.thumbnails.length > 0) ? (
                     <div className={`proj-card-thumb proj-card-bento proj-card-bento--${Math.min(project.thumbnails.length, 3)}`}>
                       {project.thumbnails.slice(0, 3).map((url, i) => (
-                        <img key={i} className="proj-card-bento-img" src={url} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        /* A project whose only nodes are clips still deserves a cover, so
+                         * the query now falls back to video srcs. #t=0.1 makes the browser
+                         * paint the first frame instead of a black poster box. */
+                        /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url) ? (
+                          <video key={i} className="proj-card-bento-img" src={`${url}#t=0.1`} muted playsInline preload="metadata" onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }} />
+                        ) : (
+                          <img key={i} className="proj-card-bento-img" src={url} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        )
                       ))}
                       <div className="proj-card-thumb-overlay" />
                     </div>
