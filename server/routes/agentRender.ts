@@ -343,7 +343,7 @@ router.post("/api/canvas/html-save", requireAuth, async (req: AuthRequest, res) 
     const htmlUrl = await saveFile(`users/${userId}/html`, `${stem}.html`, Buffer.from(source, "utf8"));
     await pool.query(`UPDATE canvas_nodes SET src = $1, metadata = metadata || $2::jsonb WHERE id = $3 AND canvas_id = $4`,
       [src, JSON.stringify({ html_url: htmlUrl, map_url: mapUrl }), nodeId, canvasId]);
-    broadcastCanvasUpdate(canvasId, "");
+    broadcastCanvasUpdate(canvasId, (req.headers["x-canvas-session-id"] as string) || "");
     res.json({ nodeId, src, mapUrl, htmlUrl });
   } catch (err) {
     console.error("[canvas/html-save] failed:", err);

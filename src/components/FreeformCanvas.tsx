@@ -71,6 +71,7 @@ import type { LibraryMatch } from "../utils/canvasUtils";
 import type { ResizeHandle } from "../hooks/useResizeHandles";
 import { Minimap } from "./canvas/Minimap";
 import { CanvasNodeComponent, liveHtmlUrls } from "./canvas/CanvasNodeComponent";
+import { getCanvasSessionId } from "../services/CanvasSyncEngine";
 import { ZoomToolbar } from "./canvas/ZoomToolbar";
 import {
   usePresenceChannel,
@@ -146,7 +147,7 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved, snap, onDragEnd }: { n
   };
   const commit = () => {
     setSaving(true);
-    fetch("/api/canvas/html-save", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodeId: node.id, html: "<!doctype html>\n" + doc.documentElement.outerHTML }) })
+    fetch("/api/canvas/html-save", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "x-canvas-session-id": getCanvasSessionId() }, body: JSON.stringify({ nodeId: node.id, html: "<!doctype html>\n" + doc.documentElement.outerHTML }) })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((r: { src: string; mapUrl: string; htmlUrl: string }) => { liveHtmlUrls.add(r.htmlUrl); onMoved(r); })
       .catch(() => {})
