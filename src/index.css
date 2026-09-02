@@ -112,6 +112,13 @@
   --gradient-brand-radial: radial-gradient(circle at 30% 28%,
     #7B8CE8 0%, #63C2DC 14%, #7FD3A0 28%, #C6D673 42%, #F3CB5C 56%,
     #EE9A52 68%, #E8795F 80%, #DE7B96 90%, #A874D2 100%);
+  /* Looping form: the ramp runs out and back so a linear background-position
+   * scroll never shows a seam where violet meets periwinkle. Pair it with
+   * background-size: 300% 100% and the agent-send-ramp keyframes. */
+  --gradient-brand-loop: linear-gradient(90deg,
+    #7B8CE8, #63C2DC, #7FD3A0, #C6D673, #F3CB5C, #EE9A52, #E8795F, #DE7B96,
+    #A874D2, #DE7B96, #E8795F, #EE9A52, #F3CB5C, #C6D673, #7FD3A0, #63C2DC,
+    #7B8CE8);
 
   /* ─── Semantic roles ───────────────────────────────────────────────────
    * One ramp stop per function. `--x` is the solid fill (chosen so white text

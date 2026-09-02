@@ -1371,15 +1371,24 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
+  /* The armed send is the brand ramp, scrolling. --gradient-brand-loop runs
+   * the nine stops out and back, so a plain linear position scroll never hits
+   * a seam and needs no fade to hide one. No shadow: the coloured glow it used
+   * to cast read as a blur behind the button. */
+  background: var(--gradient-brand-loop);
+  background-size: 300% 100%;
+  animation: agent-send-ramp 9s linear infinite;
   border: none;
   color: #fff;
   cursor: pointer;
   padding: 0;
-  transition: filter 0.08s, background 0.08s, box-shadow 0.08s, top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), right 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 1px 2px rgba(15, 17, 21, 0.10),
-    0 2px 6px rgba(37, 99, 235, 0.30);
+  transition: filter 0.08s, top 0.14s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.14s cubic-bezier(0.4, 0, 0.2, 1), right 0.14s cubic-bezier(0.4, 0, 0.2, 1), transform 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+}
+
+@keyframes agent-send-ramp {
+  0%   { background-position:   0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 .agent-panel__send:hover:not(:disabled) {
@@ -1397,13 +1406,12 @@
    * "grey → blue → grey" — so the empty state still announces itself
    * as the call to action without permanently advertising as armed. */
   background: #c7c8cc;
+  background-image: none;
   color: #fff;
   cursor: not-allowed;
   isolation: isolate;
-  /* Halo pulses in sync with the gradient bloom. Sized small at rest
-   * (matching a quiet grey chip) and expanding into a brand-blue glow
-   * at the peak of the cycle. */
-  animation: agent-send-cta-shadow 5.5s ease-in-out infinite;
+  animation: none;
+  box-shadow: none;
 }
 
 /* The blue gradient lives on a pseudo-element so we can fade its
@@ -1414,14 +1422,8 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    #60a5fa 0%,
-    var(--accent) 35%,
-    var(--accent-hover) 65%,
-    #4f46e5 100%
-  );
-  background-size: 220% 220%;
+  background: var(--gradient-brand-loop);
+  background-size: 300% 100%;
   opacity: 0;
   pointer-events: none;
   z-index: 0;
@@ -1446,18 +1448,17 @@
   100% { background-position: 100% 50%; }
 }
 
-@keyframes agent-send-cta-shadow {
-  0%, 100% { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.10); }
-  50%      { box-shadow: 0 1px 2px rgba(15, 17, 21, 0.14), 0 6px 18px rgba(var(--accent-rgb), 0.40); }
-}
-
 /* Honor reduced-motion: hold the quiet grey resting state and skip
  * the blue bloom so the button doesn't pulse. */
 @media (prefers-reduced-motion: reduce) {
+  .agent-panel__send,
   .agent-panel__send:disabled,
   .agent-panel__send:disabled::after {
     animation: none;
   }
+  /* Armed still shows the ramp, just held still — losing the colour entirely
+   * would make the armed and inactive states look alike. */
+  .agent-panel__send { background-position: 50% 50%; }
   .agent-panel__send:disabled::after {
     opacity: 0;
   }
