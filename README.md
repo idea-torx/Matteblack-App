@@ -87,5 +87,9 @@ same code, switched by `LOCAL_MODE`.
 
 ## License
 
-See [LICENSE](LICENSE). Note that AI generations are subject to the terms of the
+Fal Forge is licensed under the [Functional Source License 1.1, MIT Future License](LICENSE)
+(FSL-1.1-MIT). You can read, run, modify and redistribute it for any purpose except offering it as a
+competing product or service. Each version automatically becomes MIT two years after its release.
+
+Note that AI generations are subject to the terms of the
 providers you configure (fal.ai, Anthropic).

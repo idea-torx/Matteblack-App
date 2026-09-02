@@ -13,7 +13,8 @@ import { listAvailableModels } from "../fal.js";
 import { estimateFalCost } from "./falCost.js";
 
 const unpriced = listAvailableModels()
-  .filter((m) => m.type === "video" && !estimateFalCost(m.key))
+  // Custom (user-added) models are priced by fal, not by this table.
+  .filter((m) => m.type === "video" && !m.custom && !estimateFalCost(m.key))
   .map((m) => m.key);
 assert.deepEqual(unpriced, [], `video models with no cost rule: ${unpriced.join(", ")}`);
 

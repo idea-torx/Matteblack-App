@@ -7,7 +7,8 @@
  */
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
-import { runOperator, operatorStatus, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, type OperatorEvent, type EffortLevel } from "../operator/claudeOperator.js";
+import { runOperator, operatorStatus, operatorAuth, operatorLogin, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, RUNNERS, type OperatorEvent, type EffortLevel, type RunnerId } from "../operator/claudeOperator.js";
+import { setUserConfig } from "../config/userConfig.js";
 import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
@@ -137,8 +138,8 @@ function startReview(sessionId: string): void {
   runOperator({
     message: REVIEW_PROMPT,
     sessionId,
-    // ponytail: cheapest model, lowest effort — this is a bookkeeping pass.
-    model: "haiku",
+    // ponytail: lowest effort — this is a bookkeeping pass. The cheap-model
+    // choice is the runner's (claude picks haiku; codex stays on its default).
     effort: "low",
     review: true,
     allowedTools: REVIEW_MCP_TOOLS,
@@ -151,6 +152,29 @@ function startReview(sessionId: string): void {
 
 router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
   res.json(operatorStatus());
+});
+
+/** Switch which agent CLI drives the operator. Session ids are runner-specific,
+ *  so a session started on the old runner is simply dropped on the next turn. */
+router.post("/api/operator/runner", requireAuth, (req: AuthRequest, res) => {
+  const runner = (req.body || {}).runner as unknown;
+  if (!RUNNERS.some((r) => r.id === runner)) {
+    res.status(400).json({ error: "unknown runner" });
+    return;
+  }
+  setUserConfig({ operatorRunner: runner as RunnerId });
+  res.json(operatorStatus());
+});
+
+router.get("/api/operator/auth", requireAuth, async (_req: AuthRequest, res) => {
+  res.json(await operatorAuth());
+});
+
+/** Opens the CLI's browser sign-in; responds once it finishes. No credential passes through this app. */
+router.post("/api/operator/login", requireAuth, async (req: AuthRequest, res) => {
+  const runner = (req.body || {}).runner as unknown;
+  if (!RUNNERS.some((r) => r.id === runner)) { res.status(400).json({ error: "unknown runner" }); return; }
+  res.json({ loggedIn: await operatorLogin(runner as RunnerId) });
 });
 
 router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) => {

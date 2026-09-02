@@ -19,6 +19,7 @@ import { UPLOADS_DIR } from "../config/runtime.js";
 import { resolveUploadPath } from "../utils/uploadPath.js";
 import { getAnthropicKey } from "../config/userConfig.js";
 import { listAvailableModels } from "../fal.js";
+import { readCustomModel } from "../models/customModels.js";
 import { estimateFalCost, falPricedModelKeys } from "../config/falCost.js";
 import { unitPriceFor, falPricingStatus } from "../services/falPricing.js";
 import { getMcpToken } from "../mcpToken.js";
@@ -2754,6 +2755,30 @@ export function buildGenerateBody(
 } | null {
   const hasRef = referenceUrls.length > 0;
   const refCount = referenceUrls.length;
+
+  // A custom (user/operator-added) model is one fal endpoint, not a t2/i2/r2v
+  // family, so it can't go through the tier + variant machinery below. Its
+  // schema-driven buildInput takes whatever of these params it declares and
+  // drops the rest, which is the whole point of adding it this way.
+  const custom = tool.explicitModel ? readCustomModel(tool.explicitModel) : undefined;
+  if (custom && custom.type === tool.kind) {
+    const type = custom.type === "video" ? "video_gen" : hasRef ? "image_to_image" : "text_to_image";
+    const body: Record<string, unknown> = {
+      type,
+      model: custom.key,
+      prompt: tool.prompt,
+      aspect_ratio: tool.aspectRatio,
+      resolution: tool.resolution,
+      canvas_id: canvasId,
+      workspace_id: workspaceId,
+      params: { source: "agent" },
+    };
+    if (custom.type === "video") { if (tool.durationSeconds != null) body.duration = String(tool.durationSeconds); }
+    else body.imageNumber = 1;
+    if (hasRef) body.referenceImageUrls = referenceUrls;
+    return { type, body, resolvedModel: custom.key };
+  }
+
   const explicitEntry = resolveExplicitModel(tool.explicitModel ?? undefined);
   // If Claude named a model of the wrong kind, ignore the override.
   const useExplicit = explicitEntry && explicitEntry.kind === tool.kind ? explicitEntry : null;

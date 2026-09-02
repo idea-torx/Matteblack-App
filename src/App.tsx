@@ -370,6 +370,9 @@ function App() {
         audio_url: params.audioUrl,
         characters: params.characters,
         quality: params.quality,
+        // Schema-driven fields for a custom model; the server merges these into
+        // the dispatched params before buildInputFromSchema sees them.
+        ...(params.params ? { params: params.params } : {}),
       };
       jobType = params.jobType;
     } else {

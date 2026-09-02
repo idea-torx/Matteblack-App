@@ -28,19 +28,18 @@ function slugFrom(body: string, fallback: string): string {
  * generations land on the canvas; the conversation streams here.
  */
 
-type OperatorStatus = { binaryFound: boolean; binaryPath: string };
+type OperatorModel = { id: string; label: string };
+type OperatorStatus = {
+  binaryFound: boolean; binaryPath: string; runner?: string;
+  runners?: { id: string; label: string; models?: OperatorModel[] }[];
+};
 
 const GEN_TOOLS = new Set(["generate_media", "generate_music", "transform_media"]);
 
-// The models the operator may drive Claude Code with (--model). Opus 5 is the
-// default (first entry); Fable is the cheaper/faster alternative.
-const OPERATOR_MODELS: { id: string; label: string }[] = [
-  { id: "claude-opus-5", label: "Opus 5" },
-  { id: "claude-opus-4-8", label: "Opus 4.8" },
-  { id: "claude-fable-5", label: "Fable" },
-];
-// Bumped to v3 so the prior Opus 4.8 default doesn't stick.
-const MODEL_STORAGE_KEY = "mb-operator-model-v3";
+// Fallback until /api/operator/status reports the active runner's models.
+const OPERATOR_MODELS: OperatorModel[] = [{ id: "claude-opus-5", label: "Opus 5" }];
+// Per-runner key so switching Claude ↔ Codex remembers each side's pick.
+const modelStorageKey = (runner = "claude") => `mb-operator-model-v4:${runner}`;
 
 /**
  * Claude Code's `--effort` levels — how much the model is allowed to think before
@@ -392,12 +391,15 @@ export function OperatorPanel({
   );
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [model, setModel] = useState<string>(() => {
-    try {
-      const v = localStorage.getItem(MODEL_STORAGE_KEY) || "";
-      return OPERATOR_MODELS.some((m) => m.id === v) ? v : OPERATOR_MODELS[0].id;
-    } catch { return OPERATOR_MODELS[0].id; }
-  });
+  const [model, setModel] = useState<string>(OPERATOR_MODELS[0].id);
+  const runner = status?.runner ?? "claude";
+  const models = status?.runners?.find((r) => r.id === runner)?.models ?? OPERATOR_MODELS;
+  // Runner (re)loaded → restore that runner's saved pick, else its default.
+  useEffect(() => {
+    let v = "";
+    try { v = localStorage.getItem(modelStorageKey(runner)) || ""; } catch { /* ignore */ }
+    setModel(models.some((m) => m.id === v) ? v : models[0].id);
+  }, [runner, models]);
   const [effortIndex, setEffortIndex] = useState<number>(() => {
     try {
       // Guard the null case explicitly: Number(null) is 0, which would pass the
@@ -758,8 +760,8 @@ export function OperatorPanel({
 
   const changeModel = useCallback((value: string) => {
     setModel(value);
-    try { localStorage.setItem(MODEL_STORAGE_KEY, value); } catch { /* ignore */ }
-  }, []);
+    try { localStorage.setItem(modelStorageKey(runner), value); } catch { /* ignore */ }
+  }, [runner]);
 
   const changeEffort = useCallback((value: number) => {
     setEffortIndex(value);
@@ -1215,10 +1217,10 @@ export function OperatorPanel({
               value={model}
               onChange={(e) => changeModel(e.target.value)}
               disabled={streaming}
-              title="Model Claude uses to operate"
+              title="Model the agent uses to operate"
               aria-label="Operator model"
             >
-              {OPERATOR_MODELS.map((m) => (
+              {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>

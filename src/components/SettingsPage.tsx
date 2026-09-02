@@ -53,6 +53,11 @@ const BILLING_SECTIONS: Section[] = [
 
 const PREFERENCES_SECTIONS: Section[] = [
   {
+    id: "providers",
+    label: "Providers",
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>,
+  },
+  {
     id: "notifications",
     label: "Notifications",
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
@@ -103,6 +108,7 @@ const SECTION_LABELS: Record<string, string> = {
   security: "Security",
   subscription: "Subscription",
   usage: "Usage",
+  providers: "Providers",
   notifications: "Notifications",
   general: "Workspace",
   members: "Members",
@@ -246,6 +252,7 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
             {activeSection === "profile" && <ProfileSection />}
             {activeSection === "security" && <SecuritySection onDeleted={() => setActiveSection("auth")} />}
             {activeSection === "subscription" && <SubscriptionSection />}
+            {activeSection === "providers" && <ProvidersSection />}
             {activeSection === "notifications" && <NotificationsSection />}
             {activeSection === "general" && <GeneralSection />}
             {activeSection === "members" && <MembersSection />}
@@ -1236,6 +1243,95 @@ function SubscriptionSection() {
           <WorkspaceTabPlaceholder />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Which agent CLI drives the in-app operator. Driven entirely by the runner
+ *  list GET /api/operator/status returns, so a third runner needs no UI work. */
+function ProvidersSection() {
+  type RunnerRow = { id: string; label: string; binaryFound: boolean; binaryPath: string };
+  const [runners, setRunners] = useState<RunnerRow[]>([]);
+  const [active, setActive] = useState<string>("claude");
+  const [error, setError] = useState<string | null>(null);
+  const [auth, setAuth] = useState<Record<string, boolean>>({});
+  const [signingIn, setSigningIn] = useState<string | null>(null);
+  const loadAuth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/operator/auth", { credentials: "include" });
+      if (res.ok) setAuth(await res.json());
+    } catch { /* offline */ }
+  }, []);
+  useEffect(() => { void loadAuth(); }, [loadAuth]);
+  const signIn = async (id: string) => {
+    setSigningIn(id);
+    try {
+      await fetch("/api/operator/login", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runner: id }),
+      });
+    } catch { /* reported by loadAuth */ }
+    await loadAuth();
+    setSigningIn(null);
+  };
+
+  const load = useCallback(async (url = "/api/operator/status", init?: RequestInit) => {
+    try {
+      const res = await fetch(url, { credentials: "include", ...init });
+      if (!res.ok) { setError(`Couldn't load providers (${res.status})`); return; }
+      const data = await res.json();
+      setRunners(Array.isArray(data.runners) ? data.runners : []);
+      if (typeof data.runner === "string") setActive(data.runner);
+      setError(null);
+    } catch { setError("Network error"); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const choose = (id: string) => {
+    setActive(id); // optimistic: the radio must not lag the click
+    load("/api/operator/runner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runner: id }),
+    });
+  };
+
+  return (
+    <div className="settings-notifications-wrap">
+      <h2 className="settings-section-title">Providers</h2>
+      <div className="settings-card settings-card--full">
+        {error && <div className="settings-toggle-desc" role="alert">{error}</div>}
+        {runners.map((r) => (
+          <label className="settings-toggle-row" key={r.id} style={{ cursor: "pointer" }}>
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{r.label}</span>
+              <span className="settings-toggle-desc">
+                {r.binaryFound ? `Found at ${r.binaryPath}` : `Not installed (looked for "${r.binaryPath}")`}
+                {r.binaryFound && (auth[r.id] ? " · Signed in" : " · Not signed in")}
+              </span>
+            </div>
+            {r.binaryFound && !auth[r.id] && (
+              <button
+                type="button"
+                className="settings-btn-primary"
+                disabled={signingIn !== null}
+                onClick={(e) => { e.preventDefault(); void signIn(r.id); }}
+              >
+                {signingIn === r.id ? "Finish sign-in in your browser…" : "Sign in"}
+              </button>
+            )}
+            <input
+              type="radio"
+              name="operator-runner"
+              checked={active === r.id}
+              onChange={() => choose(r.id)}
+            />
+          </label>
+        ))}
+        <div className="settings-toggle-desc" style={{ padding: "8px 0 0" }}>
+          Switching provider starts a fresh operator conversation — sessions can't move between CLIs.
+        </div>
+      </div>
     </div>
   );
 }

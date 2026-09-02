@@ -26,6 +26,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { resolveLocalPath } from "../utils/localPath.js";
 import { applyExactPatch } from "../skills/patchText.js";
+import { parseToolAllowlist } from "./toolAllowlist.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -47,6 +48,10 @@ function resolveDataDir(): string {
 }
 
 const ENDPOINT_FILE = path.join(resolveDataDir(), "mcp-endpoint.json");
+
+/** Optional per-process tool allowlist (see toolAllowlist.ts). Read once: the
+ *  spawning runner sets MB_TOOLS for the life of the turn. */
+const TOOL_ALLOWLIST = parseToolAllowlist(process.env.MB_TOOLS);
 
 /** Overall poll budget. Images/music land in seconds; video can take minutes,
  *  so default generously. Override with MB_MCP_TIMEOUT_MS. */
@@ -157,7 +162,7 @@ const EMBEDDED_TOOLS: Tool[] = [
         kind: { type: "string", enum: ["image", "video"], description: "What to generate." },
         prompt: { type: "string", description: "The generation prompt." },
         tier: { type: "string", enum: ["quick", "standard", "pro"], description: "Quality/speed tier; picks the model." },
-        model: { type: "string", description: "Explicit model key (overrides tier)." },
+        model: { type: "string", description: "Explicit model key (overrides tier). Custom model keys reported by list_models are accepted here too." },
         aspectRatio: { type: "string", description: "e.g. \"1:1\", \"16:9\", \"9:16\"." },
         resolution: { type: "string", description: "e.g. \"1080p\" (video)." },
         durationSeconds: { type: "number", description: "Video length in seconds." },
@@ -587,6 +592,42 @@ const READ_TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: "search_fal_models",
+    description:
+      "Search fal.ai's public model catalog by keyword (e.g. \"upscale\", \"lipsync\", \"flux\"). Returns endpoint ids you can inspect with get_fal_model_schema and install with add_model. Use when the user asks for something the installed models (list_models) don't cover.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Free-text search, e.g. \"video upscale\"." } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_fal_model_schema",
+    description:
+      "Inspect one fal.ai endpoint before installing it: its input fields (type, enum, default, required), the media type it produces, and its price if fal reports one. Read this before add_model so you can set sensible `defaults`.",
+    inputSchema: {
+      type: "object",
+      properties: { endpointId: { type: "string", description: 'A fal endpoint id, e.g. "fal-ai/flux/schnell".' } },
+      required: ["endpointId"],
+    },
+  },
+  {
+    name: "add_model",
+    description:
+      "Install a fal.ai endpoint as a usable Matteblack model. It appears in the Make panel with a schema-driven control panel and can be generated with immediately via generate_media model=<key>. Inspect it with get_fal_model_schema first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        endpointId: { type: "string", description: 'A fal endpoint id, e.g. "fal-ai/flux/schnell".' },
+        key: { type: "string", description: "Model key to install under (default: derived from the endpoint id)." },
+        title: { type: "string", description: "Label shown in the Make panel (default: the endpoint id)." },
+        type: { type: "string", enum: ["image", "video", "audio"], description: "Override the media type inferred from the output schema." },
+        defaults: { type: "object", description: "Default values for input fields, e.g. {\"num_inference_steps\": 4}." },
+      },
+      required: ["endpointId"],
+    },
+  },
 ];
 
 interface LiveToolDef {
@@ -641,6 +682,11 @@ function adaptForBridge(tool: Tool): Tool {
 /** Fetch the live tool schemas from the app; fall back to the embedded copy so
  *  Claude always sees the three tools even before the app is open. */
 async function listTools(): Promise<Tool[]> {
+  const all = await listAllTools();
+  return TOOL_ALLOWLIST ? all.filter((t) => TOOL_ALLOWLIST.has(t.name)) : all;
+}
+
+async function listAllTools(): Promise<Tool[]> {
   const ep = readEndpoint();
   if (!ep) return [...EMBEDDED_TOOLS.map(adaptForBridge), ...READ_TOOLS];
   try {
@@ -1399,7 +1445,7 @@ function runListLocalDir(args: Record<string, unknown>): CallToolResult {
 const INSTRUCTIONS = [
   "Matteblack generates images, video, and music locally using the user's own fal.ai key; every result lands on the user's Fal Forge canvas (a separate window they keep open beside this chat).",
   "",
-  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill` / `patch_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
+  "TOOLS: `generate_media` (image or short video), `generate_music` (a music bed), `generate_voiceover` (spoken narration / dialogue), `transform_media` (edit / upscale / remove-background / resize an existing image), `render_html` / `get_html` (programmatic HTML/CSS art rendered to a PNG on the canvas — free, exact, and the right tool for anything type-led). Read tools: `list_canvas` (recent generations + their URLs), `get_asset` (one asset's metadata + an inline image thumbnail), `list_models` (what's installed — including models added at runtime), `search_fal_models` / `get_fal_model_schema` / `add_model` (find a model on fal.ai and install it into the app when nothing installed fits), `estimate_cost` (what a generation costs in USD). Skills: `list_skills` / `get_skill` / `save_skill` / `patch_skill`. Memory: `recall` / `remember` / `forget` (private). Files: `list_local_dir` / `read_local_file`. Repos: `list_repos`. Editing: `get_timeline` / `set_timeline` (assemble generated clips into one sequence on the cinema timeline, with as many parallel audio tracks — music, voiceover, effects — as the piece needs). History: `list_cuts` / `save_cut` (the user's local, git-backed record of every finished piece).",
   "",
   "REPOS: the user can attach GitHub repositories, checked out on this machine. Call `list_repos` for their paths, live git state and authoring flag, and read them with your own file tools when the user references a repo — use what the code, README or brand files actually say rather than guessing. A skill is the recipe, a repo is the subject; combine them when both apply. `checkout_branch` moves a clone onto the branch the user names. On repos where the user enabled authoring you may edit files and call `commit_repo`, which commits to a working branch and opens a PR: never the default branch, never a merge, and never installing or running the project. On every other repo you are read-only — say so rather than trying another route.",
   "SEQUENCES: for anything longer than one shot — an ad, a trailer, a scene — you are the editor, not just the generator. Lock the settings first (one model, one aspect ratio, one resolution, one clip duration) and keep them identical across every shot; generate the shots in story order so each can reference the last; then call `set_timeline` with the full ordered clip list and the music bed. Send the whole list every time — it is the cut. Read it back with `get_timeline` before regenerating a shot, and when a shot is wrong regenerate only that shot and re-send the list with that cut's `nodeId`. A canvas can hold several cuts: always pass the `nodeId` you are extending, and omit it only when the user wants a separate new cut — an existing cut is never overwritten by accident. The `bridge` skill has the continuity method; follow it. For the shots themselves — how a 5s, 10s or 15s H3 Max clip is structured, and the camera grammar for realistic / dramatic / action — read the `cinematographer` skill before writing the prompts.",
@@ -1434,8 +1480,14 @@ async function main(): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const name = req.params.name;
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+    if (TOOL_ALLOWLIST && !TOOL_ALLOWLIST.has(name)) {
+      return fail(`Tool "${name}" is not enabled for this run.`);
+    }
     // Read tools first (no job dispatch / progress).
     if (name === "list_models") return runListModels();
+    if (name === "search_fal_models") return runSearchFalModels(args);
+    if (name === "get_fal_model_schema") return runGetFalModelSchema(args);
+    if (name === "add_model") return runAddModel(args);
     if (name === "list_canvas") return runListCanvas(args);
     if (name === "get_asset") return runGetAsset(args);
     if (name === "estimate_cost") return runEstimateCost(args);
@@ -1480,6 +1532,97 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logErr(`ready (endpoint file: ${ENDPOINT_FILE})`);
+}
+
+// ---------------------------------------------------------------------------
+// Model discovery / installation (search_fal_models / get_fal_model_schema / add_model)
+// ---------------------------------------------------------------------------
+
+type SchemaField = {
+  type?: string;
+  enum?: unknown[];
+  default?: unknown;
+  description?: string;
+};
+
+/** One line per input field: name (type) [enum] = default — required. */
+function summarizeSchema(input: { properties?: Record<string, SchemaField>; required?: string[] }): string[] {
+  const req = new Set(input.required ?? []);
+  return Object.entries(input.properties ?? {}).map(([name, f]) => {
+    const bits = [`  ${name} (${f.type ?? "any"})`];
+    if (Array.isArray(f.enum) && f.enum.length) bits.push(`one of ${f.enum.map((e) => JSON.stringify(e)).join(", ")}`);
+    if (f.default !== undefined) bits.push(`default ${JSON.stringify(f.default)}`);
+    if (req.has(name)) bits.push("REQUIRED");
+    return bits.join("  ");
+  });
+}
+
+async function runSearchFalModels(args: Record<string, unknown>): Promise<CallToolResult> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return fail("`query` is required.");
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const data = (await httpJson(ep, "GET", `/api/models/search?q=${encodeURIComponent(query)}`, undefined, 20000)) as {
+      results?: { endpointId: string; title: string; category: string; description: string }[];
+    };
+    const results = data.results ?? [];
+    if (results.length === 0) return ok(`No fal.ai models matched "${query}".`);
+    return ok(
+      [`fal.ai models matching "${query}":`, ...results.map((r) => `  ${r.endpointId}  [${r.category}]  ${r.title} — ${r.description}`),
+        "", "Inspect one with get_fal_model_schema, then install it with add_model."].join("\n"),
+    );
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runGetFalModelSchema(args: Record<string, unknown>): Promise<CallToolResult> {
+  const endpointId = typeof args.endpointId === "string" ? args.endpointId.trim() : "";
+  if (!endpointId) return fail("`endpointId` is required.");
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const s = (await httpJson(ep, "GET", `/api/models/schema?endpoint=${encodeURIComponent(endpointId)}`, undefined, 20000)) as {
+      endpointId: string;
+      type: string;
+      input: { properties?: Record<string, SchemaField>; required?: string[] };
+    };
+    const lines = [`${s.endpointId} — produces ${s.type}`, "", "Input fields:", ...summarizeSchema(s.input)];
+    // Price is best-effort: estimate_cost only knows installed models, so a
+    // not-yet-installed endpoint simply has no quote to give.
+    try {
+      const cost = (await httpJson(ep, "POST", "/api/agent/cost", { model: endpointId })) as { estimates?: { usd?: number }[] };
+      const usd = cost.estimates?.[0]?.usd;
+      if (typeof usd === "number") lines.push("", `Approx cost: $${usd}`);
+    } catch { /* no price for an endpoint the app doesn't know yet */ }
+    lines.push("", "Install it with add_model.");
+    return ok(lines.join("\n"));
+  } catch (err) {
+    return errToFail(err);
+  }
+}
+
+async function runAddModel(args: Record<string, unknown>): Promise<CallToolResult> {
+  const endpointId = typeof args.endpointId === "string" ? args.endpointId.trim() : "";
+  if (!endpointId) return fail("`endpointId` is required.");
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const body: Record<string, unknown> = { endpointId };
+    for (const k of ["key", "title", "type", "defaults"]) if (args[k] !== undefined) body[k] = args[k];
+    const r = (await httpJson(ep, "POST", "/api/models/custom", body, 30000)) as {
+      model?: { key: string; type: string; title: string; falModelId: string };
+    };
+    const m = r.model;
+    if (!m) return fail(`The app did not return a model for "${endpointId}".`);
+    return ok(
+      `Installed ${m.falModelId} as "${m.key}" (${m.type}).\n` +
+        `It's in the Make panel now and usable via generate_media model=${m.key}.`,
+    );
+  } catch (err) {
+    return errToFail(err);
+  }
 }
 
 main().catch((err) => {

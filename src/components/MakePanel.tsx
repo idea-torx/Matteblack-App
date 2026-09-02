@@ -5,6 +5,7 @@ import { useEstimateCost, type EstimateParams } from "../hooks/useEstimateCost";
 import { useGenerateButton } from "../hooks/useGenerateButton";
 import { GenerateButtonCost } from "./GenerateButtonCost";
 import { SeedanceVerificationModal } from "./SeedanceVerificationModal";
+import { SchemaModelControls, CustomModelGroup, useCustomModels, PANEL_SUPPLIED } from "./SchemaModelControls";
 
 export type GenerationParams = {
   model: string;
@@ -42,6 +43,8 @@ export type GenerationParams = {
   characters?: number;
   outputFormat?: string;
   quality?: string;
+  /** Schema-driven fields for a custom (user/operator-added) model. */
+  params?: Record<string, unknown>;
 };
 
 type MakePanelProps = {
@@ -443,6 +446,12 @@ function ImageCards({
   };
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [axiomTagDismissed, setAxiomTagDismissed] = useState(false);
+  // Custom models run a parallel path: the hardcoded branches below stay
+  // untouched, and a custom key just overrides the model + swaps the controls.
+  const { models: customModels, reload: reloadCustomModels } = useCustomModels();
+  const [customKey, setCustomKey] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const customModel = customModels.find((m) => m.key === customKey) || null;
 
   const referenceImages = canvasReferenceImages.slice(0, 15);
 
@@ -483,7 +492,7 @@ function ImageCards({
 
   const isTextToImage = referenceImages.length === 0;
   const effectiveJobType = isTextToImage ? "text_to_image" : "image_to_image";
-  const effectiveModel = model === "nano-banana-2"
+  const builtinModel = model === "nano-banana-2"
     ? (isTextToImage ? "nano-banana-2-t2i" : "nano-banana-2")
     : model === "seedream-5"
       ? (isTextToImage ? "seedream-5-t2i" : "seedream-5-edit")
@@ -492,6 +501,7 @@ function ImageCards({
       : model === "gpt-image-2"
         ? (isTextToImage ? "gpt-image-2-t2i" : "gpt-image-2-edit")
         : model;
+  const effectiveModel = customModel ? customModel.key : builtinModel;
 
   const qualityFeatures = model === "gpt-image-2" && quality !== "high"
     ? [`quality_${quality}`]
@@ -526,8 +536,9 @@ function ImageCards({
         return m ? m[1] : g;
       }),
       quality: model === "gpt-image-2" ? quality : undefined,
+      params: customModel ? customValues : undefined,
     });
-  }, [effectiveModel, prompt, effectivePricingResolution, imageNumber, aspectRatio, referenceImages, onGenerate, effectiveJobType, isTextToImage, showAxiomTag, axiomDescriptionText, model, quality]);
+  }, [effectiveModel, prompt, effectivePricingResolution, imageNumber, aspectRatio, referenceImages, onGenerate, effectiveJobType, isTextToImage, showAxiomTag, axiomDescriptionText, model, quality, customModel, customValues]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     model: false,
@@ -631,10 +642,10 @@ function ImageCards({
         </span>
         <span className="rpanel-model-selector-info">
           <span className="rpanel-model-selector-name">
-            {model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
+            {customModel ? customModel.title : model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
           </span>
           <span className="rpanel-model-selector-provider">
-            {model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}
+            {customModel ? `${customModel.falModelId} · custom` : model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}
           </span>
         </span>
         <svg className={`rpanel-card-chevron ${openSections.model ? "rpanel-card-chevron--open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
@@ -642,28 +653,39 @@ function ImageCards({
       {openSections.model && (
         <div className="rpanel-card" style={{ marginTop: -2 }}>
           <div className="rpanel-list">
-            <button type="button" className={`rpanel-list-btn ${model === "gpt-image-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("gpt-image-2"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${model === "gpt-image-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("gpt-image-2"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /></svg>
               GPT Image 2
               <span className="rpanel-tag">Premium</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${model === "nano-banana-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("nano-banana-2"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${model === "nano-banana-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("nano-banana-2"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
               Nano Banana 2
               <span className="rpanel-tag">Quality</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${model === "seedream-5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("seedream-5"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${model === "seedream-5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("seedream-5"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 16s1-4 5-4 5 4 9 4 5-4 5-4" /><path d="M2 12s1-4 5-4 5 4 9 4 5-4 5-4" /></svg>
               Seedream 5
               <span className="rpanel-tag">Quick</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${model === "seedream" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setModel("seedream"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${model === "seedream" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("seedream"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 16s1-4 5-4 5 4 9 4 5-4 5-4" /><path d="M2 12s1-4 5-4 5 4 9 4 5-4 5-4" /></svg>
               Seedream
               <span className="rpanel-tag">Quick</span>
             </button>
+            <CustomModelGroup
+              models={customModels} mediaType="image" selected={customKey}
+              onSelect={(k) => { setCustomKey(k); setCustomValues({}); toggle("model"); }}
+              onAdded={reloadCustomModels}
+            />
           </div>
         </div>
+      )}
+      {customModel && (
+        <SchemaModelControls
+          schema={customModel.schema} defaults={customModel.defaults}
+          values={customValues} onChange={setCustomValues} hidden={PANEL_SUPPLIED}
+        />
       )}
 
       <div className="rpanel-flat-section">
@@ -808,6 +830,14 @@ function VideoCards({
   const [referenceAudio, setReferenceAudio] = useState<{ name: string; dataUrl: string } | null>(null);
   const [r2vImages, setR2vImages] = useState<Array<{ id: string; url: string; name: string }>>([]);
   const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Parallel custom-model path — see the image section above. The ~53 branches
+  // keyed on videoModel below stay untouched; a custom key overrides the model
+  // key at submit and swaps in the schema-driven controls.
+  const { models: customModels, reload: reloadCustomModels } = useCustomModels();
+  const [customKey, setCustomKey] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const customModel = customModels.find((m) => m.key === customKey) || null;
 
   const isImageRef = referenceImage && referenceImage.nodeType === "image";
   const isVideoRef = referenceImage && referenceImage.nodeType === "video";
@@ -1018,7 +1048,8 @@ function VideoCards({
       modelKey = `${videoModel}-i2v`;
     }
     onGenerate({
-      model: modelKey,
+      model: customModel ? customModel.key : modelKey,
+      params: customModel ? customValues : undefined,
       prompt,
       duration,
       generateAudio,
@@ -1035,7 +1066,7 @@ function VideoCards({
       audioUrl: videoMode === "reference-to-video" && referenceAudio ? referenceAudio.dataUrl : undefined,
       referenceImageUrls: videoMode === "reference-to-video" && r2vImages.length > 0 ? r2vImages.map((r) => r.url) : undefined,
     });
-  }, [videoMode, videoModel, prompt, duration, generateAudio, aspectRatio, videoResolution, firstFrame, lastFrame, referenceVideo, referenceAudio, r2vImages, onGenerate]);
+  }, [videoMode, videoModel, prompt, duration, generateAudio, aspectRatio, videoResolution, firstFrame, lastFrame, referenceVideo, referenceAudio, r2vImages, onGenerate, customModel, customValues]);
 
   const handleAudioUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1390,51 +1421,62 @@ function VideoCards({
           {videoModelIcon(videoModel)}
         </span>
         <span className="rpanel-model-selector-info">
-          <span className="rpanel-model-selector-name">{videoModelLabels[videoModel]}</span>
-          <span className="rpanel-model-selector-provider">{videoModelProvider(videoModel)}</span>
+          <span className="rpanel-model-selector-name">{customModel ? customModel.title : videoModelLabels[videoModel]}</span>
+          <span className="rpanel-model-selector-provider">{customModel ? `${customModel.falModelId} · custom` : videoModelProvider(videoModel)}</span>
         </span>
         <svg className={`rpanel-card-chevron ${openSections.model ? "rpanel-card-chevron--open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {openSections.model && (
         <div className="rpanel-card" style={{ marginTop: -2 }}>
           <div className="rpanel-list">
-            <button type="button" className={`rpanel-list-btn ${videoModel === "kling-o3-pro" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("kling-o3-pro"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "kling-o3-pro" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("kling-o3-pro"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
               Kling O3 Pro
               <span className="rpanel-tag">Quality</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "kling-o3-4k" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("kling-o3-4k"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "kling-o3-4k" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("kling-o3-4k"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
               Kling O3 4K
               <span className="rpanel-tag">Premium+</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "veo3.1-lite" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("veo3.1-lite"); if (videoMode === "reference-to-video") setVideoMode("text-to-video"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "veo3.1-lite" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("veo3.1-lite"); if (videoMode === "reference-to-video") setVideoMode("text-to-video"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
               Veo 3.1 Lite
               <span className="rpanel-tag">Quick</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("seedance-2.5"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("seedance-2.5"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>
               Seedance 2.5
               <span className="rpanel-tag">Premium</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.0" ? "rpanel-list-btn--active" : ""}`} onClick={() => { handleSelectSeedance(); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "seedance-2.0" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); handleSelectSeedance(); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12 Q5 6 8 12 Q11 18 14 12 Q17 6 20 12 Q21 14 22 12"/></svg>
               Seedance 2.0
               <span className="rpanel-tag">Premium</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "gemini-omni" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("gemini-omni"); if (videoMode === "reference-to-video") setVideoMode("text-to-video"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "gemini-omni" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("gemini-omni"); if (videoMode === "reference-to-video") setVideoMode("text-to-video"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.4 5.2 4.4 9.2 9.6 9.6v.8C16.4 12.8 12.4 16.8 12 22h-.8C10.8 16.8 6.8 12.8 1.6 12.4v-.8C6.8 11.2 10.8 7.2 11.2 2h.8z" /></svg>
               Gemini Omni Flash
               <span className="rpanel-tag">Premium</span>
             </button>
-            <button type="button" className={`rpanel-list-btn ${videoModel === "h3-max" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setVideoModel("h3-max"); setVideoMode("text-to-video"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${videoModel === "h3-max" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setVideoModel("h3-max"); setVideoMode("text-to-video"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
               MiniMax H3 Max
               <span className="rpanel-tag">Fast</span>
             </button>
+            <CustomModelGroup
+              models={customModels} mediaType="video" selected={customKey}
+              onSelect={(k) => { setCustomKey(k); setCustomValues({}); toggle("model"); }}
+              onAdded={reloadCustomModels}
+            />
           </div>
         </div>
+      )}
+      {customModel && (
+        <SchemaModelControls
+          schema={customModel.schema} defaults={customModel.defaults}
+          values={customValues} onChange={setCustomValues} hidden={PANEL_SUPPLIED}
+        />
       )}
 
       {videoMode === "text-to-video" && (

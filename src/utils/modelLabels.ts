@@ -65,11 +65,19 @@ const TYPE_LABELS: Record<string, string> = {
   clearcheck: "Clearcheck",
 };
 
+/** Titles for custom (user/operator-added) models. MODEL_INFO can't know them
+ *  at build time, so useCustomModels registers them as it loads them. */
+const CUSTOM_TITLES = new Map<string, string>();
+
+export function registerCustomModelLabels(models: { key: string; title: string }[]): void {
+  for (const m of models) CUSTOM_TITLES.set(m.key, m.title);
+}
+
 export function getModelDisplayName(modelKey: string | null | undefined): string {
   if (!modelKey) return "Unknown model";
   const info = MODEL_INFO[modelKey];
   if (info) return info.displayName;
-  return modelKey;
+  return CUSTOM_TITLES.get(modelKey) ?? modelKey;
 }
 
 export function getVariationLabel(modelKey: string | null | undefined, type: string): string {
@@ -83,6 +91,7 @@ export function getVariationLabel(modelKey: string | null | undefined, type: str
   if (modelKey) {
     const info = MODEL_INFO[modelKey];
     if (info) return info.variation;
+    if (CUSTOM_TITLES.has(modelKey)) return "Custom";
   }
   return TYPE_LABELS[type] ?? type;
 }

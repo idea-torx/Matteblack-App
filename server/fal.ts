@@ -5,6 +5,7 @@ import { pool } from "./db.js";
 import { createNotification } from "./notifications.js";
 import { refundCreditsWithFallback } from "./credits/creditGate.js";
 import { rehostExternalUrlToR2, isR2HostedUrl, getFileStream, parseFileUrl, toLocalUploadsPath } from "./storage.js";
+import { readCustomModel, listCustomModels, buildInputFromSchema } from "./models/customModels.js";
 import { getFalKey } from "./config/userConfig.js";
 import { LOCAL_MODE } from "./config/runtime.js";
 
@@ -1597,14 +1598,34 @@ const MODEL_MAP: Record<string, ModelConfig> = {
   },
 };
 
+/** A user/operator-added fal endpoint, adapted to the same shape the
+ *  hand-written entries in MODEL_MAP use. Its `buildInput` is fal's own input
+ *  schema rather than bespoke code — see server/models/customModels.ts. */
+function customModelConfig(key: string): ModelConfig | undefined {
+  const m = readCustomModel(key);
+  if (!m) return undefined;
+  return {
+    falModelId: m.falModelId,
+    type: m.type,
+    buildInput(params) {
+      const built = buildInputFromSchema(m.schema, m.defaults, params);
+      if ("error" in built) throw new Error(`${m.key}: ${built.error}`);
+      return built.input;
+    },
+  };
+}
+
 export function getModelConfig(modelName: string): ModelConfig | undefined {
-  return MODEL_MAP[modelName];
+  return MODEL_MAP[modelName] ?? customModelConfig(modelName);
 }
 
 /** Enumerate the available generation models (key + media type) for the MCP
  *  `list_models` tool. Internal fal ids and buildInput closures are not exposed. */
-export function listAvailableModels(): { key: string; type: ModelConfig["type"] }[] {
-  return Object.entries(MODEL_MAP).map(([key, cfg]) => ({ key, type: cfg.type }));
+export function listAvailableModels(): { key: string; type: ModelConfig["type"]; custom?: true; title?: string }[] {
+  return [
+    ...Object.entries(MODEL_MAP).map(([key, cfg]) => ({ key, type: cfg.type })),
+    ...listCustomModels().map((m) => ({ key: m.key, type: m.type as ModelConfig["type"], custom: true as const, title: m.title })),
+  ];
 }
 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
@@ -1624,10 +1645,27 @@ const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
   clearcheck: ["clearcheck"],
 };
 
+/** Which media a job type produces, for matching custom models against it.
+ *  Only the types a custom (schema-driven) model can serve are listed. */
+const TYPE_MEDIA: Record<string, "image" | "video" | "audio"> = {
+  text_to_image: "image",
+  image_to_image: "image",
+  video_gen: "video",
+  audio_music: "audio",
+  audio_tts: "audio",
+  audio_sfx: "audio",
+};
+
 export function resolveModelName(type: string, modelParam?: string): string | null {
   const allowed = TYPE_ALLOWED_MODELS[type];
   if (!allowed) return null;
   if (modelParam && allowed.includes(modelParam)) return modelParam;
+  // A custom model is allowed wherever its declared media type matches, so
+  // adding one never means editing TYPE_ALLOWED_MODELS.
+  if (modelParam) {
+    const custom = readCustomModel(modelParam);
+    if (custom && custom.type === TYPE_MEDIA[type]) return modelParam;
+  }
   return allowed[0];
 }
 
@@ -1742,7 +1780,7 @@ export async function handleFalResult(
   modelName: string,
   falRequestId: string
 ): Promise<"completed" | "running" | "dead"> {
-  const config = MODEL_MAP[modelName];
+  const config = getModelConfig(modelName);
   if (!config) return "dead";
 
   let status: { status: string };
@@ -1829,7 +1867,7 @@ export async function resumeFalPolling(
   modelName: string,
   falRequestId: string
 ): Promise<void> {
-  const config = MODEL_MAP[modelName];
+  const config = getModelConfig(modelName);
   if (!config) return;
 
   try {
@@ -1915,7 +1953,7 @@ export async function dispatchToFal(
   modelName: string,
   params: Record<string, unknown>
 ): Promise<void> {
-  const config = MODEL_MAP[modelName];
+  const config = getModelConfig(modelName);
   if (!config) {
     await pool.query(
       `UPDATE jobs SET status = 'failed', error = $2, updated_at = NOW() WHERE id = $1`,

@@ -17,6 +17,8 @@ export interface UserConfig {
   anthropicKey?: string;
   /** Optional override for the `claude` binary path (auto-detected otherwise). */
   claudeCodePath?: string;
+  /** Which agent CLI drives the in-app operator. Default "claude". */
+  operatorRunner?: "claude" | "codex";
 }
 
 type ConfigKey = keyof UserConfig;
@@ -57,7 +59,9 @@ export function setUserConfig(patch: Partial<Record<ConfigKey, string>>): UserCo
     if (value === "") {
       delete cfg[key];
     } else {
-      cfg[key] = value.trim();
+      // ponytail: one narrow field (operatorRunner) is a union, not string; the
+      // route validates it before it gets here.
+      (cfg as Record<ConfigKey, string>)[key] = value.trim();
     }
   }
   persist(cfg);
@@ -72,6 +76,12 @@ export function getFalKey(): string | undefined {
 /** Anthropic key: user config first, then ANTHROPIC_API_KEY env fallback. */
 export function getAnthropicKey(): string | undefined {
   return load().anthropicKey || process.env.ANTHROPIC_API_KEY || undefined;
+}
+
+/** Which CLI runs the operator. Unknown/unset falls back to Claude Code, so a
+ *  hand-edited config can never leave the panel pointing at nothing. */
+export function getOperatorRunner(): "claude" | "codex" {
+  return load().operatorRunner === "codex" ? "codex" : "claude";
 }
 
 /** Optional explicit `claude` binary path override from config. */
