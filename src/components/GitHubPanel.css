@@ -55,7 +55,7 @@
 }
 .gh-row:hover .gh-row-actions,
 .gh-row:focus-within .gh-row-actions { opacity: 1; }
-.gh-remove:hover:not(:disabled) { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }
+.gh-remove:hover:not(:disabled) { color: var(--danger-fg); border-color: rgba(248, 113, 113, 0.5); }
 
 /* Tiles. Flat: 4px corners, one hairline, no shadow — same language as the
    rest of the chrome. */
@@ -71,7 +71,7 @@
   --gh-write: #7c4dff;
 }
 [data-theme="dark"] .gh-tiles {
-  --gh-read: #34d399;
+  --gh-read: var(--success-fg);
   --gh-write: #a78bfa;
 }
 
@@ -148,7 +148,7 @@
 /* A clean tree is the state you want to see before handing work off. */
 .gh-stat--clean { color: var(--gh-read); }
 
-.gh-tile-error { font-size: 11px; color: #f87171; }
+.gh-tile-error { font-size: 11px; color: var(--danger-fg); }
 
 .gh-tile-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
 

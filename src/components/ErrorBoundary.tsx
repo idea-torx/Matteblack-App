@@ -74,5 +74,5 @@ const S: Record<string, React.CSSProperties> = {
   detail: { margin: "0 0 18px", padding: "8px 10px", maxHeight: 120, overflow: "auto", textAlign: "left", fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "var(--text-muted, #5c5c6a)", background: "var(--bg-code, #0c0c0e)", borderRadius: 8 },
   row: { display: "flex", gap: 8, justifyContent: "center" },
   btn: { padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", color: "var(--text-primary, #e8e8ed)", background: "var(--bg-raised, #1b1b1f)", border: "1px solid var(--border-strong, rgba(255,255,255,0.12))", borderRadius: 8 },
-  primary: { color: "var(--text-on-accent, #fff)", background: "var(--accent, #3b82f6)", borderColor: "transparent" },
+  primary: { color: "var(--text-on-accent, #fff)", background: "var(--accent)", borderColor: "transparent" },
 };

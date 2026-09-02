@@ -81,13 +81,13 @@ type CanvasReferencePayload = {
 };
 
 const DEFAULT_PALETTE: PaletteColor[] = [
-  { name: "Primary", hex: "#3b82f6" },
+  { name: "Primary", hex: "var(--accent)" },
   { name: "Secondary", hex: "#0f172a" },
   { name: "Accent", hex: "#64748b" },
   { name: "Surface", hex: "#f5f5f7" },
 ];
 
-const DEFAULT_AVATAR_COLOR = "#3b82f6";
+const DEFAULT_AVATAR_COLOR = "var(--accent)";
 
 // Render a compact line-by-line diff of two markdown strings. Lines only
 // in `next` show as additions (green); lines only in `base` show as
@@ -117,7 +117,7 @@ function DesignMdDiff({ base, next }: { base: string; next: string }) {
 }
 
 function paletteSwatches(p?: PaletteColor[]): string[] {
-  if (!p || p.length === 0) return ["#3b82f6", "#0f172a", "#64748b", "#f5f5f7"];
+  if (!p || p.length === 0) return ["var(--accent)", "#0f172a", "#64748b", "#f5f5f7"];
   return p.slice(0, 4).map((c) => c.hex);
 }
 

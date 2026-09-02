@@ -308,7 +308,7 @@
 
 .bucket-row-action--danger:hover {
   background: rgba(248, 113, 113, 0.1);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .bucket-edit {
@@ -425,7 +425,7 @@
 
 .folder-asset-remove:hover {
   background: rgba(248, 113, 113, 0.1);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 /* Drop zone */
@@ -514,7 +514,7 @@
   padding: 8px 0;
   border-radius: 6px;
   background: rgba(248, 113, 113, 0.1);
-  color: #f87171;
+  color: var(--danger-fg);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

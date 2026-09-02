@@ -35,7 +35,7 @@
   --bg-surface: #131316;
   --bg-raised: #1b1b1f;
   --bg-hover: #222228;
-  --bg-active: rgba(59, 130, 246, 0.12);
+  --bg-active: rgba(87, 108, 226, 0.12);
   --bg-canvas: #141416;
   --bg-code: #0c0c0e;
 
@@ -66,10 +66,49 @@
   --text-muted: #5c5c6a;
   --text-on-accent: #ffffff;
 
-  /* Accent */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-dim: rgba(59, 130, 246, 0.10);
+
+  /* ─── Brand ramp ────────────────────────────────────────────────────────
+   * Nine stops, left→right, from the wordmark gradient. These are the RAW
+   * stops: mid-tone by design, so they read as text on the dark ground but
+   * fail contrast on the light one. Use them for fills, graphics, and the
+   * gradient; use the semantic role tokens below for anything that has to be
+   * legible, because those carry a darkened light-theme variant. */
+  --c-periwinkle: #7B8CE8;
+  --c-cyan: #63C2DC;
+  --c-mint: #7FD3A0;
+  --c-chartreuse: #C6D673;
+  --c-amber: #F3CB5C;
+  --c-orange: #EE9A52;
+  --c-coral: #E8795F;
+  --c-rose: #DE7B96;
+  --c-violet: #A874D2;
+
+  /* The wordmark gradient itself, for display type and hero surfaces. */
+  --gradient-brand: linear-gradient(90deg,
+    #7B8CE8 0%, #63C2DC 12.5%, #7FD3A0 25%, #C6D673 37.5%, #F3CB5C 50%,
+    #EE9A52 62.5%, #E8795F 75%, #DE7B96 87.5%, #A874D2 100%);
+
+  /* ─── Semantic roles ───────────────────────────────────────────────────
+   * One ramp stop per function. `--x` is the solid fill (chosen so white text
+   * on it clears 4.5:1 in BOTH themes); `--x-fg` is the same hue as text or an
+   * icon on the theme's own ground. Light theme redefines only -fg. */
+  --info: #23809A;        --info-fg: var(--c-cyan);
+  --success: #2E8651;     --success-fg: var(--c-mint);
+  --warning: #96710B;     --warning-fg: var(--c-amber);
+  --danger: #D6421F;      --danger-fg: var(--c-coral);
+  --pending: #6F7D25;     --pending-fg: var(--c-chartreuse);
+  /* Media kinds — the canvas and library colour nodes by what they are. */
+  --kind-video: #B85E12;  --kind-video-fg: var(--c-orange);
+  --kind-audio: #D04269;  --kind-audio-fg: var(--c-rose);
+  --kind-edit: #985ACA;   --kind-edit-fg: var(--c-violet);
+
+  /* Accent — the ramp's leading periwinkle, deepened so white label text on a
+   * solid accent fill clears 4.5:1. --accent-bright is the raw stop, for
+   * glows and gradients where nothing sits on top of it. */
+  --accent: #576CE2;
+  --accent-hover: #4A61DF;
+  --accent-bright: var(--c-periwinkle);
+  --accent-dim: rgba(87, 108, 226, 0.10);
 
   /* Overlays (used for hover/active backgrounds layered over surfaces) */
   --overlay-hover: rgba(255, 255, 255, 0.04);
@@ -132,7 +171,7 @@
   --bg-surface: #e2e2e7;
   --bg-raised: #e6e6ea;
   --bg-hover: #dcdce0;
-  --bg-active: rgba(59, 130, 246, 0.12);
+  --bg-active: rgba(87, 108, 226, 0.12);
   /* Canvas (site/workspace) surface — the dotted board background. */
   --bg-canvas: #e0e0e4;
   --bg-code: #f0f0f3;
@@ -152,10 +191,23 @@
   --text-muted: #71717a;
   --text-on-accent: #ffffff;
 
-  /* Accent — keep brand blue identical across themes. */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-dim: rgba(59, 130, 246, 0.10);
+
+  /* Brand ramp: the raw stops are theme-independent. Only the -fg role
+   * variants change — every stop sits between 1.4:1 and 3.0:1 on this
+   * background, so text and icons take the darkened form instead. */
+  --info-fg: #20778F;
+  --success-fg: #2B7C4B;
+  --warning-fg: #8A680A;
+  --danger-fg: #C63D1D;
+  --pending-fg: #677422;
+  --kind-video-fg: #AA5711;
+  --kind-audio-fg: #C9325C;
+  --kind-edit-fg: #904EC6;
+
+  /* Accent — identical across themes; the fill is already contrast-safe. */
+  --accent: #576CE2;
+  --accent-hover: #4A61DF;
+  --accent-dim: rgba(87, 108, 226, 0.10);
 
   /* Overlays — black tint instead of white tint. */
   --overlay-hover: rgba(0, 0, 0, 0.06);

@@ -428,7 +428,7 @@
 }
 
 .proj-card-action--delete:hover {
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 /* Settings panel overlay — sits below the 50px header, like rpanel */
@@ -593,7 +593,7 @@
 }
 
 .proj-settings-delete:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.08);
 }
 
@@ -688,4 +688,4 @@
   background: #fff;
   color: rgba(0, 0, 0, 0.88);
 }
-[data-theme="light"] .proj-card-action--delete:hover { color: #dc2626; }
+[data-theme="light"] .proj-card-action--delete:hover { color: var(--danger); }

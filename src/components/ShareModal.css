@@ -80,7 +80,7 @@
 .share-modal-error {
   padding: 12px;
   background: rgba(248, 113, 113, 0.1);
-  color: #ef4444;
+  color: var(--danger);
   border-radius: 6px;
   font-size: 13px;
 }

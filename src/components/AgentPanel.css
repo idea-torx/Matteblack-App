@@ -162,7 +162,7 @@
 }
 
 .agent-panel__alive--busy .quantum-thinking {
-  --qt-color: #3b82f6;
+  --qt-color: var(--accent);
 }
 
 /* Header action buttons — white "pill" pattern with a soft drop shadow
@@ -491,7 +491,7 @@
   height: 32px;
   border-radius: 8px;
   background: rgba(59, 130, 246, 0.08);
-  color: #3b82f6;
+  color: var(--accent);
   margin-bottom: 6px;
 }
 
@@ -1219,7 +1219,7 @@
     90deg,
     rgba(var(--tint-rgb), 0.25) 0%,
     rgba(var(--tint-rgb), 0.25) 25%,
-    #3B82F6 50%,
+    var(--accent) 50%,
     rgba(var(--tint-rgb), 0.25) 75%,
     rgba(var(--tint-rgb), 0.25) 100%
   );
@@ -1371,7 +1371,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
   border: none;
   color: #fff;
   cursor: pointer;
@@ -1417,8 +1417,8 @@
   background: linear-gradient(
     135deg,
     #60a5fa 0%,
-    #3b82f6 35%,
-    #2563eb 65%,
+    var(--accent) 35%,
+    var(--accent-hover) 65%,
     #4f46e5 100%
   );
   background-size: 220% 220%;
@@ -2279,7 +2279,7 @@
   background: var(--bg-code);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__markdown a { color: #2563eb; }
+[data-theme="light"] .agent-panel__markdown a { color: var(--accent-hover); }
 [data-theme="light"] .agent-panel__markdown a:hover { color: #1d4ed8; }
 [data-theme="light"] .agent-panel__markdown blockquote,
 [data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
@@ -2646,7 +2646,7 @@
 }
 
 .agent-panel__mention-source--platform {
-  color: #2563eb;
+  color: var(--accent-hover);
   background: rgba(37, 99, 235, 0.10);
 }
 

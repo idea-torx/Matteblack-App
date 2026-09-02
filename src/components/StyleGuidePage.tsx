@@ -30,13 +30,38 @@ const THEME_COLORS: { varName: string; label: string }[] = [
   { varName: "--accent-dim", label: "Accent Dim" },
 ];
 
-const STATUS_COLORS: { varName: string; value: string; label: string }[] = [
-  { varName: "#ef4444", value: "#ef4444", label: "Danger / Error Red" },
-  { varName: "#ff6b6b", value: "#ff6b6b", label: "Error Light" },
-  { varName: "#22c55e", value: "#22c55e", label: "Success Green" },
-  { varName: "#f59e0b", value: "#f59e0b", label: "Warning Amber" },
-  { varName: "#f97316", value: "#f97316", label: "Video Orange" },
-  { varName: "#14b8a6", value: "#14b8a6", label: "Upscale Teal" },
+/** The brand ramp, left to right. Raw stops — fills and graphics only. */
+const RAMP_COLORS: { varName: string; label: string }[] = [
+  { varName: "--c-periwinkle", label: "Periwinkle" },
+  { varName: "--c-cyan", label: "Cyan" },
+  { varName: "--c-mint", label: "Mint" },
+  { varName: "--c-chartreuse", label: "Chartreuse" },
+  { varName: "--c-amber", label: "Amber" },
+  { varName: "--c-orange", label: "Orange" },
+  { varName: "--c-coral", label: "Coral" },
+  { varName: "--c-rose", label: "Rose" },
+  { varName: "--c-violet", label: "Violet" },
+];
+
+/** One ramp stop per function. `-fg` is the text/icon form, which darkens in
+ *  the light theme because the raw stops sit under 3:1 on that ground. */
+const STATUS_COLORS: { varName: string; label: string }[] = [
+  { varName: "--info", label: "Info (fill)" },
+  { varName: "--info-fg", label: "Info (text)" },
+  { varName: "--success", label: "Success (fill)" },
+  { varName: "--success-fg", label: "Success (text)" },
+  { varName: "--warning", label: "Warning (fill)" },
+  { varName: "--warning-fg", label: "Warning (text)" },
+  { varName: "--danger", label: "Danger (fill)" },
+  { varName: "--danger-fg", label: "Danger (text)" },
+  { varName: "--pending", label: "Pending (fill)" },
+  { varName: "--pending-fg", label: "Pending (text)" },
+  { varName: "--kind-video", label: "Video (fill)" },
+  { varName: "--kind-video-fg", label: "Video (text)" },
+  { varName: "--kind-audio", label: "Audio (fill)" },
+  { varName: "--kind-audio-fg", label: "Audio (text)" },
+  { varName: "--kind-edit", label: "Edit / Upscale (fill)" },
+  { varName: "--kind-edit-fg", label: "Edit / Upscale (text)" },
 ];
 
 const SPACING_SCALE = [4, 6, 8, 10, 12, 16, 20, 24, 32, 48];
@@ -213,11 +238,19 @@ export function StyleGuidePage() {
               <ColorSwatch key={c.varName} varName={c.varName} label={c.label} />
             ))}
           </div>
+          <h3 className="sg-section-title" style={{ marginTop: 32 }}>Brand Ramp</h3>
+          <p className="sg-section-desc">The wordmark gradient, unrolled into nine stops</p>
+          <div style={{ height: 44, borderRadius: 8, marginBottom: 16, background: "var(--gradient-brand)" }} />
+          <div className="sg-color-grid">
+            {RAMP_COLORS.map((c) => (
+              <ColorSwatch key={c.varName} varName={c.varName} label={c.label} />
+            ))}
+          </div>
           <h3 className="sg-section-title" style={{ marginTop: 32 }}>Status Colors</h3>
           <p className="sg-section-desc">Semantic colors used across components</p>
           <div className="sg-color-grid">
             {STATUS_COLORS.map((c) => (
-              <ColorSwatch key={c.varName} varName={c.varName} label={c.label} fixedValue={c.value} />
+              <ColorSwatch key={c.varName} varName={c.varName} label={c.label} />
             ))}
           </div>
         </section>

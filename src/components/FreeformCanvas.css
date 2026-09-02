@@ -479,7 +479,7 @@
 
 [data-theme="light"] .freeform-canvas__toolbar-btn--danger:hover {
   background: rgba(220, 38, 38, 0.12);
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .freeform-canvas__node--dragging.freeform-canvas__node--dragging .freeform-canvas__floating-toolbar {
@@ -513,7 +513,7 @@
 }
 
 .freeform-canvas__toolbar-btn--saved {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .freeform-canvas__toolbar-btn:disabled {
@@ -522,7 +522,7 @@
 }
 
 .freeform-canvas__toolbar-btn--error {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .freeform-canvas__toolbar-btn--danger:hover {
@@ -989,7 +989,7 @@
 
 .freeform-canvas__context-item--danger:hover {
   background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .freeform-canvas__context-divider {
@@ -1013,11 +1013,11 @@
 }
 
 .freeform-canvas__context-item--saved {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .freeform-canvas__context-item--error {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .freeform-canvas__context-item--in-library {
@@ -1394,7 +1394,7 @@
 
 .freeform-canvas__error-retry {
   padding: 8px 20px;
-  background: var(--accent, #2563eb);
+  background: var(--accent, var(--accent-hover));
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -1459,7 +1459,7 @@
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 2px solid var(--accent, #2563eb);
+  border: 2px solid var(--accent, var(--accent-hover));
 }
 
 @keyframes sync-pulse {

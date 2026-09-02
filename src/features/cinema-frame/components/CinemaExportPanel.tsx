@@ -132,7 +132,7 @@ export function CinemaExportPanel({ timelineStateRaw }: CinemaExportPanelProps) 
                   style={{
                     width: `${Math.round(progress * 100)}%`,
                     height: "100%",
-                    background: "var(--accent, #3b82f6)",
+                    background: "var(--accent)",
                     borderRadius: 3,
                     transition: "width 0.3s ease",
                   }}
@@ -191,7 +191,7 @@ export function CinemaExportPanel({ timelineStateRaw }: CinemaExportPanelProps) 
               fontSize: 13,
               fontWeight: 600,
               color: hasClips ? "var(--text-on-accent)" : "var(--text-muted)",
-              background: hasClips ? "var(--accent, #3b82f6)" : "rgba(var(--tint-rgb), 0.04)",
+              background: hasClips ? "var(--accent)" : "rgba(var(--tint-rgb), 0.04)",
               border: "none",
               borderRadius: 6,
               cursor: hasClips ? "pointer" : "not-allowed",

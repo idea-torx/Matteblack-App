@@ -17,9 +17,9 @@ export const DEMO_ROWS: GenerationRow[] = [
   {
     id: "lineage-1",
     items: [
-      { id: "l1-upscale", label: "Upscaled", gradient: "linear-gradient(135deg, #0d35ff 0%, #2563eb 30%, #93c5fd 75%, #dbeafe 100%)", operation: "upscale" },
+      { id: "l1-upscale", label: "Upscaled", gradient: "linear-gradient(135deg, #0d35ff 0%, var(--accent-hover) 30%, #93c5fd 75%, #dbeafe 100%)", operation: "upscale" },
       { id: "l1-edit", label: "Edited", gradient: "linear-gradient(145deg, #1e1b4b 0%, #4338ca 35%, #818cf8 65%, #c7d2fe 100%)", operation: "edit" },
-      { id: "l1-make", label: "Original", gradient: "linear-gradient(155deg, #0d35ff 0%, #2563eb 30%, #60a5fa 55%, #93c5fd 75%, #dbeafe 100%)", operation: "make" },
+      { id: "l1-make", label: "Original", gradient: "linear-gradient(155deg, #0d35ff 0%, var(--accent-hover) 30%, #60a5fa 55%, #93c5fd 75%, #dbeafe 100%)", operation: "make" },
     ],
   },
   {

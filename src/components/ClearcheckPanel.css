@@ -71,12 +71,12 @@
 }
 
 .cc-status-badge--clear {
-  color: #22c55e;
+  color: var(--success);
   background: rgba(34, 197, 94, 0.12);
 }
 
 .cc-status-badge--flagged {
-  color: #ef4444;
+  color: var(--danger);
   background: rgba(239, 68, 68, 0.12);
 }
 
@@ -132,7 +132,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: #ef4444;
+  color: var(--danger);
   background: rgba(239, 68, 68, 0.08);
   padding: 6px 8px;
   border-radius: 6px;

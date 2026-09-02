@@ -164,7 +164,7 @@
 }
 
 .sg-copy-btn--copied {
-  color: #22c55e;
+  color: var(--success);
   background: rgba(34, 197, 94, 0.1);
 }
 

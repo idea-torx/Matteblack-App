@@ -168,12 +168,12 @@
 }
 
 .audio-toolbar-btn--save:hover {
-  color: #34d399;
+  color: var(--success-fg);
   background: rgba(52, 211, 153, 0.08);
 }
 
 .audio-toolbar-btn--saved {
-  color: #34d399;
+  color: var(--success-fg);
   pointer-events: none;
   opacity: 0.9;
 }
@@ -183,7 +183,7 @@
 }
 
 .audio-toolbar-btn--delete:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.08);
 }
 
@@ -219,7 +219,7 @@
 
 .audio-failed-label {
   font-size: 11px;
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 /* Audio badge in meta row */

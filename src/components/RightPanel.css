@@ -1164,7 +1164,7 @@
 }
 
 .rpanel-chip--negative {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.1);
   border-color: rgba(248, 113, 113, 0.25);
 }
@@ -1266,7 +1266,7 @@
 }
 
 .rpanel-upload-remove:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.1);
 }
 
@@ -1361,7 +1361,7 @@
 }
 
 .rpanel-record-indicator--active {
-  background: #ef4444;
+  background: var(--danger);
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
   animation: rpanel-pulse 1.2s ease-in-out infinite;
 }
@@ -1402,13 +1402,13 @@
 }
 
 .rpanel-record-btn--recording {
-  color: #ef4444;
+  color: var(--danger);
   border-color: rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.06);
 }
 
 .rpanel-record-btn--recording:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.4);
 }
@@ -1438,7 +1438,7 @@
 }
 
 .rpanel-ref-clear:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.1);
 }
 
@@ -1458,11 +1458,11 @@
 }
 
 .rpanel-action-btn--credits {
-  background: #f59e0b;
+  background: var(--warning);
 }
 
 .rpanel-action-btn--credits:hover {
-  background: #fbbf24;
+  background: var(--warning-fg);
 }
 
 .rpanel-action-btn--secondary {
@@ -1475,12 +1475,12 @@
 }
 
 .rpanel-list-btn--danger {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .rpanel-list-btn--danger:hover {
   background: rgba(239, 68, 68, 0.08);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .rpanel-ref-empty-hint {
@@ -1551,7 +1551,7 @@
 }
 
 .rpanel-ref-clear-all:hover {
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .rpanel-ref-axiom-stack {
@@ -1626,7 +1626,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--accent, #3b82f6);
+  background: var(--accent);
   flex-shrink: 0;
 }
 
@@ -1678,7 +1678,7 @@
 }
 
 .rpanel-frame-preview-clear:hover {
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .rpanel-frame-empty {
@@ -1870,7 +1870,7 @@
 
 .design-subtool-bar--canvas > .design-subtool-btn:first-child.design-subtool-btn--active,
 .design-subtool-bar--canvas > .design-subtool-btn:first-child.design-subtool-btn--active:hover {
-  background: #2563eb;
+  background: var(--accent-hover);
   color: #ffffff;
 }
 

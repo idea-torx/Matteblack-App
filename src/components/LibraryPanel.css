@@ -709,12 +709,12 @@
 }
 
 .lib-type--vc {
-  color: #34d399;
+  color: var(--success-fg);
   background: rgba(52, 211, 153, 0.12);
 }
 
 .lib-type--sfx {
-  color: #fbbf24;
+  color: var(--warning-fg);
   background: rgba(251, 191, 36, 0.12);
 }
 
@@ -1247,7 +1247,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--danger);
   border: 2px solid #1a1a2e;
   display: flex;
   align-items: center;
@@ -1261,7 +1261,7 @@
 
 .lib-card-delete-badge:hover {
   transform: scale(1.2);
-  background: #dc2626;
+  background: var(--danger);
 }
 
 .lib-card-delete-badge--inline {
@@ -1281,14 +1281,14 @@
 }
 
 .lib-header-btn--manage:hover {
-  color: #ef4444 !important;
+  color: var(--danger) !important;
   background: rgba(239, 68, 68, 0.1) !important;
   border-color: rgba(239, 68, 68, 0.2) !important;
 }
 
 .lib-header-btn--delete {
   background: transparent !important;
-  color: #ef4444 !important;
+  color: var(--danger) !important;
   border-color: transparent !important;
   cursor: default;
 }
@@ -1310,7 +1310,7 @@
 }
 
 .lib-header-btn--danger {
-  color: #ef4444 !important;
+  color: var(--danger) !important;
   border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
@@ -1405,7 +1405,7 @@
 
 .trash-action-btn--danger:hover {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--danger);
   border-color: rgba(239, 68, 68, 0.3);
 }
 
@@ -1628,17 +1628,17 @@
 
 .lib-ctx-item--danger:hover {
   background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--danger-confirm {
   background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--danger-confirm:hover {
   background: rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
+  color: var(--danger-fg);
 }
 
 .lib-ctx-item--disabled {

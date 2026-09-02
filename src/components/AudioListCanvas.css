@@ -285,7 +285,7 @@
 
 .alc-row-failed-label {
   font-size: 11px;
-  color: #f87171;
+  color: var(--danger-fg);
 }
 
 .alc-row-actions {
@@ -325,17 +325,17 @@
 }
 
 .alc-row-action-btn--delete:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.1);
 }
 
 .alc-row-action-btn--cancel:hover {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.1);
 }
 
 .alc-row-action-btn--saved {
-  color: #34d399;
+  color: var(--success-fg);
   pointer-events: none;
 }
 
@@ -654,17 +654,17 @@
 }
 
 .audio-type--vc {
-  color: #34d399;
+  color: var(--success-fg);
   background: rgba(52, 211, 153, 0.12);
 }
 
 .audio-type--sfx {
-  color: #fbbf24;
+  color: var(--warning-fg);
   background: rgba(251, 191, 36, 0.12);
 }
 
 .audio-type--failed {
-  color: #f87171;
+  color: var(--danger-fg);
   background: rgba(248, 113, 113, 0.12);
 }
 

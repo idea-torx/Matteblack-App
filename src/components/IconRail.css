@@ -58,7 +58,7 @@
    * brand blue so the current section is unmistakable. The :hover
    * companion keeps the blue stable on hover (otherwise the base
    * .icon-rail-btn:hover rule reverts the colour to text-primary). */
-  color: #3b82f6;
+  color: var(--accent);
   background: rgba(59, 130, 246, 0.10);
 }
 
@@ -74,7 +74,7 @@
   bottom: 8px;
   width: 2px;
   border-radius: 0 2px 2px 0;
-  background: #3b82f6;
+  background: var(--accent);
 }
 
 .icon-rail-btn::after {
@@ -127,7 +127,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--c-cyan) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,7 +156,7 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--danger);
   border: 2px solid #000;
   pointer-events: none;
 }
@@ -167,11 +167,11 @@
 [data-theme="light"] .icon-rail-btn--active,
 [data-theme="light"] .icon-rail-btn--active:hover {
   /* Same brand blue in light mode, with a slightly softer tint. */
-  color: #3b82f6;
+  color: var(--accent);
   background: rgba(59, 130, 246, 0.12);
 }
 [data-theme="light"] .icon-rail-btn--active::before {
-  background: #3b82f6;
+  background: var(--accent);
 }
 [data-theme="light"] .icon-rail-btn::after {
   background: var(--bg-tooltip);

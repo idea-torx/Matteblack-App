@@ -40,7 +40,7 @@ export type WorkflowEdge = {
 
 export const PORT_COLORS: Record<PortType, string> = {
   text: "#71717a",
-  image: "#3b82f6",
+  image: "var(--accent)",
   video: "#22c55e",
   audio: "#a855f7",
 };
