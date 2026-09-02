@@ -522,7 +522,7 @@
   border-color: var(--border-strong);
 }
 
-/* ─── Open all settings CTA (solid black pill with arrow) ─── */
+/* ─── Open all settings CTA ─── */
 .qs-open-all-btn {
   display: flex;
   align-items: center;
@@ -534,16 +534,16 @@
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  background: #000000;
-  border: 1px solid #000000;
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, transform 0.08s ease;
 }
 
 .qs-open-all-btn:hover {
-  background: #1a1a1a;
-  border-color: #1a1a1a;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .qs-open-all-btn:active { transform: translateY(1px); }
@@ -738,3 +738,10 @@
   .qs-credits-card { padding: 12px 10px; }
   .qs-credits-amount-lg { font-size: 18px; }
 }
+
+/* While the full Settings panel is open the rail is no longer a standalone
+ * popover — it's the left column of one surface. Its own close button becomes
+ * a second, ambiguous X next to the panel's, so it goes, and the corner it
+ * rounded now meets the panel edge. */
+body:has(.settings-panel) .qs-close { display: none; }
+body:has(.settings-panel) .qs-panel { border-top-right-radius: 0; border-bottom-right-radius: 0; }

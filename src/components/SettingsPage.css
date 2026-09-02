@@ -2,12 +2,12 @@
  * Defined as a CSS var so the gap math and responsive breakpoints stay in sync. */
 :root {
   --qs-panel-width: 300px;
-  --qs-settings-gap: 8px;
+  --qs-settings-gap: 0px;
 }
 
 .settings-panel {
   position: absolute;
-  /* QuickSettings panel + a small gap so the two panels read as related but distinct. */
+  /* Flush against the QuickSettings panel — the two are one surface. */
   left: calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--qs-settings-gap));
   top: var(--left-panel-top);
   bottom: var(--panel-float-bottom);
@@ -48,14 +48,14 @@
 }
 
 @media (max-width: 1000px) {
-  :root { --qs-panel-width: 280px; --qs-settings-gap: 6px; }
+  :root { --qs-panel-width: 280px; }
   .settings-panel-sidebar { width: 168px; }
   .settings-panel-sidebar-header,
   .settings-panel-header { padding-left: 12px; padding-right: 12px; }
 }
 
 @media (max-width: 860px) {
-  :root { --qs-panel-width: 260px; --qs-settings-gap: 6px; }
+  :root { --qs-panel-width: 260px; }
   .settings-panel-sidebar { width: 152px; }
   .settings-panel-nav { padding: 8px; }
   .settings-panel-nav-btn { padding: 6px 8px; font-size: 12px; gap: 8px; }
@@ -3141,3 +3141,7 @@
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+/* The two panels now butt together, so the seam between them shouldn't be two
+ * rounded corners with a sliver of canvas showing through. */
+.settings-panel { border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; }
