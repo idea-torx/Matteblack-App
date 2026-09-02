@@ -10,6 +10,7 @@ import { requireAuth, type AuthRequest } from "../sessions.js";
 import { runOperator, operatorStatus, operatorAuth, operatorLogin, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, RUNNERS, type OperatorEvent, type EffortLevel, type RunnerId } from "../operator/claudeOperator.js";
 import { setUserConfig, setOperatorModels } from "../config/userConfig.js";
 import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
+import { memoryDir } from "../skills/agentMemory.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
 import fs from "node:fs";
@@ -131,7 +132,7 @@ const reviews = new Map<string, AbortController>();
 const lastReviewAt = new Map<string, number>();
 const REVIEW_MIN_GAP_MS = 10 * 60_000;
 
-function startReview(sessionId: string): void {
+function startReview(sessionId: string, botId?: string): void {
   reviews.get(sessionId)?.abort();
   const ac = new AbortController();
   reviews.set(sessionId, ac);
@@ -144,6 +145,7 @@ function startReview(sessionId: string): void {
     // choice is the runner's (claude picks haiku; codex stays on its default).
     effort: "low",
     review: true,
+    botId,
     allowedTools: REVIEW_MCP_TOOLS,
     signal: ac.signal,
     onEvent: (e) => { if (e.type === "error") console.error("[operator] review:", e.message); },
@@ -187,15 +189,67 @@ router.post("/api/operator/login", requireAuth, async (req: AuthRequest, res) =>
   res.json({ loggedIn: await operatorLogin(runner as RunnerId) });
 });
 
+// ---------------------------------------------------------------------------
+// Bots — named, persistent collaborators. A bot is a row plus a memory
+// directory; everything else (threads, budget spending) is the panel's or a
+// later step's.
+// ---------------------------------------------------------------------------
+
+type BotRow = { id: string; name: string; budget_cents: number; created_at: string };
+
+/** Anything else makes Postgres throw on the uuid cast, which in an async
+ *  handler is an unhandled rejection rather than a 404. */
+const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+
+const asBot = (r: BotRow) => ({ id: r.id, name: r.name, budgetCents: r.budget_cents, createdAt: r.created_at });
+
+router.get("/api/bots", requireAuth, async (req: AuthRequest, res) => {
+  const { rows } = await pool.query(
+    "SELECT id, name, budget_cents, created_at FROM bots WHERE user_id = $1 ORDER BY created_at",
+    [req.userId],
+  );
+  res.json({ bots: (rows as BotRow[]).map(asBot) });
+});
+
+router.post("/api/bots", requireAuth, async (req: AuthRequest, res) => {
+  const { name, budgetCents } = (req.body || {}) as { name?: unknown; budgetCents?: unknown };
+  const clean = typeof name === "string" ? name.trim().slice(0, 80) : "";
+  if (!clean) { res.status(400).json({ error: "name is required" }); return; }
+  const cents = Number.isFinite(budgetCents) ? Math.max(0, Math.round(budgetCents as number)) : 0;
+  const { rows } = await pool.query(
+    "INSERT INTO bots (user_id, name, budget_cents) VALUES ($1, $2, $3) RETURNING id, name, budget_cents, created_at",
+    [req.userId, clean, cents],
+  );
+  res.json({ bot: asBot(rows[0] as BotRow) });
+});
+
+router.delete("/api/bots/:id", requireAuth, async (req: AuthRequest, res) => {
+  if (!isUuid(req.params.id)) { res.status(404).json({ error: "not found" }); return; }
+  const { rowCount } = await pool.query("DELETE FROM bots WHERE id = $1 AND user_id = $2", [req.params.id, req.userId]);
+  if (!rowCount) { res.status(404).json({ error: "not found" }); return; }
+  // The row is the only thing pointing at this directory, so it goes with it.
+  try { fs.rmSync(memoryDir(req.params.id), { recursive: true, force: true }); } catch { /* nothing to remove */ }
+  res.json({ ok: true });
+});
+
 router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) => {
   const body = (req.body || {}) as {
     message?: unknown; sessionId?: unknown; model?: unknown; effort?: unknown; canvasId?: unknown; viewport?: unknown;
-    referenceUrls?: unknown; referenceAspectRatio?: unknown; selectedNodeIds?: unknown;
+    referenceUrls?: unknown; referenceAspectRatio?: unknown; selectedNodeIds?: unknown; botId?: unknown;
   };
   let message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message) {
     res.status(400).json({ error: "message is required" });
     return;
+  }
+  // Run as a bot: its own durable memory instead of the shared session memory.
+  // Validated against this user's own bots — the id reaches a filesystem path.
+  let botId: string | undefined;
+  if (body.botId !== undefined && body.botId !== null && body.botId !== "") {
+    if (!isUuid(body.botId)) { res.status(400).json({ error: "unknown bot" }); return; }
+    const { rows } = await pool.query("SELECT id FROM bots WHERE id = $1 AND user_id = $2", [body.botId, req.userId]);
+    if (rows.length === 0) { res.status(400).json({ error: "unknown bot" }); return; }
+    botId = rows[0].id as string;
   }
   const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : undefined;
   // The user has the floor again: stop any review still chewing on this session.
@@ -386,6 +440,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       sessionId,
       model,
       effort,
+      botId,
       signal: ac.signal,
       onEvent: (e) => { if (e.type === "tool_use") sawToolUse = true; send(e); },
     });
@@ -399,7 +454,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     // prompt and cold-starts the prompt cache on the next turn.
     if (finalSession && !ac.signal.aborted && sawToolUse && Date.now() - (lastReviewAt.get(finalSession) ?? 0) > REVIEW_MIN_GAP_MS) {
       lastReviewAt.set(finalSession, Date.now());
-      startReview(finalSession);
+      startReview(finalSession, botId);
     }
   } catch (err) {
     if (err instanceof OperatorNotConfiguredError) {

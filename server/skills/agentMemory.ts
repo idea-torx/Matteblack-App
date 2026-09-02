@@ -41,24 +41,41 @@ export function memorySlug(input: string): string {
     .slice(0, 64);
 }
 
-function notePath(slug: string): string {
-  const safe = memorySlug(slug);
-  if (!safe) throw new Error("Invalid memory name.");
-  return path.join(MEMORY_DIR, `${safe}.md`);
+/**
+ * Where one memory store lives. Sessions share `agent-memory/`; a bot gets its
+ * own `agent-memory/bots/<id>/`, so what a bot learns about its brand never
+ * leaks into the shared notes or into another bot.
+ *
+ * The id goes through memorySlug for the same reason a note slug does: it
+ * arrives from the run request, so it must not be able to contain a separator
+ * or a dot and climb out of the directory.
+ */
+export function memoryDir(botId?: string): string {
+  if (!botId) return MEMORY_DIR;
+  const safe = memorySlug(botId);
+  if (!safe) throw new Error("Invalid bot id.");
+  return path.join(MEMORY_DIR, "bots", safe);
 }
 
-function ensureDir(): void {
-  fs.mkdirSync(MEMORY_DIR, { recursive: true });
+function notePath(slug: string, botId?: string): string {
+  const safe = memorySlug(slug);
+  if (!safe) throw new Error("Invalid memory name.");
+  return path.join(memoryDir(botId), `${safe}.md`);
+}
+
+function ensureDir(botId?: string): void {
+  fs.mkdirSync(memoryDir(botId), { recursive: true });
 }
 
 /** Newest first — recency is the ranking, and the budget cut takes from the end. */
-export function listMemory(): MemoryNote[] {
-  ensureDir();
+export function listMemory(botId?: string): MemoryNote[] {
+  ensureDir(botId);
+  const dir = memoryDir(botId);
   return fs
-    .readdirSync(MEMORY_DIR)
+    .readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .map((f) => {
-      const full = path.join(MEMORY_DIR, f);
+      const full = path.join(dir, f);
       const stat = fs.statSync(full);
       return {
         slug: f.slice(0, -3),
@@ -69,22 +86,22 @@ export function listMemory(): MemoryNote[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function writeMemory(slug: string, body: string): MemoryNote {
-  ensureDir();
-  const p = notePath(slug);
+export function writeMemory(slug: string, body: string, botId?: string): MemoryNote {
+  ensureDir(botId);
+  const p = notePath(slug, botId);
   fs.writeFileSync(p, body, "utf8");
   return { slug: memorySlug(slug), body: body.trim(), updatedAt: fs.statSync(p).mtime.toISOString() };
 }
 
-export function deleteMemory(slug: string): boolean {
-  const p = notePath(slug);
+export function deleteMemory(slug: string, botId?: string): boolean {
+  const p = notePath(slug, botId);
   if (!fs.existsSync(p)) return false;
   fs.unlinkSync(p);
   return true;
 }
 
 /** The memory block appended to every operator run's system prompt. */
-export function memoryInstructions(): string {
+export function memoryInstructions(botId?: string): string {
   const HOWTO =
     "\n\nYOUR PRIVATE MEMORY. `remember` (slug + note) writes one fact you have learned about " +
     "working with this user; reusing a slug replaces a stale note; `forget` drops one. Keep notes short " +
@@ -96,7 +113,7 @@ export function memoryInstructions(): string {
     "never read it back or announce that you are saving to it. It is how you get better across " +
     "sessions instead of restarting from zero.";
 
-  const notes = listMemory();
+  const notes = listMemory(botId);
   // Still emitted when empty: otherwise a fresh install is never told the memory
   // exists, so the first note never gets written and it stays empty forever.
   if (notes.length === 0) return HOWTO;
