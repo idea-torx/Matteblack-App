@@ -57,6 +57,30 @@ const ELEMENT_MAP = `(() => {
   return out;
 })()`;
 
+// Nudge elements by their walk index (same order as ELEMENT_MAP) with a
+// translate — no reflow, so the map stays true — and hand back the markup with
+// the moves baked in. Two args: moves, and a flag for the serialize.
+const APPLY_MOVES = `((moves) => {
+  const skip = new Set(["script", "style", "br", "html", "head"]);
+  const els = Array.from(document.body.querySelectorAll("*")).filter((el) => !skip.has(el.tagName.toLowerCase()));
+  // Same filtering as ELEMENT_MAP so indices line up.
+  const W = innerWidth, H = innerHeight;
+  const visible = els.filter((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) return false;
+    return r.width * r.height <= 0.9 * W * H;
+  });
+  for (const m of moves) {
+    const el = visible[m.i];
+    if (!el) continue;
+    const prev = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el.style.transform || "");
+    const x = (prev ? Number(prev[1]) : 0) + m.dx, y = (prev ? Number(prev[2]) : 0) + m.dy;
+    el.style.transform = (el.style.transform || "").replace(/translate\([^)]*\)\s*/, "") + \` translate(\${Math.round(x)}px, \${Math.round(y)}px)\`;
+    el.style.transform = el.style.transform.trim();
+  }
+  return "<!doctype html>\n" + document.documentElement.outerHTML;
+})`;
+
 const IDLE_MS = 60_000;
 
 let warm = null;
@@ -90,7 +114,7 @@ function getWindow(w, h) {
   return warm;
 }
 
-async function renderOnce(html, w, h) {
+async function renderOnce(html, w, h, moves) {
   const win = getWindow(w, h);
   // A temp file, not a data: URL. Chromium caps data-URL navigations at ~2MB,
   // and a page with one inlined image in it clears that on its own — base64
@@ -107,13 +131,15 @@ async function renderOnce(html, w, h) {
   try {
     await win.loadFile(tmp);
     await win.webContents.executeJavaScript(SETTLE);
+    let moved;
+    if (moves && moves.length) moved = await win.webContents.executeJavaScript(`${APPLY_MOVES}(${JSON.stringify(moves)})`);
     // capturePage grabs at the display's scale factor, so a retina Mac hands
     // back 2x. Lay out at the requested CSS pixels and downsample to them — the
     // output size is then the same on any machine, supersampled where it can be.
     const img = await win.webContents.capturePage();
     const shot = img.getSize().width === w ? img : img.resize({ width: w, height: h, quality: "best" });
     const map = await win.webContents.executeJavaScript(ELEMENT_MAP).catch(() => []);
-    return { png: shot.toPNG(), map };
+    return { png: shot.toPNG(), map, html: moved };
   } catch (err) {
     // The warm window is the prime suspect for any navigation failure, and a
     // sticky broken one would fail every render after it. Start over next time.
@@ -126,10 +152,10 @@ async function renderOnce(html, w, h) {
 }
 
 /** Resolves { png: Buffer, map: element map } */
-function renderHtmlToPng(html, width, height) {
+function renderHtmlToPng(html, width, height, moves) {
   const w = Math.max(1, Math.min(4096, Math.round(width) || 1080));
   const h = Math.max(1, Math.min(4096, Math.round(height) || 1350));
-  const next = chain.then(() => renderOnce(html, w, h));
+  const next = chain.then(() => renderOnce(html, w, h, moves));
   // The queue must survive a failed render, so it chains on the settled result.
   chain = next.catch(() => {});
   return next;
