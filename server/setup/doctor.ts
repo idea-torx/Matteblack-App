@@ -11,8 +11,9 @@ import os from "node:os";
 import path from "node:path";
 import { resolveClaudeBinary } from "../operator/runners/claude.js";
 import { resolveCodexBinary } from "../operator/runners/codex.js";
+import { resolveOpencodeBinary } from "../operator/runners/opencode.js";
 
-export const COMPONENT_IDS = ["brew", "git", "ffmpeg", "claude", "codex"] as const;
+export const COMPONENT_IDS = ["brew", "git", "ffmpeg", "claude", "codex", "opencode"] as const;
 export type ComponentId = (typeof COMPONENT_IDS)[number];
 
 export type DoctorRow = {
@@ -40,6 +41,7 @@ const CANDIDATES: Record<string, string[]> = {
 export function resolveBin(id: string): { path: string; found: boolean } {
   if (id === "claude") return resolveClaudeBinary();
   if (id === "codex") return resolveCodexBinary();
+  if (id === "opencode") return resolveOpencodeBinary();
   const fromPath = (process.env.PATH || "").split(path.delimiter).filter(Boolean).map((d) => path.join(d, id));
   for (const c of [...(CANDIDATES[id] || []), ...fromPath]) {
     try { if (fs.existsSync(c)) return { path: c, found: true }; } catch { /* unreadable */ }
@@ -80,5 +82,6 @@ export function doctor(resolve: (id: string) => { path: string; found: boolean }
       brew ? "brew install --cask codex" : bins.npm.found ? "npm i -g @openai/codex" : null,
       brew || bins.npm.found ? undefined : BREW_FIRST,
     ),
+    row("opencode", "OpenCode CLI", "curl -fsSL https://opencode.ai/install | bash"),
   ];
 }

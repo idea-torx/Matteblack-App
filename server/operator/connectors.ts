@@ -153,6 +153,10 @@ export async function runtimeConnectors(runner: RunnerId): Promise<RuntimeConnec
   const names = getEnabledConnectors()[runner];
   if (!names.length) return [];
   if (runner === "claude") return names.map((name) => ({ name })); // tool grant only
+  // ponytail: OpenCode has no `mcp list`, so its connectors are never
+  // discovered and this is always empty. Read ~/.config/opencode/opencode.json
+  // if the user ever needs their own servers here.
+  if (runner === "opencode") return [];
   const { stdout } = await cli("codex", ["mcp", "list", "--json"], 20_000);
   let rows: Record<string, unknown>[] = [];
   try { const j = JSON.parse(stdout); if (Array.isArray(j)) rows = j; } catch { /* no codex */ }

@@ -22,9 +22,10 @@ import { operatorSystemPrompt } from "../skills/builtin.js";
 import { skillIndex, pinnedInstructions } from "../skills/skillStore.js";
 import { memoryInstructions } from "../skills/agentMemory.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
-import { getOperatorRunner } from "../config/userConfig.js";
+import { getOperatorRunner, getOperatorModels } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
+import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
 import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
@@ -193,7 +194,7 @@ export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 // Runner registry
 // ---------------------------------------------------------------------------
 
-export type RunnerId = "claude" | "codex";
+export type RunnerId = "claude" | "codex" | "opencode";
 
 /** Everything a runner needs to build one command line. Assembled below so the
  *  runners stay pure argv-and-parse: no config reads, no filesystem. */
@@ -230,10 +231,14 @@ export interface Runner {
   spawnArgs(ctx: RunnerContext): string[];
   /** Prompt on stdin instead of argv, when the CLI prefers it. */
   stdinText?(ctx: RunnerContext): string;
+  /** Extra env for the spawn, for a CLI whose config arrives that way. */
+  env?(ctx: RunnerContext): Record<string, string>;
   parseLine(obj: Record<string, unknown>): OperatorEvent[];
 }
 
-export const RUNNERS: Runner[] = [claudeRunner, codexRunner];
+export const RUNNERS: Runner[] = [claudeRunner, codexRunner, opencodeRunner];
+// Warm the catalog at boot so the panel's first status already has it.
+refreshOpencodeModels();
 
 /** Session ids are runner-specific — handing a Claude id to `codex exec resume`
  *  is a hard error — so every non-default runner's ids carry its prefix. */
@@ -340,7 +345,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     let child;
     try {
       child = spawn(bin.path, args, {
-        env: childEnv,
+        env: { ...childEnv, ...(runner.env?.(ctx) ?? {}) },
         cwd: REPOS_DIR,
         // Close stdin unless the runner writes the prompt there (claude takes it
         // via -p and otherwise waits ~3s for piped input).
@@ -456,12 +461,17 @@ export async function operatorLogin(id: RunnerId): Promise<boolean> {
 /** Whether the operator is usable, and what each runner's binary looks like. */
 export function operatorStatus(): {
   binaryFound: boolean; binaryPath: string; runner: RunnerId;
-  runners: { id: RunnerId; label: string; binaryFound: boolean; binaryPath: string; models: Runner["models"] }[];
+  runners: { id: RunnerId; label: string; binaryFound: boolean; binaryPath: string; models: Runner["models"]; catalog: Runner["models"] }[];
 } {
   const active = getOperatorRunner();
+  refreshOpencodeModels();
   const runners = RUNNERS.map((r) => {
     const bin = r.resolveBinary();
-    return { id: r.id, label: r.label, binaryFound: bin.found, binaryPath: bin.path, models: r.models };
+    // `models` is what the panel offers: the user's picks when they made any
+    // that still exist in the catalog, else everything.
+    const picks = new Set(getOperatorModels(r.id));
+    const chosen = r.models.filter((m) => picks.has(m.id));
+    return { id: r.id, label: r.label, binaryFound: bin.found, binaryPath: bin.path, models: chosen.length ? chosen : r.models, catalog: r.models };
   });
   // binaryFound/binaryPath stay the ACTIVE runner's, which is what the panel's
   // "not configured" banner has always keyed off.

@@ -27,10 +27,11 @@ test("neither brew nor npm → codex not installable", () => {
   assert.equal(get(rows, "codex").note, "Install Homebrew first");
   assert.match(get(rows, "brew").install!, /Homebrew\/install/);
   assert.equal(get(rows, "git").install, "xcode-select --install");
+  assert.match(get(rows, "opencode").install!, /opencode\.ai\/install/);
 });
 
 test("found/path come from the resolver", () => {
-  const rows = doctor(fake(["git", "brew", "ffmpeg", "claude", "codex"]));
+  const rows = doctor(fake(["git", "brew", "ffmpeg", "claude", "codex", "opencode"]));
   assert.ok(rows.every((r) => r.found));
   assert.equal(get(rows, "claude").path, "/fake/claude");
 });
