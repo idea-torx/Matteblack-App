@@ -12,6 +12,7 @@
  *    still bounds our own tools inside the MCP server.
  *  - The prompt is a positional argv (no stdin form).
  */
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -67,8 +68,8 @@ function configContent(ctx: RunnerContext): string {
 export const opencodeRunner: Runner = {
   id: "opencode",
   label: "OpenCode",
-  // ponytail: static list, same as Codex; `opencode models` prints the live
-  // catalog if this ever needs to follow the user's plan.
+  // Seed only: refreshOpencodeModels() swaps in the live `opencode models`
+  // catalog (30+ on a Go plan) the first time the panel asks for status.
   models: [
     { id: "opencode/big-pickle", label: "Big Pickle" },
     { id: "opencode-go/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
@@ -144,4 +145,21 @@ export function parseLine(obj: Record<string, unknown>): OperatorEvent[] {
     }];
   }
   return [];
+}
+
+let refreshed = false;
+/** Replace the seed list with whatever `opencode models` prints, once per
+ *  process. ponytail: fire-and-forget, so the very first status call still
+ *  shows the seed; the panel's next refresh sees the full catalog. */
+export function refreshOpencodeModels(): void {
+  if (refreshed) return;
+  const bin = resolveOpencodeBinary();
+  if (!bin.found) return;
+  refreshed = true;
+  execFile(bin.path, ["models"], { timeout: 20_000 }, (err, stdout) => {
+    if (err) { refreshed = false; return; }
+    const ids = String(stdout).split("\n").map((l) => l.trim()).filter((l) => /^[\w.-]+\/[\w.-]+$/.test(l));
+    if (ids.length === 0) return;
+    opencodeRunner.models = ids.map((id) => ({ id, label: id.replace(/^opencode\//, "").replace(/^opencode-go\//, "Go · ") }));
+  });
 }

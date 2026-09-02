@@ -25,7 +25,7 @@ import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
 import { getOperatorRunner } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
-import { opencodeRunner } from "./runners/opencode.js";
+import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
 import { runtimeConnectors, type RuntimeConnector } from "./connectors.js";
 
 export { resolveClaudeBinary };
@@ -462,6 +462,7 @@ export function operatorStatus(): {
   runners: { id: RunnerId; label: string; binaryFound: boolean; binaryPath: string; models: Runner["models"] }[];
 } {
   const active = getOperatorRunner();
+  refreshOpencodeModels();
   const runners = RUNNERS.map((r) => {
     const bin = r.resolveBinary();
     return { id: r.id, label: r.label, binaryFound: bin.found, binaryPath: bin.path, models: r.models };
