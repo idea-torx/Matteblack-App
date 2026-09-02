@@ -349,11 +349,14 @@
 }
 
 .freeform-canvas__node-html {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   border: 0;
   transform-origin: 0 0;
   pointer-events: none;
-  background: #fff;
+  background: transparent;
 }
 .freeform-canvas__node-img {
   width: 100%;

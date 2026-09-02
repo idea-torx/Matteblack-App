@@ -108,13 +108,14 @@ function walkLive(doc: Document): LiveEl[] {
   }
   return out;
 }
-function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void; onMoved: (r: { src: string; mapUrl: string; htmlUrl: string }) => void }) {
+type ElSnap = (rects: CanvasNode[], dragged: Set<string>, dx: number, dy: number) => { snapDx: number; snapDy: number };
+function HtmlElementPicker({ node, zoom, onPick, onMoved, snap, onDragEnd }: { node: CanvasNode; zoom: number; onPick: (els: PickedElement[]) => void; onMoved: (r: { src: string; mapUrl: string; htmlUrl: string }) => void; snap: ElSnap; onDragEnd: () => void }) {
   const htmlUrl = node.metadata?.html_url as string | undefined;
   const pw = (node.metadata?.pixel_width as number) || node.width;
   const ph = (node.metadata?.pixel_height as number) || node.height;
   const [els, setEls] = useState<LiveEl[]>([]);
   const [picked, setPicked] = useState<number[]>([]);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean; justPicked: boolean; base: Map<number, string> } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; moved: boolean; justPicked: boolean; base: Map<number, string>; rects: CanvasNode[] } | null>(null);
   const [saving, setSaving] = useState(false);
   // Read the live document once the iframe for this markup has loaded.
   useEffect(() => {
@@ -169,7 +170,13 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; 
               if (justPicked) setPicked(ids);
               const base = new Map<number, string>();
               for (const j of ids) { const t = els[j] && getComputedStyle(els[j].el).transform; base.set(j, t && t !== "none" ? t : ""); }
-              dragRef.current = { x: e.clientX, y: e.clientY, moved: false, justPicked, base };
+              // Elements as canvas-space rects (plus the frame itself) so the smart guides snap inside the frame.
+              // ponytail: wrapper divs snap too; filter to leaf elements if the guides get noisy.
+              const rects = [
+                { id: "frame", x: node.x, y: node.y, width: node.width, height: node.height },
+                ...els.map((el, j) => ({ id: String(j), x: node.x + el.bbox[0] * sx, y: node.y + el.bbox[1] * sy, width: el.bbox[2] * sx, height: el.bbox[3] * sy })),
+              ] as unknown as CanvasNode[];
+              dragRef.current = { x: e.clientX, y: e.clientY, moved: false, justPicked, base, rects };
               e.currentTarget.setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => {
@@ -178,11 +185,14 @@ function HtmlElementPicker({ node, zoom, onPick, onMoved }: { node: CanvasNode; 
               const dx = (e.clientX - d.x) / zoom, dy = (e.clientY - d.y) / zoom;
               if (!d.moved && Math.hypot(dx, dy) * zoom < 3) return;
               d.moved = true;
-              nudge([...d.base.keys()], dx, dy, d.base);
+              const ids = [...d.base.keys()];
+              const { snapDx, snapDy } = snap(d.rects, new Set(ids.map(String)), dx, dy);
+              nudge(ids, snapDx, snapDy, d.base);
             }}
             onPointerUp={(e) => {
               const d = dragRef.current;
               dragRef.current = null;
+              onDragEnd();
               if (!d) return;
               if (d.moved) commit();
               else if (!d.justPicked) setPicked((prev) => e.shiftKey ? prev.filter((p) => p !== i) : (prev.length === 1 ? [] : [i]));
@@ -3310,7 +3320,7 @@ export function FreeformCanvas({
               ) : selectionBox ? null : (
                 <>
                   {node.metadata?.kind === "html" && selectedIds.size === 1 && onElementPick && (
-                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} onMoved={({ src, mapUrl, htmlUrl }) => setNodes((prev) => prev.map((n) => n.id === node.id ? { ...n, src, metadata: { ...n.metadata, map_url: mapUrl, html_url: htmlUrl } } : n))} />
+                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} snap={(rects, ids, dx, dy) => computeSmartSnap(rects, ids, dx, dy, zoom, panX, panY, viewportSize.w || window.innerWidth, viewportSize.h || window.innerHeight)} onDragEnd={clearSmartGuides} onMoved={({ src, mapUrl, htmlUrl }) => setNodes((prev) => prev.map((n) => n.id === node.id ? { ...n, src, metadata: { ...n.metadata, map_url: mapUrl, html_url: htmlUrl } } : n))} />
                   )}
                   {(["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <div

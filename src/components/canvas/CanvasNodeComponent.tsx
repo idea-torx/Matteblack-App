@@ -471,8 +471,10 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
           <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
       ) : node.metadata?.kind === "html" && node.metadata?.html_url ? (
-        // Live document instead of its PNG: the picker edits this DOM directly.
-        // ponytail: reloads (one blank frame) whenever html_url changes, incl. our own saves.
+        // Live document over its PNG: the picker edits this DOM directly; the PNG
+        // shows through while the frame reloads (html_url changes, incl. our own saves).
+        <>
+        <img className="freeform-canvas__node-img" src={node.src} alt="" draggable={false} />
         <iframe
           key={String(node.metadata.html_url)}
           data-html-node={node.id}
@@ -486,6 +488,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             transform: `scale(${node.width / ((node.metadata.pixel_width as number) || node.width)}, ${node.height / ((node.metadata.pixel_height as number) || node.height)})`,
           }}
         />
+        </>
       ) : node.src ? (
         imgError ? (
           <div className="freeform-canvas__node-missing" style={contentClipStyle}>
