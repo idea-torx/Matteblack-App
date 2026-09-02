@@ -1015,8 +1015,7 @@ export function OperatorPanel({
           title={streaming ? `${brand} is thinking…` : `${brand} is online`}
         >
           {isOpenCode
-            // ponytail: text mark rather than a fourth SVG component.
-            ? <span aria-label="OpenCode" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.04em", opacity: streaming ? 0.6 : 1 }}>oc</span>
+            ? <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor" aria-label="OpenCode" role="img" style={{ opacity: streaming ? 0.6 : 1 }}><path d="M4 2h16v20H4zM8 6v12h8V6z" /></svg>
             : isCodex
               ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
               : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
