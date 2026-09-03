@@ -62,7 +62,7 @@ export type ContextMenu = {
 };
 
 export type UndoCommand = {
-  type: "move" | "resize" | "create" | "delete" | "lock" | "group" | "ungroup" | "layer";
+  type: "move" | "resize" | "create" | "delete" | "lock" | "group" | "ungroup" | "layer" | "html";
   undo: () => void;
   redo: () => void;
 };

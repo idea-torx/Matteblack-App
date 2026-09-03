@@ -17,6 +17,20 @@
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
 }
 
+/* Round head beside the pointer, above the name. */
+.head {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin-left: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: #fff;
+  object-fit: cover;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
 .label {
   display: inline-flex;
   align-items: center;

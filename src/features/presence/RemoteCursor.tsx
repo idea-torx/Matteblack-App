@@ -45,6 +45,9 @@ function RemoteCursorImpl({ session, panX, panY, zoom }: RemoteCursorProps) {
           strokeLinejoin="round"
         />
       </svg>
+      {session.avatarUrl && (
+        <img className={styles.head} src={session.avatarUrl} alt="" style={{ borderColor: color }} />
+      )}
       <span className={styles.label} style={{ background: color }}>
         {session.displayName}
       </span>

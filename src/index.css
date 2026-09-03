@@ -119,6 +119,13 @@
     #7B8CE8, #63C2DC, #7FD3A0, #C6D673, #F3CB5C, #EE9A52, #E8795F, #DE7B96,
     #A874D2, #DE7B96, #E8795F, #EE9A52, #F3CB5C, #C6D673, #7FD3A0, #63C2DC,
     #7B8CE8);
+  /* Conic form, for rings that run around a rectangle's border (the canvas
+   * busy pulse). The ramp is mirrored like --gradient-brand-loop so the seam
+   * at 0deg lands on periwinkle meeting periwinkle instead of violet. */
+  --gradient-brand-conic: conic-gradient(from 210deg,
+    #7B8CE8, #63C2DC, #7FD3A0, #C6D673, #F3CB5C, #EE9A52, #E8795F, #DE7B96,
+    #A874D2, #DE7B96, #E8795F, #EE9A52, #F3CB5C, #C6D673, #7FD3A0, #63C2DC,
+    #7B8CE8);
 
   /* ─── Semantic roles ───────────────────────────────────────────────────
    * One ramp stop per function. `--x` is the solid fill (chosen so white text

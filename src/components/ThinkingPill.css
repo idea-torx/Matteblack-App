@@ -13,19 +13,31 @@
  * they are arithmetic on the cell index, not nine hand-written rules. */
 .thinking-pill__grid {
   display: grid;
-  grid-template-columns: repeat(3, 4px);
-  gap: 1.5px;
+  grid-template-columns: repeat(3, var(--tp-cell, 4px));
+  gap: calc(var(--tp-cell, 4px) * 0.375);
   flex-shrink: 0;
 }
 
 .thinking-pill__cell {
-  width: 4px;
-  height: 4px;
-  border-radius: 1px;
-  background: var(--text-primary);
+  width: var(--tp-cell, 4px);
+  height: var(--tp-cell, 4px);
+  border-radius: calc(var(--tp-cell, 4px) * 0.25);
   opacity: 0.15;
   animation: thinking-pill-pixel 650ms ease-in-out infinite;
 }
+
+/* One ramp stop per cell, so the chevron sweeps through the whole palette.
+ * The colour lives here rather than on the two call sites — the canvas
+ * placeholder runs the same grid at a larger --tp-cell. */
+.thinking-pill__cell:nth-child(1) { background: var(--c-periwinkle); }
+.thinking-pill__cell:nth-child(2) { background: var(--c-cyan); }
+.thinking-pill__cell:nth-child(3) { background: var(--c-mint); }
+.thinking-pill__cell:nth-child(4) { background: var(--c-chartreuse); }
+.thinking-pill__cell:nth-child(5) { background: var(--c-amber); }
+.thinking-pill__cell:nth-child(6) { background: var(--c-orange); }
+.thinking-pill__cell:nth-child(7) { background: var(--c-coral); }
+.thinking-pill__cell:nth-child(8) { background: var(--c-rose); }
+.thinking-pill__cell:nth-child(9) { background: var(--c-violet); }
 
 @keyframes thinking-pill-pixel {
   0%, 100% { opacity: 0.15; }
@@ -40,20 +52,20 @@
   color: var(--text-muted);
 }
 
-/* Shimmer-clipped-to-text: a moving blue gradient band sweeps across a
- * neutral text colour. background-clip: text confines the gradient to
- * the text glyphs, so the surrounding bubble background stays clean. */
+/* Shimmer-clipped-to-text: a plain grey band sweeps across a dimmer grey.
+ * The colour belongs to the grid; a label that also cycles the ramp is two
+ * animations fighting, and this line is often a long tool name. */
 .thinking-pill__text {
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.005em;
   background: linear-gradient(
     90deg,
-    rgba(107, 114, 128, 0.85) 0%,
-    rgba(107, 114, 128, 0.85) 35%,
-    var(--accent) 50%,
-    rgba(107, 114, 128, 0.85) 65%,
-    rgba(107, 114, 128, 0.85) 100%
+    rgba(107, 114, 128, 0.7) 0%,
+    rgba(107, 114, 128, 0.7) 35%,
+    var(--text-primary) 50%,
+    rgba(107, 114, 128, 0.7) 65%,
+    rgba(107, 114, 128, 0.7) 100%
   );
   background-size: 220% 100%;
   background-position: 100% 0;

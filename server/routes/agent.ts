@@ -31,6 +31,18 @@ import type { Response, NextFunction } from "express";
 import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../utils/canvasPlacement.js";
 import { extractLastFrame, extractTailClip, probeMinDimension, VideoTailError, DEFAULT_TAIL_SECONDS } from "../utils/videoTail.js";
 import { getOperatorContext, noteOperatorJob } from "../services/operatorCanvasContext.js";
+import crypto from "node:crypto";
+import { getPresenceTransport } from "./canvas.js";
+import {
+  addSession as presenceAddSession,
+  removeSession as presenceRemoveSession,
+  setCursor as presenceSetCursor,
+} from "../services/presence/PresenceRegistry.js";
+import {
+  broadcastPresenceCursor,
+  broadcastPresenceJoin,
+  broadcastPresenceLeave,
+} from "../services/presence/presenceBroadcast.js";
 
 const router = Router();
 
@@ -1429,7 +1441,7 @@ type GenKind = "image" | "video";
 type GenQuality = "low" | "medium" | "high";
 
 // Non-generative transforms exposed via the transform_media tool.
-type TransformOp = "remove_background" | "upscale" | "resize";
+type TransformOp = "remove_background" | "upscale" | "resize" | "vectorize";
 
 const GEN_ALLOWED_AR = new Set([
   "1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "3:2", "2:3",
@@ -2911,15 +2923,15 @@ export function buildGenerateBody(
 const TRANSFORM_MEDIA_TOOL: Tool = {
   name: "transform_media",
   description:
-    "Apply a non-generative transform to an existing image: remove background (Pixelcut), upscale (SeedVR), or resize / outpaint to a new aspect ratio (Bria). The result appears inline in the chat as a card the user can drag to the canvas. Requires a reference image — call this only when one is available in the 'Available references' list. Counts toward the 5-call-per-turn limit shared with generate_media.",
+    "Apply a non-generative transform to an existing image: remove background (Pixelcut), upscale (SeedVR), resize / outpaint to a new aspect ratio (Bria), or vectorize (Recraft — traces the image into SVG paths; afterwards get_asset returns the markup so the paths can be inlined in an HTML design). The result appears inline in the chat as a card the user can drag to the canvas. Requires a reference image — call this only when one is available in the 'Available references' list. Counts toward the 5-call-per-turn limit shared with generate_media.",
   input_schema: {
     type: "object",
     properties: {
       operation: {
         type: "string",
-        enum: ["remove_background", "upscale", "resize"],
+        enum: ["remove_background", "upscale", "resize", "vectorize"],
         description:
-          "Which transform to apply. 'remove_background' uses Pixelcut to cut out the subject. 'upscale' enlarges the image with SeedVR (specify upscaleFactor 2 or 4). 'resize' uses Bria to outpaint the image into a new aspect ratio (specify aspectRatio).",
+          "Which transform to apply. 'remove_background' uses Pixelcut to cut out the subject. 'upscale' enlarges the image with SeedVR (specify upscaleFactor 2 or 4). 'resize' uses Bria to outpaint the image into a new aspect ratio (specify aspectRatio). 'vectorize' traces the image into an SVG of paths (Recraft).",
       },
       referenceImageId: {
         type: "string",
@@ -2966,7 +2978,8 @@ function parseTransformMediaInput(
   if (opRaw === "remove_background" || opRaw === "remove_bg") operation = "remove_background";
   else if (opRaw === "upscale") operation = "upscale";
   else if (opRaw === "resize") operation = "resize";
-  else return { error: "Invalid operation. Must be remove_background, upscale, or resize." };
+  else if (opRaw === "vectorize") operation = "vectorize";
+  else return { error: "Invalid operation. Must be remove_background, upscale, resize, or vectorize." };
 
   const refId = typeof input.referenceImageId === "string" ? input.referenceImageId.trim() : "";
   if (!refId) return { error: "Missing referenceImageId — pick an image from the available references." };
@@ -3014,6 +3027,22 @@ function buildTransformBody(
         referenceImageUrls: [referenceUrl],
         upscaleFactor: tool.upscaleFactor,
         upscale_factor: tool.upscaleFactor,
+        canvas_id: canvasId,
+        workspace_id: workspaceId,
+        params: { source: "agent" },
+      },
+    };
+  }
+  if (tool.operation === "vectorize") {
+    const model = "recraft-vectorize";
+    return {
+      type: "image_to_vector",
+      resolvedModel: model,
+      body: {
+        type: "image_to_vector",
+        model,
+        referenceImageUrls: [referenceUrl],
+        image_url: referenceUrl,
         canvas_id: canvasId,
         workspace_id: workspaceId,
         params: { source: "agent" },
@@ -4685,7 +4714,7 @@ async function placeAgentGenerationOnCanvas(
   userId: string,
   canvasId: string,
   jobId: string,
-  kind: "image" | "video",
+  kind: "image" | "video" | "svg",
   prompt: string,
   sizeHint: { aspectRatio?: string; resolution?: string | null; size?: { w: number; h: number } },
 ): Promise<void> {
@@ -4695,7 +4724,7 @@ async function placeAgentGenerationOnCanvas(
     // no resize. "quality" tier + resolution matches startGeneration's call.
     // An explicit `size` wins: a continuation has to match the clip it
     // continues, whatever tier that one happened to be generated at.
-    const size = sizeHint.size ?? placeholderSize("quality", sizeHint.aspectRatio, kind, sizeHint.resolution ?? null);
+    const size = sizeHint.size ?? placeholderSize("quality", sizeHint.aspectRatio, kind === "svg" ? "image" : kind, sizeHint.resolution ?? null);
 
     // Existing occupancy (skip frames/groups — they're containers, not obstacles).
     const existing = await pool.query(
@@ -4841,7 +4870,7 @@ router.get("/api/agent/asset/:id", requireMcpToken, requireAuth, async (req: Aut
   const jobId = req.params.id;
   try {
     const result = await pool.query(
-      `SELECT id, user_id, type, model, status, result_url, params, error, created_at
+      `SELECT id, user_id, type, model, status, result_url, params, metadata, error, created_at
          FROM jobs WHERE id = $1`,
       [jobId],
     );
@@ -4856,6 +4885,8 @@ router.get("/api/agent/asset/:id", requireMcpToken, requireAuth, async (req: Aut
       status: row.status,
       url: row.result_url,
       prompt: typeof params.prompt === "string" ? params.prompt : undefined,
+      // Vectorize jobs keep their traced markup: the agent inlines the paths.
+      svg: typeof row.metadata?.svg_content === "string" ? row.metadata.svg_content : undefined,
       error: row.error,
       createdAt: row.created_at,
     });
@@ -5086,7 +5117,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         } catch { /* fall back to square placeholder */ }
       }
       await placeAgentGenerationOnCanvas(
-        userId, canvasId, dispatch.jobId!, "image", parsed.prompt || "Transform",
+        userId, canvasId, dispatch.jobId!, parsed.operation === "vectorize" ? "svg" : "image", parsed.prompt || "Transform",
         { aspectRatio: transformAr },
       );
       res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
@@ -5118,4 +5149,178 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
   }
 });
 
+// ---------------------------------------------------------------------------
+// Canvas layout, for the operator. `list_canvas` shows *generations*; these two
+// show and move the *nodes* — the operator's eyes and hands for tidying up.
+// Both act on the canvas the user is currently looking at (the operator context
+// set at the top of the turn), so neither takes a canvas id.
+// ---------------------------------------------------------------------------
+
+/** Resolve the canvas this operator turn is looking at, or answer 400. */
+function operatorCanvas(userId: string, res: Response): string | null {
+  const canvasId = getOperatorContext(userId)?.canvasId;
+  if (!canvasId) {
+    res.status(400).json({ error: "No canvas in view. Open a project first." });
+    return null;
+  }
+  return canvasId;
+}
+
+// Backs `see_canvas`.
+router.get("/api/agent/canvas", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const canvasId = operatorCanvas(req.userId!, res);
+  if (!canvasId) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, node_type, label, x, y, width, height, locked
+         FROM canvas_nodes WHERE canvas_id = $1 ORDER BY created_at`,
+      [canvasId],
+    );
+    res.json({
+      canvasId,
+      viewport: getOperatorContext(req.userId!)?.viewport ?? null,
+      nodes: rows.map((r) => ({
+        id: r.id as string,
+        type: r.node_type as string,
+        label: (r.label as string | null) ?? "",
+        x: Number(r.x), y: Number(r.y),
+        width: Number(r.width), height: Number(r.height),
+        // Cinema frames are born locked so a stray drag can't shift a 1920-wide
+        // node; that is a UI guard, not user intent, so the agent may move them.
+        locked: !!r.locked && r.node_type !== "cinema",
+      })),
+    });
+  } catch (err) {
+    console.error("[agent/canvas] list error:", err);
+    res.status(500).json({ error: "Failed to read the canvas" });
+  }
+});
+
+export type ArrangeMove = { id: string; x?: number; y?: number; width?: number; height?: number };
+
+const MAX_MOVES = 200;
+const STEP_MS = 600;
+const LINGER_MS = 1500;
+
+/** Validate an `arrange_canvas` payload. Exported for the self-check in
+ *  agent.arrange.test.ts — the model sends these ids and numbers straight from
+ *  its own head, so this is a trust boundary. */
+export function parseArrangeMoves(moves: unknown): { moves: ArrangeMove[] } | { errors: string[] } {
+  if (!Array.isArray(moves) || moves.length === 0) return { errors: ["moves must be a non-empty array"] };
+  if (moves.length > MAX_MOVES) return { errors: [`Too many moves (${moves.length}); max ${MAX_MOVES}.`] };
+  const errors: string[] = [];
+  const typed: ArrangeMove[] = [];
+  for (const raw of moves as ArrangeMove[]) {
+    const id = typeof raw?.id === "string" ? raw.id : "";
+    if (!UUID_RE.test(id)) { errors.push(`Bad node id: ${JSON.stringify(raw?.id)}`); continue; }
+    let bad = false;
+    for (const k of ["x", "y", "width", "height"] as const) {
+      const v = raw[k];
+      if (v === undefined) continue;
+      if (typeof v !== "number" || !Number.isFinite(v)) { errors.push(`Node ${id}: ${k} must be a finite number`); bad = true; }
+      else if ((k === "width" || k === "height") && v < 0) { errors.push(`Node ${id}: ${k} must be >= 0`); bad = true; }
+    }
+    if (bad) continue;
+    if (raw.x === undefined && raw.y === undefined && raw.width === undefined && raw.height === undefined) {
+      errors.push(`Node ${id}: nothing to change`);
+      continue;
+    }
+    typed.push({ id, x: raw.x, y: raw.y, width: raw.width, height: raw.height });
+  }
+  return errors.length > 0 ? { errors } : { moves: typed };
+}
+
+// Backs `arrange_canvas`. Applies the moves one at a time, with the bot's
+// presence cursor hopping to each node first — so the user watches it walk the
+// canvas rather than everything teleporting at once.
+router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const canvasId = operatorCanvas(userId, res);
+  if (!canvasId) return;
+
+  const parsed = parseArrangeMoves((req.body || {}).moves);
+  if ("errors" in parsed) { res.status(400).json({ error: "Invalid moves", details: parsed.errors }); return; }
+  const typed = parsed.moves;
+
+  const sessionId = crypto.randomUUID();
+  let joined = false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, x, y, width, height, (locked AND node_type <> 'cinema') AS locked FROM canvas_nodes
+        WHERE canvas_id = $1 AND id = ANY($2::uuid[])`,
+      [canvasId, typed.map((m) => m.id)],
+    );
+    const byId = new Map(rows.map((r) => [r.id as string, r]));
+
+    const moved: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    const applicable: ArrangeMove[] = [];
+    for (const m of typed) {
+      const node = byId.get(m.id);
+      if (!node) skipped.push({ id: m.id, reason: "not on this canvas" });
+      else if (node.locked) skipped.push({ id: m.id, reason: "locked" });
+      else applicable.push(m);
+    }
+
+    const transport = getPresenceTransport();
+    if (applicable.length > 0) {
+      const add = presenceAddSession(canvasId, {
+        sessionId,
+        userId,
+        displayName: getOperatorContext(userId)?.botName || "Agent",
+        // The bot's emoji icon as an image, so the cursor gets a head.
+        avatarUrl: emojiAvatarUrl(getOperatorContext(userId)?.botIcon),
+        role: "owner",
+        bindingToken: crypto.randomBytes(24).toString("hex"),
+      });
+      joined = true;
+      broadcastPresenceJoin(transport, canvasId, add.user, sessionId);
+    }
+
+    for (const m of applicable) {
+      const node = byId.get(m.id)!;
+      const x = m.x ?? Number(node.x);
+      const y = m.y ?? Number(node.y);
+      const w = m.width ?? Number(node.width);
+      const h = m.height ?? Number(node.height);
+
+      // Cursor first, then the move — the user sees the bot reach for the node.
+      presenceSetCursor(canvasId, sessionId, x + w / 2, y + h / 2);
+      broadcastPresenceCursor(transport, canvasId, { sessionId, userId, x: x + w / 2, y: y + h / 2 });
+
+      const updated = await pool.query(
+        `UPDATE canvas_nodes SET x = $1, y = $2, width = $3, height = $4
+          WHERE canvas_id = $5 AND id = $6 RETURNING *`,
+        [x, y, w, h, canvasId, m.id],
+      );
+      if (updated.rows[0] && redisClient) {
+        redisSetNodes(canvasId, [updated.rows[0] as RedisNodeUpdate]).catch(() => { /* cache best-effort */ });
+        scheduleCanvasFlush();
+      }
+      broadcastCanvasUpdate(canvasId, "");
+      moved.push(m.id);
+      await new Promise((r) => setTimeout(r, STEP_MS));
+    }
+
+    res.json({ moved, skipped });
+  } catch (err) {
+    console.error("[agent/canvas] arrange error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Failed to arrange the canvas" });
+  } finally {
+    if (joined) {
+      // Response is already sent; linger so a one-node move still shows the bot.
+      await new Promise((r) => setTimeout(r, LINGER_MS));
+      presenceRemoveSession(canvasId, sessionId);
+      broadcastPresenceLeave(getPresenceTransport(), canvasId, sessionId, userId);
+    }
+  }
+});
+
 export default router;
+
+/** Presence avatars are image URLs; bots only have an emoji, so paint it into a data-URL SVG. */
+function emojiAvatarUrl(icon: string | undefined): string | null {
+  if (!icon) return null;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text x="16" y="23" font-size="20" text-anchor="middle">${icon}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}

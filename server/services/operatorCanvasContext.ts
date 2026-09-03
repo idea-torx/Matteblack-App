@@ -29,6 +29,10 @@ type OperatorContext = {
   // The selected canvas image's aspect-ratio label (e.g. "3:4"). When set and
   // the user didn't pin an AR, the next generation inherits it (lineage).
   referenceAspectRatio?: string;
+  // The bot running this turn, in the user's words — used as the display name
+  // of the presence cursor that walks the canvas during arrange_canvas.
+  botName?: string;
+  botIcon?: string;
   // Generation jobs this turn has dispatched. Stop has to reach these: killing
   // the claude process ends the *reasoning*, but every generate_media it already
   // fired is a queued fal job that keeps running, keeps charging, and keeps
@@ -42,13 +46,15 @@ const byUser = new Map<string, OperatorContext>();
 /** Called when an operator turn starts, with the frontend's current view. */
 export function setOperatorContext(
   userId: string,
-  ctx: { canvasId?: string; viewport?: Viewport; referenceUrls?: string[]; referenceAspectRatio?: string },
+  ctx: { canvasId?: string; viewport?: Viewport; referenceUrls?: string[]; referenceAspectRatio?: string; botName?: string; botIcon?: string },
 ): void {
   byUser.set(userId, {
     canvasId: ctx.canvasId,
     viewport: ctx.viewport,
     referenceUrls: ctx.referenceUrls,
     referenceAspectRatio: ctx.referenceAspectRatio,
+    botName: ctx.botName,
+    botIcon: ctx.botIcon,
     jobIds: new Set(),
     updatedAt: Date.now(),
   });

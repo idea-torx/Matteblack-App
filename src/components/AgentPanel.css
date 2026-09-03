@@ -1115,6 +1115,39 @@
   width: 100%;
   isolation: isolate;
   display: grid;
+  /* The textarea's own fill, repeated on the wrap so the button-row band
+   * below can match it. Overridden per theme alongside the textarea. */
+  --composer-bg: #ecedf0;
+}
+
+/* Button-row band. The textarea reserves 52px of bottom padding for the (+),
+ * pin and send buttons, but padding only holds space at the END of the
+ * content — scroll a long prompt and the lines run straight under the
+ * buttons. This fills that row with the composer's own colour: above the
+ * textarea, below the buttons (which sit at z-index 2). */
+.agent-panel__textarea-wrap::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  height: 46px;
+  border-radius: 0 0 4px 4px;
+  background: var(--composer-bg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Not in the idle pill — that state is one empty line tall, and its buttons
+ * are centred rather than sitting in a reserved row. */
+.agent-panel__textarea-wrap:has(.agent-panel__textarea:not(:focus):placeholder-shown)::after {
+  display: none;
+}
+
+/* Mobile keeps the compact padding and no reserved row, so a band there would
+ * cover real text instead of scrolled-away text. */
+.agent-panel--mobile .agent-panel__textarea-wrap::after {
+  display: none;
 }
 
 /* Perpetual animations are this app's single largest idle cost. Any animation
@@ -2260,6 +2293,10 @@
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state below use a pure white fill so the text entry area
  * reads as a bright, distinct chip on the panel paper. */
+[data-theme="light"] .agent-panel__textarea-wrap {
+  --composer-bg: #ffffff;
+}
+
 [data-theme="light"] .agent-panel__textarea {
   background: #ffffff;
   background-clip: padding-box;
@@ -2436,6 +2473,10 @@
 
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state. White pill → dark raised pill in dark mode. */
+[data-theme="dark"] .agent-panel__textarea-wrap {
+  --composer-bg: #1b1b1f;
+}
+
 [data-theme="dark"] .agent-panel__textarea {
   background: #1b1b1f;
   background-clip: padding-box;
@@ -2818,16 +2859,23 @@
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 3px 22px 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(var(--tint-rgb), 0.22);
-  background: rgba(var(--tint-rgb), 0.10);
-  color: var(--text-primary, #e6e9ee);
+  padding: 4px 22px 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  color: #1a1a1f;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   font-size: 11px;
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .agent-panel__pin {
+  background: #2a2a30;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .agent-panel__pin--error {
@@ -2837,10 +2885,17 @@
 }
 
 .agent-panel__pin .agent-panel__ref-x {
-  right: 3px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
+  /* Flat inside a pill: the bordered 18px disc is sized for 64px image refs. */
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted, #9aa0a8);
 }
+.agent-panel__pin .agent-panel__ref-x:hover { color: var(--text-primary, #e6e9ee); }
 
 /* Second composer button, right of the (+). */
 .agent-panel__upload--doc { left: 43px; }

@@ -300,6 +300,9 @@ export function FreeformCanvas({
       if (selectedImageIds.includes(localId)) {
         const next = selectedImageIds.map((id) => (id === localId ? serverId : id));
         onSelectMultiple?.(next);
+        // App keys node meta by id; re-emit under the server id or the chip vanishes.
+        const node = nodesRef.current.find((n) => n.id === localId || n.id === serverId);
+        if (node) emitNodeMetaRef.current(serverId, node);
       }
     },
   });
@@ -699,6 +702,24 @@ export function FreeformCanvas({
   const [gridSize, setGridSize] = useState(DEFAULT_GRID_SIZE);
   const [showMinimap, setShowMinimap] = useState(false);
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
+
+  // Live-HTML frame edits: each save is a fresh immutable src/map/html triple,
+  // so undo is just pointing the node back at the previous triple. `reload`
+  // drops the url from liveHtmlUrls so the iframe re-reads that markup.
+  const applyHtmlVersion = useCallback((id: string, v: { src: string; map_url: string; html_url: string }, reload: boolean) => {
+    if (reload) liveHtmlUrls.delete(v.html_url);
+    const cur = nodesRef.current.find((n) => n.id === id);
+    const metadata = { ...cur?.metadata, map_url: v.map_url, html_url: v.html_url };
+    setNodes((prev) => prev.map((n) => n.id === id ? { ...n, src: v.src, metadata: { ...n.metadata, map_url: v.map_url, html_url: v.html_url } } : n));
+    if (reload && canvasId) saveNodesBatchDebounced(canvasId, [{ id, src: v.src, metadata }]);
+  }, [canvasId, saveNodesBatchDebounced]);
+  const handleHtmlMoved = useCallback((id: string, r: { src: string; mapUrl: string; htmlUrl: string }) => {
+    const cur = nodesRef.current.find((n) => n.id === id);
+    const prev = { src: cur?.src || "", map_url: String(cur?.metadata?.map_url || ""), html_url: String(cur?.metadata?.html_url || "") };
+    const next = { src: r.src, map_url: r.mapUrl, html_url: r.htmlUrl };
+    applyHtmlVersion(id, next, false);
+    pushUndo({ type: "html", undo: () => applyHtmlVersion(id, prev, true), redo: () => applyHtmlVersion(id, next, true) });
+  }, [applyHtmlVersion, pushUndo]);
 
   const undo = useCallback(() => {
     const cmd = undoStack.current.pop();
@@ -2615,9 +2636,9 @@ export function FreeformCanvas({
   }, [zoom]);
 
   // Multiplayer presence: subscribe to SSE for snapshot/join/leave/cursor/idle
-  // events and broadcast our own pointer at ~16 Hz. Disabled in cinema and
-  // present mode where the canvas isn't being edited collaboratively.
-  const presenceEnabled = !isCinema && !presentMode && !!canvasId;
+  // events and broadcast our own pointer at ~16 Hz. Disabled only in present
+  // mode: a canvas with cinema frames is still edited (and walked by the bot).
+  const presenceEnabled = !presentMode && !!canvasId;
   usePresenceChannel(presenceEnabled ? canvasId : null);
   useCursorBroadcast({
     canvasId: presenceEnabled ? canvasId : null,
@@ -3321,7 +3342,7 @@ export function FreeformCanvas({
               ) : selectionBox ? null : (
                 <>
                   {node.metadata?.kind === "html" && selectedIds.size === 1 && onElementPick && (
-                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} snap={(rects, ids, dx, dy) => computeSmartSnap(rects, ids, dx, dy, zoom, panX, panY, viewportSize.w || window.innerWidth, viewportSize.h || window.innerHeight)} onDragEnd={clearSmartGuides} onMoved={({ src, mapUrl, htmlUrl }) => setNodes((prev) => prev.map((n) => n.id === node.id ? { ...n, src, metadata: { ...n.metadata, map_url: mapUrl, html_url: htmlUrl } } : n))} />
+                    <HtmlElementPicker node={node} zoom={zoom} onPick={onElementPick} snap={(rects, ids, dx, dy) => computeSmartSnap(rects, ids, dx, dy, zoom, panX, panY, viewportSize.w || window.innerWidth, viewportSize.h || window.innerHeight)} onDragEnd={clearSmartGuides} onMoved={(r) => handleHtmlMoved(node.id, r)} />
                   )}
                   {(["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <div

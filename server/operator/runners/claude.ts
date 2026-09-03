@@ -124,7 +124,7 @@ export const claudeRunner: Runner = {
   models: [
     { id: "claude-opus-5", label: "Opus 5" },
     { id: "claude-opus-4-8", label: "Opus 4.8" },
-    { id: "claude-fable-5", label: "Fable" },
+    { id: "claude-fable-5-1", label: "Fable 5.1" },
   ],
   resolveBinary: resolveClaudeBinary,
   loginArgs: ["auth", "login", "--claudeai"],
@@ -148,10 +148,9 @@ export const claudeRunner: Runner = {
       ...(grants.length ? [] : ["--strict-mcp-config"]),
       "--allowedTools", [...ctx.allowedTools, ...grants].join(","),
       "--append-system-prompt", ctx.systemPrompt,
-      // Compact at 100k tokens instead of the model's full window: long
-      // sessions replay their whole transcript every turn, so a smaller window
-      // caps per-turn spend. Same figure as Codex's model_auto_compact_token_limit.
-      "--autocompact", "100000",
+      // 350k: below this the operator (50-60k base context + tool output)
+      // re-compacted every few calls, 1-2 min each. User-set ceiling.
+      "--autocompact", "350000",
     ];
     if (ctx.sessionId) args.push("--resume", ctx.sessionId);
     // ponytail: cheapest model for the bookkeeping pass, unless one was asked for.

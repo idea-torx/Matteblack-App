@@ -1,5 +1,5 @@
 import type { CanvasNode } from "../../types/canvas";
-import { QuantumThinking } from "../QuantumThinking";
+import { ThinkingGrid } from "../ThinkingPill";
 import "./GeneratingNode.css";
 
 type Props = {
@@ -25,7 +25,7 @@ export function GeneratingNode({ node, onDismiss }: Props) {
           <div className="gen-node__glow gen-node__glow--soft" />
         </div>
         <div className="gen-node__spinner" aria-hidden="true">
-          <QuantumThinking size={64} className="gen-node__quantum" ariaLabel="Generating" />
+          <ThinkingGrid className="gen-node__grid" />
         </div>
       </div>
     );

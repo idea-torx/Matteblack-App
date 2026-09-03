@@ -3,6 +3,7 @@ import "./ThinkingPill.css";
 
 interface ThinkingPillProps {
   className?: string;
+  /** What the agent is doing right now. Falls back to the generic wait. */
   label?: string;
 }
 
@@ -23,20 +24,29 @@ function useElapsed() {
   return total < 60 ? `${total.toFixed(1)}s` : `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
-export function ThinkingPill({ className, label = "Thinking…" }: ThinkingPillProps) {
+/** Just the pulsing chevron grid. Cell size comes from --tp-cell on the
+ * element, so the canvas placeholder can run the same animation at 14px. */
+export function ThinkingGrid({ className }: { className?: string }) {
+  return (
+    <span className={`thinking-pill__grid${className ? ` ${className}` : ""}`} aria-hidden="true">
+      {CHEVRON.map((delay, i) => (
+        <span key={i} className="thinking-pill__cell" style={{ animationDelay: `${delay}ms` }} />
+      ))}
+    </span>
+  );
+}
+
+export function ThinkingPill({ className, label }: ThinkingPillProps) {
+  const text = label ?? "Thinking…";
   const elapsed = useElapsed();
   return (
     <span
       className={`thinking-pill${className ? ` ${className}` : ""}`}
       role="status"
-      aria-label={label}
+      aria-label={text}
     >
-      <span className="thinking-pill__grid" aria-hidden="true">
-        {CHEVRON.map((delay, i) => (
-          <span key={i} className="thinking-pill__cell" style={{ animationDelay: `${delay}ms` }} />
-        ))}
-      </span>
-      <span className="thinking-pill__text" aria-hidden="true">{label}</span>
+      <ThinkingGrid />
+      <span className="thinking-pill__text" aria-hidden="true">{text}</span>
       <span className="thinking-pill__elapsed" aria-hidden="true">{elapsed}</span>
     </span>
   );
