@@ -102,3 +102,18 @@ console.log("buildFFmpegCommand: all checks passed");
   assert.match(out, /-level:v 5\.1/, "re-encode branch pins level 5.1");
   console.log("h264 level cap: ok");
 }
+
+// Seam: two chained clips lose one frame at the join, audio on clip B shifts with it.
+{
+  const s = state(false);
+  s.tracks[0].clips = [clip("a"), clip("b", { startOffset: 5 })];
+  s.tracks[1].clips = [];
+  const f = new Map([["a", "a.mp4"], ["b", "b.mp4"]]);
+  const i = new Map([["a", { hasAudio: true, isH264: true, fps: 25, frames: 125, tailHold: 2 }], ["b", { hasAudio: true, isH264: true, fps: 25, headHold: 3 }]]);
+  const out = buildFFmpegCommand(s, f, cfg, 10, i).args.join(" ");
+  assert.match(out, /\[0:v\]trim=start=0.0000:end_frame=122,/, "clip A loses its seam frame and parked tail");
+  assert.match(out, /\[1:v\]trim=start=0.1200:end=5.0000/, "final clip drops its parked head, keeps its last frame");
+  assert.match(out, /\[1:a\]atrim=[^,]*,asetpts=PTS-STARTPTS,volume=1.00,adelay=4880\|4880/, "clip B audio shifts with the cut");
+  assert.doesNotMatch(out, /-c:v copy/, "chains always re-encode");
+}
+console.log("seam ok");

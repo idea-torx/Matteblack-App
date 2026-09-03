@@ -32,17 +32,44 @@ const router = Router();
 
 async function probe(file: string): Promise<StreamInfo> {
   const { stdout } = await run(bin("ffprobe"), [
-    "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height", "-of", "json", file,
+    "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,nb_frames", "-of", "json", file,
   ]);
   const streams = (JSON.parse(String(stdout)).streams ?? []) as
-    { codec_type?: string; codec_name?: string; width?: number; height?: number }[];
+    { codec_type?: string; codec_name?: string; width?: number; height?: number; r_frame_rate?: string; nb_frames?: string }[];
   const v = streams.find((s) => s.codec_type === "video");
   return {
+    ...(v ? await seamHolds(file, Number(v.nb_frames)) : {}),
     hasAudio: streams.some((s) => s.codec_type === "audio"),
     isH264: v?.codec_name === "h264",
     width: v?.width,
     height: v?.height,
+    frames: Number(v?.nb_frames) || undefined,
+    fps: v?.r_frame_rate ? Number(v.r_frame_rate.split("/")[0]) / (Number(v.r_frame_rate.split("/")[1]) || 1) || undefined : undefined,
   };
+}
+
+/** Runs of near-identical frames at the head and tail of a clip: a parked seam
+ *  pose. Output j's score is the mean luma of |frame j+1 - frame j|; real motion
+ *  in these clips scores 6-40, a parked pose under 1. A run scoring under
+ *  HOLD_LUMA from output 0..k-1 means frames 0..k are one pose, so k can go.
+ *  (tblend emits N-1 frames: output j = |in[j+1] - in[j]|.)
+ *  Capped so a genuinely still shot only loses half a second at a seam.
+ *  ponytail: fixed threshold; measure per clip against its own median if a
+ *  slow dolly ever reads as a hold. */
+const HOLD_LUMA = 2;
+const MAX_HOLD = 12;
+async function seamHolds(file: string, total: number): Promise<{ headHold: number; tailHold: number }> {
+  const { stdout } = await run(bin("ffmpeg"), [
+    "-i", file, "-an", "-vf", "tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-",
+  ]).catch(() => ({ stdout: "" }));
+  const score: number[] = [];
+  for (const m of String(stdout).matchAll(/frame:(\d+)[\s\S]*?YAVG=([\d.]+)/g)) score[Number(m[1])] = Number(m[2]);
+  const still = (n: number) => score[n] !== undefined && score[n] < HOLD_LUMA;
+  let headHold = 0;
+  while (headHold < MAX_HOLD && still(headHold)) headHold++;
+  let tailHold = 0;
+  while (tailHold < MAX_HOLD && still(total - 2 - tailHold)) tailHold++;
+  return { headHold, tailHold };
 }
 
 router.get("/api/cinema/exports/:name", requireAuth, (req: AuthRequest, res) => {
