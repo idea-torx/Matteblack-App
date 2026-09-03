@@ -23,7 +23,7 @@ import { readCustomModel } from "../models/customModels.js";
 import { estimateFalCost, falPricedModelKeys } from "../config/falCost.js";
 import { unitPriceFor, falPricingStatus } from "../services/falPricing.js";
 import { getMcpToken } from "../mcpToken.js";
-import { broadcastCanvasUpdate } from "./canvas.js";
+import { broadcastCanvasUpdate, loadCanvasEdges } from "./canvas.js";
 import { setNodes as redisSetNodes, type RedisNodeUpdate } from "../services/canvasRedisCache.js";
 import { scheduleCanvasFlush } from "../services/canvasCheckpointScheduler.js";
 import redisClient from "../services/redisClient.js";
@@ -5184,6 +5184,7 @@ router.get("/api/agent/canvas", requireMcpToken, requireAuth, async (req: AuthRe
     res.json({
       canvasId,
       viewport: getOperatorContext(req.userId!)?.viewport ?? null,
+      edges: await loadCanvasEdges(canvasId),
       nodes: rows.map((r) => ({
         id: r.id as string,
         type: r.node_type as string,

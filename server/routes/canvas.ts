@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db.js";
+import { deriveEdges, type ProvenanceEdge } from "../canvas/edges.js";
 import { saveFile, copyFile, parseFileUrl } from "../storage.js";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
@@ -1678,6 +1679,40 @@ router.post("/api/canvas/:canvasId/nodes/batch", async (req: AuthRequest, res: R
     res.status(500).json({ error: "Failed to batch update nodes" });
   } finally {
     releaseBatchSlot();
+  }
+});
+
+/** Provenance edges for a canvas: which node's output was an input to which.
+ *  Read-only, derived from jobs.params — nothing is written to record it. */
+export async function loadCanvasEdges(canvasId: string): Promise<ProvenanceEdge[]> {
+  const { rows } = await pool.query(
+    `SELECT cn.id, cn.src, j.type AS job_type, j.params, j.result_url, a.file_url
+       FROM canvas_nodes cn
+       LEFT JOIN jobs j ON j.id = cn.job_id
+       LEFT JOIN assets a ON a.id = cn.asset_id
+      WHERE cn.canvas_id = $1
+      ORDER BY cn.created_at`,
+    [canvasId],
+  );
+  return deriveEdges(
+    rows.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      jobType: (r.job_type as string | null) ?? null,
+      params: (r.params as Record<string, unknown> | null) ?? null,
+      urls: [r.result_url as string | null, r.file_url as string | null, r.src as string | null],
+    })),
+  );
+}
+
+router.get("/api/canvas/:canvasId/edges", async (req: AuthRequest, res: Response) => {
+  try {
+    const { canvasId } = req.params;
+    const access = await ensureCanvasAccess(req, res, canvasId, "read");
+    if (!access.ok) return;
+    res.json({ edges: await loadCanvasEdges(canvasId) });
+  } catch (err) {
+    console.error("Load canvas edges error:", err);
+    res.status(500).json({ error: "Failed to load canvas edges" });
   }
 });
 
