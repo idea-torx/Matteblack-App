@@ -290,14 +290,19 @@ export function useCanvasLoader({
 
     saveViewportDebounced.flush();
     saveNodesBatchDebounced.flush();
-    syncEngineRef.current?.setActiveCanvasId(null);
-
-    setNodes([]);
-    setCanvasLoaded(false);
-    canvasLoadedRef.current = false;
 
     const cacheKey = `ws:${activeWorkspaceId}:project:${projectCanvasId}`;
+    // A remote update (SSE) on the canvas already on screen is a refresh:
+    // keep what's mounted and merge the server's nodes in. Clearing first
+    // unmounted every node (the flash) and reset the viewport from cache.
+    const isRefresh = cacheKeyRef.current === cacheKey && canvasLoadedRef.current;
     cacheKeyRef.current = cacheKey;
+    if (!isRefresh) {
+      syncEngineRef.current?.setActiveCanvasId(null);
+      setNodes([]);
+      setCanvasLoaded(false);
+      canvasLoadedRef.current = false;
+    }
 
     const applyGroups = (nodesList: CanvasNode[]) => {
       const groups = nodesList.filter((n: CanvasNode) => n.node_type === "group");
@@ -335,8 +340,10 @@ export function useCanvasLoader({
     };
 
     const cached = getCanvasEntry(cacheKey);
-    const hadLocalDataRef = { current: false };
-    if (cached) {
+    const hadLocalDataRef = { current: isRefresh };
+    if (isRefresh) {
+      // nothing to restore — the screen already shows this canvas
+    } else if (cached) {
       setCanvasId(cached.canvasId);
       canvasIdRef.current = cached.canvasId;
       activateCanvas(cached.canvasId);
@@ -490,7 +497,16 @@ export function useCanvasLoader({
             });
           }
 
-          setNodes(loadedNodes);
+          // Keep object identity for unchanged nodes so memoized node
+          // components (and their <video>/<iframe>) don't re-render.
+          // ponytail: JSON.stringify per node per refresh; hash node.updated_at if canvases get huge.
+          setNodes((prev) => {
+            const byId = new Map(prev.map((n) => [n.id, n]));
+            return loadedNodes.map((n: CanvasNode) => {
+              const old = byId.get(n.id);
+              return old && JSON.stringify(old) === JSON.stringify(n) ? old : n;
+            });
+          });
           if (loadedNodes.length > 0) {
             const maxZ = Math.max(...loadedNodes.map((n: CanvasNode) => n.z_index));
             nextZ = maxZ + 1;
@@ -550,6 +566,7 @@ export function useCanvasLoader({
       if (key) {
         invalidateCanvasEntry(key);
       }
+      canvasLoadedRef.current = false; // full reload, not a refresh: the canvas is gone
       setReloadCounter((c) => c + 1);
     };
 
