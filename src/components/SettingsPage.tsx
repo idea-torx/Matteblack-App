@@ -361,6 +361,7 @@ type DisplayModelGroup = {
   displayName: string;
   totalCredits: number;
   totalCount: number;
+  totalUsd: number;
   variations: { key: string; label: string; credits: number; count: number }[];
 };
 
@@ -370,9 +371,10 @@ function mergeByDisplayName(groups: UsageByModelGroup[]): DisplayModelGroup[] {
     const displayName = getModelDisplayName(g.model);
     let merged = map.get(displayName);
     if (!merged) {
-      merged = { displayName, totalCredits: 0, totalCount: 0, variations: [] };
+      merged = { displayName, totalCredits: 0, totalCount: 0, totalUsd: 0, variations: [] };
       map.set(displayName, merged);
     }
+    merged.totalUsd += g.totalUsd;
     merged.totalCredits += g.totalCredits;
     merged.totalCount += g.totalCount;
     for (const v of g.variations) {
@@ -399,10 +401,15 @@ function mergeByDisplayName(groups: UsageByModelGroup[]): DisplayModelGroup[] {
   return result;
 }
 
-function MostRecentCard({ items }: { items: UsageRecentItem[] }) {
+function MostRecentCard({ items, falBilling }: { items: UsageRecentItem[]; falBilling?: string }) {
   return (
     <div className="settings-card" style={{ marginTop: 20 }}>
       <h3 className="settings-card-title">Most Recent</h3>
+      {falBilling === "forbidden" && (
+        <div className="settings-empty" style={{ padding: "0 0 8px", fontSize: 12 }}>
+          Showing credit estimates. To see what fal actually billed, add a fal key with ADMIN scope in Settings.
+        </div>
+      )}
       {items.length === 0 ? (
         <div className="settings-empty" style={{ padding: "18px 0 8px" }}>
           No generations yet
@@ -422,8 +429,11 @@ function MostRecentCard({ items }: { items: UsageRecentItem[] }) {
               <span className="settings-recent-row-time">
                 {formatRelativeTime(item.createdAt)}
               </span>
-              <span className="settings-recent-row-credits">
-                {item.creditsCharged} cr
+              <span
+                className="settings-recent-row-credits"
+                title={item.falCostUsd != null && item.falEstimateUsd != null ? `fal billed $${item.falCostUsd.toFixed(4)} · estimated $${item.falEstimateUsd.toFixed(4)}` : undefined}
+              >
+                {item.falCostUsd != null ? `$${item.falCostUsd.toFixed(2)}` : `${item.creditsCharged} cr`}
               </span>
             </div>
           ))}
@@ -446,7 +456,7 @@ function ModelBreakdownCard({ groups }: { groups: DisplayModelGroup[] }) {
                 {group.totalCount} {group.totalCount === 1 ? "job" : "jobs"}
               </span>
               <span className="settings-model-group-credits">
-                {group.totalCredits} cr
+                {group.totalUsd > 0 ? `$${group.totalUsd.toFixed(2)}` : `${group.totalCredits} cr`}
               </span>
             </div>
             <div className="settings-model-group-variations">
@@ -537,7 +547,7 @@ function UsageSection() {
             </div>
           ) : (
             <>
-              <MostRecentCard items={data?.recent ?? []} />
+              <MostRecentCard items={data?.recent ?? []} falBilling={data?.falBilling} />
               <ModelBreakdownCard groups={modelGroups} />
             </>
           )}

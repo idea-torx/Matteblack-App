@@ -14,6 +14,7 @@ export type UsageByModelGroup = {
   model: string;
   totalCredits: number;
   totalCount: number;
+  totalUsd: number;
   variations: UsageVariation[];
 };
 
@@ -23,11 +24,14 @@ export type UsageRecentItem = {
   type: string;
   creditsCharged: number;
   createdAt: string;
+  falCostUsd: number | null;
+  falEstimateUsd: number | null;
 };
 
 export type UsageData = {
   totalCredits: number;
   totalJobs: number;
+  falBilling?: "unknown" | "ok" | "forbidden";
   grossCharged: number;
   refunds: number;
   netUsed: number;
@@ -48,6 +52,7 @@ type UsageState = {
 type RawUsageResponse = {
   total_credits: number;
   total_jobs: number;
+  fal_billing?: "unknown" | "ok" | "forbidden";
   gross_charged?: number;
   refunds?: number;
   net_used?: number;
@@ -59,6 +64,7 @@ type RawUsageResponse = {
     model: string;
     total_credits: number;
     total_count: number;
+    total_usd?: number;
     variations: { type: string; credits: number; count: number }[];
   }[];
   recent?: {
@@ -67,6 +73,8 @@ type RawUsageResponse = {
     type: string;
     credits_charged: number;
     created_at: string;
+    fal_cost_usd?: number | null;
+    fal_estimate_usd?: number | null;
   }[];
 };
 
@@ -106,6 +114,7 @@ export function useUsage(): UsageState {
           model: g.model,
           totalCredits: g.total_credits,
           totalCount: g.total_count,
+          totalUsd: g.total_usd ?? 0,
           variations: g.variations.map((v) => ({
             type: v.type,
             credits: v.credits,
@@ -118,10 +127,13 @@ export function useUsage(): UsageState {
           type: r.type,
           creditsCharged: r.credits_charged,
           createdAt: r.created_at,
+          falCostUsd: r.fal_cost_usd ?? null,
+          falEstimateUsd: r.fal_estimate_usd ?? null,
         }));
         setData({
           totalCredits: raw.total_credits,
           totalJobs: raw.total_jobs,
+          falBilling: raw.fal_billing,
           grossCharged: raw.gross_charged ?? raw.total_credits,
           refunds: raw.refunds ?? 0,
           netUsed: raw.net_used ?? raw.total_credits,

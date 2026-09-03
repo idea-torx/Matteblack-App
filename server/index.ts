@@ -36,6 +36,7 @@ import { seedBuiltinSkills } from "./skills/builtin.js";
 import githubRoutes from "./routes/github.js";
 import agentTimelineRoutes from "./routes/agentTimeline.js";
 import cinemaExportRoutes from "./routes/cinemaExport.js";
+import { reconcileRecentJobs, falBillingStatus } from "./services/falBilling.js";
 import directorRoutes from "./routes/director.js";
 import agentCutsRoutes from "./routes/agentCuts.js";
 import agentRenderRoutes from "./routes/agentRender.js";
@@ -1694,7 +1695,7 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
     const where = conditions.join(" AND ");
 
     const totalResult = await pool.query(
-      `SELECT COALESCE(SUM(credits_charged), 0) AS total_credits, COUNT(*)::int AS total_jobs FROM jobs WHERE ${where}`,
+      `SELECT COALESCE(SUM(credits_charged), 0) AS total_credits, COUNT(*)::int AS total_jobs, COALESCE(SUM((metadata->>'fal_cost_usd')::numeric), 0) AS usd FROM jobs WHERE ${where}`,
       values
     );
 
@@ -1737,14 +1738,16 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
       values
     );
     const byModelResult = await pool.query(
-      `SELECT model, type, COALESCE(SUM(credits_charged), 0) AS credits, COUNT(*)::int AS count
+      `SELECT model, type, COALESCE(SUM(credits_charged), 0) AS credits, COUNT(*)::int AS count,
+              COALESCE(SUM((metadata->>'fal_cost_usd')::numeric), 0) AS usd
        FROM jobs WHERE ${where} AND model IS NOT NULL AND model <> ''
        GROUP BY model, type
        ORDER BY credits DESC`,
       values
     );
     const recentResult = await pool.query(
-      `SELECT id, model, type, COALESCE(credits_charged, 0) AS credits_charged, created_at
+      `SELECT id, model, type, COALESCE(credits_charged, 0) AS credits_charged, created_at,
+              (metadata->>'fal_cost_usd')::numeric AS fal_cost_usd, (metadata->>'fal_estimate_usd')::numeric AS fal_estimate_usd
        FROM jobs WHERE ${where}
        ORDER BY created_at DESC
        LIMIT 10`,
@@ -1852,6 +1855,7 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
         model: string;
         total_credits: number;
         total_count: number;
+        total_usd?: number;
         variations: { type: string; credits: number; count: number }[];
       }
     >();
@@ -1860,10 +1864,11 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
       const count = Number(r.count);
       let group = modelGroupsMap.get(r.model);
       if (!group) {
-        group = { model: r.model, total_credits: 0, total_count: 0, variations: [] };
+        group = { model: r.model, total_credits: 0, total_count: 0, total_usd: 0, variations: [] };
         modelGroupsMap.set(r.model, group);
       }
       group.variations.push({ type: r.type, credits, count });
+      group.total_usd = (group.total_usd ?? 0) + Number(r.usd);
       group.total_credits += credits;
       group.total_count += count;
     }
@@ -1912,6 +1917,8 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
         type: r.type as string,
         credits_charged: Number(r.credits_charged),
         created_at: r.created_at as Date,
+        fal_cost_usd: r.fal_cost_usd == null ? null : Number(r.fal_cost_usd),
+        fal_estimate_usd: r.fal_estimate_usd == null ? null : Number(r.fal_estimate_usd),
       })),
       ...agentLedgerRecent.rows.map((r) => ({
         id: r.id as string,
@@ -1951,6 +1958,8 @@ app.get("/api/usage", requireAuth, requireVerifiedEmail, async (req: AuthRequest
     res.json({
       total_credits: jobsGross + agentTotalCredits,
       total_jobs: Number(totalResult.rows[0].total_jobs) + agentTotalTurns,
+      total_usd: Number(totalResult.rows[0].usd),
+      fal_billing: falBillingStatus(),
       gross_charged: grossCharged,
       refunds: refundsTotal,
       net_used: netUsed,
@@ -3726,6 +3735,7 @@ async function start() {
     // Phase L: refresh fal's at-cost unit prices in the background. Delayed and
     // un-awaited so it never competes with startup; a no-op without a fal key.
     scheduleFalPricingRefresh();
+    setTimeout(() => void reconcileRecentJobs().catch(() => {}), 45_000).unref();
   });
   // The desktop shell pins a port so the renderer keeps one origin across
   // restarts — localStorage (chat history, prefs) is keyed by origin, and an
