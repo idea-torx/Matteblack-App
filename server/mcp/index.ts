@@ -234,7 +234,7 @@ const EMBEDDED_TOOLS: Tool[] = [
   {
     name: "transform_media",
     description:
-      "Transform an existing image by URL (edit / upscale / background-remove / etc.). Requires a reference image URL in referenceUrls. Blocks until ready and returns the result URL. Connect the running Fal Forge app for the full schema.",
+      "Transform an existing image by URL (edit / upscale / background-remove / vectorize). `vectorize` traces the image into SVG paths; then `get_asset` on the result returns the markup to inline in render_html. Requires a reference image URL in referenceUrls. Blocks until ready and returns the result URL. Connect the running Fal Forge app for the full schema.",
     inputSchema: {
       type: "object",
       properties: {
@@ -522,7 +522,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "render_html",
     description:
-      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. To put real imagery in the page — a generated character as a sticker, a photo as a background, a logo from the user's repo — pass `images` and reference each one as `asset:NAME` in your CSS or markup; the pixels are attached server-side and never enter this conversation. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To revise a piece, call `get_html` for its markup, then call this again with the same `nodeId` and an `edits` list of exact find/replace pairs — that is far faster than re-sending the whole document, and it never drifts from what is on the canvas. Send `html` again only when the change is structural. Never redraw from memory.",
+      "Render a complete HTML/CSS document to a PNG and place it on the user's canvas as an ordinary image — programmatic art, no model and no cost. Use this for anything better drawn than generated: type-led posters, quiz cards, receipts, chat screenshots, charts, layouts with real text. Write ONE self-contained document (inline all CSS; no external files, no scripts needed) sized to the exact pixels you pass. To put real imagery in the page — a generated character as a sticker, a photo as a background, a logo from the user's repo — pass `images` and reference each one as `asset:NAME` in your CSS or markup; the pixels are attached server-side and never enter this conversation. The result behaves like any other image on the canvas, so it can be exported in a frame, laid on the cinema timeline, or fed to `transform_media`. To bring a generated or uploaded image in as real vector shapes rather than pixels, first `transform_media` with operation `vectorize`, then `get_asset` on the result: it returns the SVG markup, and you paste the `<svg>` inline so its paths can be recolored, scaled and composed with the type. To revise a piece, call `get_html` for its markup, then call this again with the same `nodeId` and an `edits` list of exact find/replace pairs — that is far faster than re-sending the whole document, and it never drifts from what is on the canvas. Send `html` again only when the change is structural. Never redraw from memory.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1228,6 +1228,7 @@ async function runGetAsset(args: Record<string, unknown>): Promise<CallToolResul
     const a = (await httpJson(ep, "GET", `/api/agent/asset/${encodeURIComponent(id)}`)) as AssetRow & {
       status?: string;
       error?: string | null;
+      svg?: string;
     };
     const meta = [
       `Asset ${a.id}`,
@@ -1244,7 +1245,10 @@ async function runGetAsset(args: Record<string, unknown>): Promise<CallToolResul
     // self-guards on the response content-type + a size cap, so this is safe even
     // if the guess is wrong (video/audio → returns null, no huge download).
     const looksImage = /image/i.test(a.type ?? "") || /\.(png|jpe?g|webp|gif|bmp|avif)(\?|$)/i.test(a.url ?? "");
-    if (looksImage && a.url) {
+    if (a.svg) {
+      // ponytail: 200k chars is plenty for a traced logo; a photo trace is bigger and the tail is dropped.
+      content.push({ type: "text", text: `svg (inline this in render_html markup, restyle fill/stroke freely):\n${a.svg.slice(0, 200_000)}` });
+    } else if (looksImage && a.url) {
       const thumb = await fetchThumbnail(ep, a.url);
       if (thumb) content.push({ type: "image", data: thumb.data, mimeType: thumb.mimeType });
     }

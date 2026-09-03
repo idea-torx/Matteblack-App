@@ -1441,7 +1441,7 @@ type GenKind = "image" | "video";
 type GenQuality = "low" | "medium" | "high";
 
 // Non-generative transforms exposed via the transform_media tool.
-type TransformOp = "remove_background" | "upscale" | "resize";
+type TransformOp = "remove_background" | "upscale" | "resize" | "vectorize";
 
 const GEN_ALLOWED_AR = new Set([
   "1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "3:2", "2:3",
@@ -2923,15 +2923,15 @@ export function buildGenerateBody(
 const TRANSFORM_MEDIA_TOOL: Tool = {
   name: "transform_media",
   description:
-    "Apply a non-generative transform to an existing image: remove background (Pixelcut), upscale (SeedVR), or resize / outpaint to a new aspect ratio (Bria). The result appears inline in the chat as a card the user can drag to the canvas. Requires a reference image — call this only when one is available in the 'Available references' list. Counts toward the 5-call-per-turn limit shared with generate_media.",
+    "Apply a non-generative transform to an existing image: remove background (Pixelcut), upscale (SeedVR), resize / outpaint to a new aspect ratio (Bria), or vectorize (Recraft — traces the image into SVG paths; afterwards get_asset returns the markup so the paths can be inlined in an HTML design). The result appears inline in the chat as a card the user can drag to the canvas. Requires a reference image — call this only when one is available in the 'Available references' list. Counts toward the 5-call-per-turn limit shared with generate_media.",
   input_schema: {
     type: "object",
     properties: {
       operation: {
         type: "string",
-        enum: ["remove_background", "upscale", "resize"],
+        enum: ["remove_background", "upscale", "resize", "vectorize"],
         description:
-          "Which transform to apply. 'remove_background' uses Pixelcut to cut out the subject. 'upscale' enlarges the image with SeedVR (specify upscaleFactor 2 or 4). 'resize' uses Bria to outpaint the image into a new aspect ratio (specify aspectRatio).",
+          "Which transform to apply. 'remove_background' uses Pixelcut to cut out the subject. 'upscale' enlarges the image with SeedVR (specify upscaleFactor 2 or 4). 'resize' uses Bria to outpaint the image into a new aspect ratio (specify aspectRatio). 'vectorize' traces the image into an SVG of paths (Recraft).",
       },
       referenceImageId: {
         type: "string",
@@ -2978,7 +2978,8 @@ function parseTransformMediaInput(
   if (opRaw === "remove_background" || opRaw === "remove_bg") operation = "remove_background";
   else if (opRaw === "upscale") operation = "upscale";
   else if (opRaw === "resize") operation = "resize";
-  else return { error: "Invalid operation. Must be remove_background, upscale, or resize." };
+  else if (opRaw === "vectorize") operation = "vectorize";
+  else return { error: "Invalid operation. Must be remove_background, upscale, resize, or vectorize." };
 
   const refId = typeof input.referenceImageId === "string" ? input.referenceImageId.trim() : "";
   if (!refId) return { error: "Missing referenceImageId — pick an image from the available references." };
@@ -3026,6 +3027,22 @@ function buildTransformBody(
         referenceImageUrls: [referenceUrl],
         upscaleFactor: tool.upscaleFactor,
         upscale_factor: tool.upscaleFactor,
+        canvas_id: canvasId,
+        workspace_id: workspaceId,
+        params: { source: "agent" },
+      },
+    };
+  }
+  if (tool.operation === "vectorize") {
+    const model = "recraft-vectorize";
+    return {
+      type: "image_to_vector",
+      resolvedModel: model,
+      body: {
+        type: "image_to_vector",
+        model,
+        referenceImageUrls: [referenceUrl],
+        image_url: referenceUrl,
         canvas_id: canvasId,
         workspace_id: workspaceId,
         params: { source: "agent" },
@@ -4697,7 +4714,7 @@ async function placeAgentGenerationOnCanvas(
   userId: string,
   canvasId: string,
   jobId: string,
-  kind: "image" | "video",
+  kind: "image" | "video" | "svg",
   prompt: string,
   sizeHint: { aspectRatio?: string; resolution?: string | null; size?: { w: number; h: number } },
 ): Promise<void> {
@@ -4707,7 +4724,7 @@ async function placeAgentGenerationOnCanvas(
     // no resize. "quality" tier + resolution matches startGeneration's call.
     // An explicit `size` wins: a continuation has to match the clip it
     // continues, whatever tier that one happened to be generated at.
-    const size = sizeHint.size ?? placeholderSize("quality", sizeHint.aspectRatio, kind, sizeHint.resolution ?? null);
+    const size = sizeHint.size ?? placeholderSize("quality", sizeHint.aspectRatio, kind === "svg" ? "image" : kind, sizeHint.resolution ?? null);
 
     // Existing occupancy (skip frames/groups — they're containers, not obstacles).
     const existing = await pool.query(
@@ -4853,7 +4870,7 @@ router.get("/api/agent/asset/:id", requireMcpToken, requireAuth, async (req: Aut
   const jobId = req.params.id;
   try {
     const result = await pool.query(
-      `SELECT id, user_id, type, model, status, result_url, params, error, created_at
+      `SELECT id, user_id, type, model, status, result_url, params, metadata, error, created_at
          FROM jobs WHERE id = $1`,
       [jobId],
     );
@@ -4868,6 +4885,8 @@ router.get("/api/agent/asset/:id", requireMcpToken, requireAuth, async (req: Aut
       status: row.status,
       url: row.result_url,
       prompt: typeof params.prompt === "string" ? params.prompt : undefined,
+      // Vectorize jobs keep their traced markup: the agent inlines the paths.
+      svg: typeof row.metadata?.svg_content === "string" ? row.metadata.svg_content : undefined,
       error: row.error,
       createdAt: row.created_at,
     });
@@ -5098,7 +5117,7 @@ router.post("/api/agent/tool", requireMcpToken, requireAuth, requireVerifiedEmai
         } catch { /* fall back to square placeholder */ }
       }
       await placeAgentGenerationOnCanvas(
-        userId, canvasId, dispatch.jobId!, "image", parsed.prompt || "Transform",
+        userId, canvasId, dispatch.jobId!, parsed.operation === "vectorize" ? "svg" : "image", parsed.prompt || "Transform",
         { aspectRatio: transformAr },
       );
       res.json({ jobId: dispatch.jobId, type: built.type, model: built.resolvedModel, canvasId });
