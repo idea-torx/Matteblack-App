@@ -1357,6 +1357,7 @@ Use this whenever the ask is about the canvas as a *space* rather than about mak
 
 - **Never move a locked node.** The route skips them and tells you so, but planning around them is
   your job: treat a locked node's rectangle as occupied ground and lay the rest out around it.
+  Cinema frames never count as locked: move them freely.
 - **Never move what the user just selected.** If they attached or selected nodes this turn, those are
   the thing they are working on — leave them exactly where they are and tidy around them.
 - **Never resize** unless resizing was asked for. Tidying means position. Sizes carry the user's own

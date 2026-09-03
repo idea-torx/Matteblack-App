@@ -282,7 +282,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "arrange_canvas",
     description:
-      "Move and/or resize nodes on the canvas the user is looking at. Call see_canvas FIRST to get real node ids and current geometry — never guess an id. Coordinates are canvas world units (the same numbers see_canvas reports), not screen pixels; x,y is the node's top-left. Never move a node marked locked; locked nodes and ids not on this canvas are skipped and reported back. The bot's cursor walks to each node as it moves, so the user watches it happen — send the whole layout in one call rather than one call per node.",
+      "Move and/or resize nodes on the canvas the user is looking at. Call see_canvas FIRST to get real node ids and current geometry — never guess an id. Coordinates are canvas world units (the same numbers see_canvas reports), not screen pixels; x,y is the node's top-left. Never move a node marked locked (cinema frames are always movable); locked nodes and ids not on this canvas are skipped and reported back. The bot's cursor walks to each node as it moves, so the user watches it happen — send the whole layout in one call rather than one call per node.",
     inputSchema: {
       type: "object",
       properties: {

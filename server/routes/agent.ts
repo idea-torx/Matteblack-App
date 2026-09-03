@@ -5166,7 +5166,9 @@ router.get("/api/agent/canvas", requireMcpToken, requireAuth, async (req: AuthRe
         label: (r.label as string | null) ?? "",
         x: Number(r.x), y: Number(r.y),
         width: Number(r.width), height: Number(r.height),
-        locked: !!r.locked,
+        // Cinema frames are born locked so a stray drag can't shift a 1920-wide
+        // node; that is a UI guard, not user intent, so the agent may move them.
+        locked: !!r.locked && r.node_type !== "cinema",
       })),
     });
   } catch (err) {
@@ -5224,7 +5226,7 @@ router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (re
   let joined = false;
   try {
     const { rows } = await pool.query(
-      `SELECT id, x, y, width, height, locked FROM canvas_nodes
+      `SELECT id, x, y, width, height, (locked AND node_type <> 'cinema') AS locked FROM canvas_nodes
         WHERE canvas_id = $1 AND id = ANY($2::uuid[])`,
       [canvasId, typed.map((m) => m.id)],
     );
