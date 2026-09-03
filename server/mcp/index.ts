@@ -256,6 +256,11 @@ const EMBEDDED_TOOLS: Tool[] = [
  *  so it can target existing assets as references. */
 const READ_TOOLS: Tool[] = [
   {
+    name: "check_setup",
+    description: "Check whether the user's fal.ai key is saved in Settings → Providers and whether fal accepts it. Free, never reveals the key. Run it after walking the user through setup, or whenever a generation fails with an auth error.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "list_models",
     description: "List the generation models available in Matteblack and their media type (image/video/audio). Use to self-document what can be generated.",
     inputSchema: { type: "object", properties: {} },
@@ -981,6 +986,20 @@ const NOT_RUNNING =
 function errToFail(err: unknown): CallToolResult {
   if (err instanceof AppUnavailableError) return fail(err.message + " Is the Fal Forge app still open?");
   return fail(err instanceof Error ? err.message : String(err));
+}
+
+async function runCheckSetup(): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail(NOT_RUNNING);
+  try {
+    const d = (await httpJson(ep, "GET", "/api/agent/setup")) as { falKeySet: boolean; masked?: string; falKeyValid: boolean | null; httpStatus?: number; error?: string };
+    if (!d.falKeySet) return ok("No fal.ai key saved. Settings → Providers → fal.ai → paste the key → Save, then run check_setup again.");
+    if (d.falKeyValid === true) return ok(`fal.ai key ${d.masked ?? ""} saved and accepted by fal. Ready to generate.`);
+    if (d.falKeyValid === false) return ok(`fal.ai key ${d.masked ?? ""} is saved but fal rejected it (HTTP ${d.httpStatus}). Ask the user to copy the key again from https://fal.ai/dashboard/keys and paste it in Settings → Providers → fal.ai.`);
+    return ok(`fal.ai key ${d.masked ?? ""} is saved but fal could not be reached (${d.error ?? "network"}). Try again in a moment.`);
+  } catch (err) {
+    return errToFail(err);
+  }
 }
 
 async function runListModels(): Promise<CallToolResult> {
@@ -1822,6 +1841,7 @@ async function main(): Promise<void> {
       return fail(`Tool "${name}" is not enabled for this run.`);
     }
     // Read tools first (no job dispatch / progress).
+    if (name === "check_setup") return runCheckSetup();
     if (name === "list_models") return runListModels();
     if (name === "search_fal_models") return runSearchFalModels(args);
     if (name === "get_fal_model_schema") return runGetFalModelSchema(args);

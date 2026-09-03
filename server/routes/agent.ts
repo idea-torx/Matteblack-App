@@ -17,7 +17,7 @@ import probe from "probe-image-size";
 import fs from "node:fs";
 import { UPLOADS_DIR } from "../config/runtime.js";
 import { resolveUploadPath } from "../utils/uploadPath.js";
-import { getAnthropicKey } from "../config/userConfig.js";
+import { getAnthropicKey, getFalKey, maskKey } from "../config/userConfig.js";
 import { listAvailableModels } from "../fal.js";
 import { readCustomModel } from "../models/customModels.js";
 import { estimateFalCost, falPricedModelKeys } from "../config/falCost.js";
@@ -4778,6 +4778,23 @@ router.get("/api/agent/tools", requireMcpToken, requireAuth, (_req: AuthRequest,
 
 // MCP: enumerate available generation models + their media type. Backs the
 // `list_models` tool so Claude can self-document what's installed.
+// MCP `check_setup`: is a fal key saved, and does fal accept it? The probe is a
+// status lookup for a request id that cannot exist — a bad key gets 401 before
+// the id is even looked at, a good key gets past auth. Costs nothing; the key
+// never leaves the server.
+router.get("/api/agent/setup", requireMcpToken, requireAuth, async (_req: AuthRequest, res) => {
+  const key = getFalKey();
+  if (!key) { res.json({ falKeySet: false, falKeyValid: null }); return; }
+  try {
+    const r = await fetch("https://queue.fal.run/fal-ai/fast-sdxl/requests/00000000-0000-0000-0000-000000000000/status", {
+      headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(10_000),
+    });
+    res.json({ falKeySet: true, masked: maskKey(key), falKeyValid: r.status !== 401 && r.status !== 403, httpStatus: r.status });
+  } catch (err) {
+    res.json({ falKeySet: true, masked: maskKey(key), falKeyValid: null, error: err instanceof Error ? err.message : "fal unreachable" });
+  }
+});
+
 router.get("/api/agent/models", requireMcpToken, requireAuth, (_req: AuthRequest, res) => {
   res.json({ models: listAvailableModels() });
 });
