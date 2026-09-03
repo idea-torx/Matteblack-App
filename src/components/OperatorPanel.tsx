@@ -56,8 +56,8 @@ const EFFORT_LEVELS = [
   // Matteblack's answer to Claude Code's "Ultracode" — this app generates, it doesn't code.
   { id: "max", label: "Ultra Gen" },
 ] as const;
-/** Default to High: reasoning is free at the margin, generations are not. */
-const DEFAULT_EFFORT = 2;
+/** Default to Medium: High made every turn think hard, and HTML art re-renders free in 90ms. */
+const DEFAULT_EFFORT = 1;
 const EFFORT_STORAGE_KEY = "mb-operator-effort-v1";
 // Conversation persistence. The panel unmounts whenever the rail switches view,
 // which used to throw the whole thread away; claude's own session survives (we
