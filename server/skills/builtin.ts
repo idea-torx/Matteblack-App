@@ -697,6 +697,11 @@ Use it for every H3 shot. Use it with \`bridge\`/\`storyboard\` when there is mo
 - Turbo: \`h3-turbo-t2v\` / \`h3-turbo-i2v\` (or \`model: "h3-turbo"\`) — fal's post-trained H3 Max, same
   duration/resolution ladder, faster. No r2v, so it cannot back \`seam: "reference"\` chains. Use it when
   the user says "turbo".
+- Director: \`minimax/h3-max/director\` is a LIVE WebRTC session, not a clip call — the user steers it
+  from Make → Video → "MiniMax H3 Max Director" (480p/768p, 16:9/9:16/1:1, memory 1–50, $0.08/s,
+  60 s minimum per session, >2 min needs fal approval). The recorded take lands on the canvas as a normal
+  video node, so it can be trimmed and chained like any other clip. No tool runs it; get_skill \`director\`
+  for how to coach the session, then point the user there.
 
 ## Duration decides the structure — this is the whole skill
 
@@ -1263,6 +1268,61 @@ the next sequence in this world inherits the vectors and not just the look.
 - **skid-stop-seam-for-action-chains** — To chain an ACTION piece on frame seams without the bridge camera-at-rest rule killing the energy, make the rest diegetic: the character SKIDS TO A STOP in the final second of each chunk (camera stops dead with him, held perfectly still) and the next chunk opens with him EXPLODING back into a sprint in the first frame. That gives the seam a genuinely holdable still while the clip still reads as one continuous chase. Pair it with ONE lateral tracking move at constant speed per chunk and negatives standing still / walking slowly / static character / camera reversing direction. Verified on Albert Runs, 3x15s 9:16 768p, both continuations h3-max-i2v.
 `;
 
+const DIRECTOR = `---
+name: Director — continuous video stream
+description: Coach the user through an H3 Max Director live session — a world model that extrapolates forever from short prompt nudges, not a text-to-video call.
+---
+
+# Director — continuous video stream
+
+\`minimax/h3-max/director\` is not a clip model. It is a live WebRTC stream that keeps generating 5–15 s
+chunks for as long as the session is open, each chunk conditioned on the frames before it. The prompt is a
+standing instruction the model extrapolates from, not a request that ends. No tool runs it: the user drives
+it from Make → Video → "MiniMax H3 Max Director". Your job is the prompts they type and when to type them.
+
+## What is true about it
+
+- **It never restarts.** A new prompt is applied at the next chunk boundary (expect 5–15 s of lag). The
+  subject, room and light carry over and bend toward the new instruction. You cannot "cut" inside a session;
+  a hard scene change is a Stop and a new session.
+- **It drifts.** Left alone it feeds on its own last frames: faces wander, rooms rearrange, light creeps.
+  Silence for more than ~20 s is a decision to let it drift.
+- **\`memory\` (1–50, default 12)** is how far back it looks. High memory holds identity longer and follows
+  prompts slower; low memory follows fast and forgets fast. 8–12 for a directed scene, 20+ for a static
+  tableau you want held, 4–6 for a montage that should mutate.
+- **Bill is wall-clock.** $0.08/s (promo $0.02/s until 2026-09-14), 60 s minimum per session, over 2 min
+  needs fal approval. Every session opened is at least the minimum. Never suggest "just try it" twice.
+- **The take is the whole performance.** It lands on the canvas as one video node (24 fps mp4, 480p or 768p,
+  16:9 / 9:16 / 1:1). The usable shot is cut out of it afterwards with trim and the cinema timeline.
+
+## How to direct
+
+1. **Opening prompt = establishing shot.** Write it as a \`cinematographer\` 5 s prompt: one subject, one
+   space, one light, one camera behaviour, present tense. That is the world it will extrapolate from, so put
+   everything permanent in it (wardrobe, lens, palette). Nothing that should change yet.
+2. **Nudges every 10–20 s.** One verb, one change, six to twelve words: "she turns to the window", "the
+   lamp ignites, white sweep across the sea", "camera drifts left, slower". The words already true stay
+   true; do not repeat the establishing prompt, that only tells it to hold.
+3. **Correct drift by naming what slipped**, not by re-describing the scene: "his coat is black again",
+  "the stair keeps its stone".
+4. **Stop on the beat you want**, not when it gets good; there are 5–15 s of tail after the last nudge.
+5. **Plan the session to 60–90 s.** The minimum is paid anyway; past two minutes drift wins and fal wants
+   approval.
+
+## When to use it instead of clips
+
+- Improvised or exploratory: the user does not yet know the shot and wants to find it live.
+- One long unbroken take where clip seams would show (a walk, a dance, a slow reveal).
+- Otherwise \`generate_media\` + \`bridge\` is cheaper, repeatable and cuttable. A 10 s H3 Max clip is $0.80;
+  the cheapest Director session is $4.80 standard.
+
+## What to hand the user
+
+Give them the establishing prompt and a numbered list of nudges with a rough second mark, e.g.
+\`0:00 establish · 0:15 nudge A · 0:30 nudge B · 0:50 stop\`. Keep the whole plan on one screen; they are
+typing it while the meter runs.
+`;
+
 const LAYOUT = `---
 name: Layout — tidying the canvas
 description: How to organise, group, align or line up what's already on the canvas. Covers the see → plan → arrange → confirm loop, the 24px gutter grid, where variants and frames go, and what must never be moved.
@@ -1461,6 +1521,7 @@ H3 Max per second, 480p costs about 60% of 768p, and \`render_html\` is free.
 | 20 s continuous | 2 × 10 s H3 Turbo 480p; second clip via \`continue_video\` seam \`frame\`; \`set_timeline\` | \`bridge\`; \`action-bridge\` for fights and chases | Two seams, one scene, no cut |
 | 30 s continuous | 3 × 10 s the same way | \`bridge\` | Three clips is the natural scene length |
 | Ad, trailer, scene | Scenes of ~3 clips, hard cut between scenes; \`generate_music\` / \`generate_voiceover\`; \`set_timeline\` | \`sequences\` (price once, one yes), \`storyboard\` for a story, then per-clip skills, then \`cuts\` | Continuity is per scene, never across the piece |
+| Live, improvised take | Make → Video → "MiniMax H3 Max Director" (user-driven; $0.08/s, 60 s minimum) | \`director\` for the plan, \`cinematographer\` for the establishing prompt | No tool runs it; the saved take is a normal video node |
 | Change an existing asset | \`transform_media\`: \`remove_background\`, \`upscale\`, \`resize\`, \`vectorize\` (then \`get_asset\` → paste the SVG into \`render_html\`) | \`render-html\` for the vector step | No new generation |
 | Copy | Write it, run a humanizer pass (\`humanizer-2-0\` if \`list_skills\` shows it), then \`generate_voiceover\` or \`render_html\` | \`humanizer-2-0\` | Wooden copy is the usual reason a good clip feels fake |
 
@@ -1536,6 +1597,7 @@ export const BUILTIN_SKILLS: Record<string, string> = {
   realism: REALISM,
   action: ACTION,
   "action-bridge": ACTION_BRIDGE,
+  director: DIRECTOR,
   layout: LAYOUT,
   sequences: SEQUENCES,
   repos: REPOS,
