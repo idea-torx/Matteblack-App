@@ -5248,7 +5248,8 @@ router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (re
         sessionId,
         userId,
         displayName: getOperatorContext(userId)?.botName || "Agent",
-        avatarUrl: null,
+        // The bot's emoji icon as an image, so the cursor gets a head.
+        avatarUrl: emojiAvatarUrl(getOperatorContext(userId)?.botIcon),
         role: "owner",
         bindingToken: crypto.randomBytes(24).toString("hex"),
       });
@@ -5294,3 +5295,10 @@ router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (re
 });
 
 export default router;
+
+/** Presence avatars are image URLs; bots only have an emoji, so paint it into a data-URL SVG. */
+function emojiAvatarUrl(icon: string | undefined): string | null {
+  if (!icon) return null;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text x="16" y="23" font-size="20" text-anchor="middle">${icon}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}

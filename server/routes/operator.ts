@@ -7,6 +7,7 @@
  */
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../sessions.js";
+import { refreshOpencodeModels } from "../operator/runners/opencode.js";
 import { runOperator, operatorStatus, operatorAuth, operatorLogin, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, RUNNERS, type OperatorEvent, type EffortLevel, type RunnerId } from "../operator/claudeOperator.js";
 import { setUserConfig, setOperatorModels } from "../config/userConfig.js";
 import { setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
@@ -163,7 +164,10 @@ function startReview(sessionId: string, botId?: string): void {
   reviews.set(sessionId, { ac, done });
 }
 
-router.get("/api/operator/status", requireAuth, (_req: AuthRequest, res) => {
+router.get("/api/operator/status", requireAuth, async (_req: AuthRequest, res) => {
+  // First load after launch: give the `opencode models` probe a moment so the
+  // panel's dropdown shows the real catalog instead of the seed list.
+  await Promise.race([refreshOpencodeModels(), new Promise((r) => setTimeout(r, 3000))]);
   res.json(operatorStatus());
 });
 
@@ -291,13 +295,13 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // Run as a bot: its own durable memory instead of the shared session memory.
   // Validated against this user's own bots — the id reaches a filesystem path.
   let botId: string | undefined;
-  let botPersona: { name: string; description: string } | undefined;
+  let botPersona: { name: string; description: string; icon: string } | undefined;
   if (body.botId !== undefined && body.botId !== null && body.botId !== "") {
     if (!isUuid(body.botId)) { res.status(400).json({ error: "unknown bot" }); return; }
-    const { rows } = await pool.query("SELECT id, name, description FROM bots WHERE id = $1 AND user_id = $2", [body.botId, req.userId]);
+    const { rows } = await pool.query("SELECT id, name, description, icon FROM bots WHERE id = $1 AND user_id = $2", [body.botId, req.userId]);
     if (rows.length === 0) { res.status(400).json({ error: "unknown bot" }); return; }
     botId = rows[0].id as string;
-    botPersona = { name: rows[0].name as string, description: (rows[0].description as string | null) ?? "" };
+    botPersona = { name: rows[0].name as string, description: (rows[0].description as string | null) ?? "", icon: (rows[0].icon as string | null) ?? "" };
   }
   const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : undefined;
   // The user has the floor again: stop any review still chewing on this session.
@@ -322,7 +326,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // canvas they have open, at their viewport. Read back in /api/agent/tool.
   const canvasId = typeof body.canvasId === "string" && body.canvasId ? body.canvasId : undefined;
   const viewport = parseViewport(body.viewport);
-  if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio, botName: botPersona?.name });
+  if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio, botName: botPersona?.name, botIcon: botPersona?.icon });
 
   // Ground truth about recent generations, injected every turn. The operator's
   // own history is lossy in exactly the moment it matters: interrupting a turn
