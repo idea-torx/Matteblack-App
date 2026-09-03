@@ -16,12 +16,12 @@ function getProxiedAudioUrl(url: string): string {
 }
 
 function useTheme(): string {
-  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "dark");
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-scheme") || "dark");
   useEffect(() => {
     const obs = new MutationObserver(() => {
-      setTheme(document.documentElement.getAttribute("data-theme") || "dark");
+      setTheme(document.documentElement.getAttribute("data-scheme") || "dark");
     });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] });
     return () => obs.disconnect();
   }, []);
   return theme;

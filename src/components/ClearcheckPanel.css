@@ -135,7 +135,7 @@
   color: var(--danger);
   background: rgba(var(--danger-rgb), 0.08);
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 /* Labels */
@@ -210,7 +210,7 @@
   color: var(--text-secondary);
   background: rgba(var(--tint-rgb), 0.04);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -268,7 +268,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.06);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
   flex-shrink: 0;
@@ -299,7 +299,7 @@
   color: var(--text-muted);
   background: transparent;
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -335,7 +335,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 10px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -369,7 +369,7 @@
   color: var(--text-muted);
   background: rgba(var(--tint-rgb), 0.04);
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
@@ -406,7 +406,7 @@
 .audit-row-thumb {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.05);
   display: flex;
   align-items: center;
@@ -495,7 +495,7 @@
   color: var(--text-muted);
   background: rgba(var(--tint-rgb), 0.04);
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
   flex-shrink: 0;
@@ -519,7 +519,7 @@
   color: var(--text-muted);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
   z-index: 1;

@@ -25,7 +25,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--text-muted);
   transition: color 0.12s, background 0.12s;
 }
@@ -41,7 +41,7 @@
   height: 28px;
   padding: 0;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 .hdr-logo-img {
@@ -124,7 +124,7 @@
   background: rgba(21, 21, 21, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-radius: 10px;
+  border-radius: 4px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   padding: 10px;
   display: flex;
@@ -140,7 +140,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.05);
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 6px;
+  border-radius: 4px;
   outline: none;
   margin-bottom: 8px;
   transition: border-color 0.12s;
@@ -161,7 +161,7 @@
   font-weight: 600;
   color: #fff;
   background: var(--accent);
-  border-radius: 6px;
+  border-radius: 4px;
   text-align: center;
   transition: background 0.12s;
 }
@@ -198,7 +198,7 @@
   font-weight: 700;
   color: #fff;
   background: var(--danger);
-  border-radius: 7px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -215,7 +215,7 @@
   background: rgba(21, 21, 21, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-radius: 10px;
+  border-radius: 4px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
@@ -393,8 +393,8 @@
 }
 
 /* ─── Light theme overrides ─── */
-[data-theme="light"] .proj-dropdown,
-[data-theme="light"] .notif-dropdown {
+[data-scheme="light"] .proj-dropdown,
+[data-scheme="light"] .notif-dropdown {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-md);

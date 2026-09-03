@@ -46,7 +46,7 @@ const TYPE_CONFIG: Record<AudioType, { label: string; className: string }> = {
 
 /* Wavesurfer takes raw color values (not CSS variables) at create-time,
  * so we can't lean on the same `--tint-rgb` plumbing the rest of the app
- * uses. Instead we read `[data-theme]` off <html> and translate it to a
+ * uses. Instead we read `[data-scheme]` off <html> and translate it to a
  * tint here — white-on-dark for dark mode, black-on-light for light mode
  * — then watch the attribute so live theme toggles update existing
  * Wavesurfer instances via `setOptions(...)`. Without this the soundwaves
@@ -55,7 +55,7 @@ type WaveTint = { waveColor: string; progressColor: string; cursorColor: string 
 
 function readWaveTint(): WaveTint {
   const isLight = typeof document !== "undefined"
-    && document.documentElement.getAttribute("data-theme") === "light";
+    && document.documentElement.getAttribute("data-scheme") === "light";
   const rgb = isLight ? "0, 0, 0" : "255, 255, 255";
   return {
     waveColor: `rgba(${rgb}, 0.28)`,
@@ -69,7 +69,7 @@ function useWaveTint(): WaveTint {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const obs = new MutationObserver(() => setTint(readWaveTint()));
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] });
     return () => obs.disconnect();
   }, []);
   return tint;

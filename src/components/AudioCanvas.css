@@ -2,7 +2,7 @@
 .audio-card {
   height: 100%;
   aspect-ratio: 21 / 9;
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--bg-surface);
   border: 1px solid rgba(var(--tint-rgb), 0.06);
   display: flex;
@@ -144,7 +144,7 @@
 .audio-toolbar-btn {
   width: 34px;
   height: 34px;
-  border-radius: 7px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -249,15 +249,15 @@
 }
 
 /* ---- Light mode: inline audio card ---- */
-[data-theme="light"] .audio-card {
+[data-scheme="light"] .audio-card {
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .audio-waveform-bar {
+[data-scheme="light"] .audio-waveform-bar {
   background: rgba(0, 0, 0, 0.12);
 }
-[data-theme="light"] .audio-card--playing .audio-waveform-bar {
+[data-scheme="light"] .audio-card--playing .audio-waveform-bar {
   background: rgba(var(--accent-rgb), 0.30);
 }
-[data-theme="light"] .audio-toolbar-btn:hover {
+[data-scheme="light"] .audio-toolbar-btn:hover {
   background: var(--overlay-hover);
 }

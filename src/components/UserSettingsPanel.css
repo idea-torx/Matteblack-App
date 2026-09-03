@@ -19,7 +19,7 @@
   width: 250px;
   max-height: 360px;
   background: var(--bg-surface);
-  border-radius: 10px 10px 0 0;
+  border-radius: 4px 10px 0 0;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
   display: flex;

@@ -48,7 +48,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.05);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
 }
@@ -101,7 +101,7 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 4px;
   z-index: 41;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4);
@@ -115,7 +115,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 13px;
   color: var(--text-primary);
   background: transparent;
@@ -138,7 +138,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
+  border-radius: 4px;
   background: rgba(124, 58, 237, 0.25);
   color: #ddd6fe;
   font-size: 11px;
@@ -163,7 +163,7 @@
   color: white;
   background: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -204,7 +204,7 @@
 .proj-card {
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.025);
   border: 1px solid rgba(var(--tint-rgb), 0.04);
   overflow: hidden;
@@ -276,7 +276,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.06);
   border: 1px solid rgba(var(--tint-rgb), 0.1);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 10px 12px;
   outline: none;
   transition: border-color 0.15s;
@@ -302,7 +302,7 @@
   color: white;
   background: var(--accent);
   padding: 8px 0;
-  border-radius: 6px;
+  border-radius: 4px;
   text-align: center;
   transition: background 0.12s;
   cursor: pointer;
@@ -319,7 +319,7 @@
   color: var(--text-muted);
   background: rgba(var(--tint-rgb), 0.06);
   padding: 8px 0;
-  border-radius: 6px;
+  border-radius: 4px;
   text-align: center;
   transition: color 0.12s, background 0.12s;
   cursor: pointer;
@@ -414,7 +414,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(8px);
   color: rgba(var(--tint-rgb), 0.7);
@@ -482,7 +482,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.06);
   color: var(--text-secondary);
   cursor: pointer;
@@ -523,7 +523,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.05);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 10px 12px;
   outline: none;
   transition: border-color 0.15s;
@@ -559,7 +559,7 @@
   font-weight: 500;
   color: var(--text-secondary);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.04);
   transition: color 0.12s, background 0.12s;
   cursor: pointer;
@@ -586,7 +586,7 @@
   font-weight: 500;
   color: var(--text-muted);
   padding: 10px 0;
-  border-radius: 6px;
+  border-radius: 4px;
   text-align: center;
   transition: color 0.12s, background 0.12s;
   cursor: pointer;
@@ -622,7 +622,7 @@
 }
 
 /* ─── Light theme overrides ─── */
-[data-theme="light"] .proj-settings-panel {
+[data-scheme="light"] .proj-settings-panel {
   background: var(--panel-bg);
   border-left: 1px solid var(--border-subtle);
 }
@@ -636,7 +636,7 @@
   color: var(--text-primary);
   background: rgba(var(--tint-rgb), 0.05);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
 }
@@ -657,7 +657,7 @@
  * white page. Same three hues, inverted into a pale wash, and the scrim
  * loses most of its weight (it only exists to seat the artwork against the
  * card, there is no text over it). */
-[data-theme="light"] .proj-card-thumb {
+[data-scheme="light"] .proj-card-thumb {
   background:
     radial-gradient(ellipse at 20% 50%, rgba(147, 51, 234, 0.13) 0%, transparent 60%),
     radial-gradient(ellipse at 80% 20%, rgba(37, 99, 235, 0.12) 0%, transparent 55%),
@@ -665,7 +665,7 @@
     linear-gradient(160deg, #f4f4f8 0%, #ececf3 35%, #e6e6ef 65%, #f1f1f6 100%);
 }
 
-[data-theme="light"] .proj-card-thumb-overlay {
+[data-scheme="light"] .proj-card-thumb-overlay {
   height: 32%;
   background: linear-gradient(transparent 0%, rgba(15, 15, 30, 0.12) 100%);
 }
@@ -679,13 +679,13 @@
 /* Hover actions sat on a 55%-black tile with a tinted glyph — fine over a dark
  * cover, a black blob over a light one. In light mode they become a frosted
  * white tile with a dark glyph, which stays legible over artwork either way. */
-[data-theme="light"] .proj-card-action {
+[data-scheme="light"] .proj-card-action {
   background: rgba(255, 255, 255, 0.82);
   color: rgba(0, 0, 0, 0.62);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
 }
-[data-theme="light"] .proj-card-action:hover {
+[data-scheme="light"] .proj-card-action:hover {
   background: #fff;
   color: rgba(0, 0, 0, 0.88);
 }
-[data-theme="light"] .proj-card-action--delete:hover { color: var(--danger); }
+[data-scheme="light"] .proj-card-action--delete:hover { color: var(--danger); }

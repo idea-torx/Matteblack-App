@@ -35,7 +35,7 @@ function getProxiedAudioUrl(url: string): string {
 }
 
 function isLightTheme(): boolean {
-  return document.documentElement.getAttribute("data-theme") === "light";
+  return document.documentElement.getAttribute("data-scheme") === "light";
 }
 
 export const AudioNode = memo(function AudioNode({

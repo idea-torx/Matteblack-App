@@ -19,7 +19,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.06);
   color: var(--text-secondary);
   transition: color 0.12s, background 0.12s;
@@ -33,7 +33,7 @@
 
 .gifmaker-source-preview {
   margin-top: 10px;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.2);
 }
@@ -56,7 +56,7 @@
 .gifmaker-preview {
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.02);
   border: 1px solid rgba(var(--tint-rgb), 0.04);
   display: flex;
@@ -166,7 +166,7 @@
   margin-top: 4px;
   padding: 4px 14px;
   font-size: 11px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.08);
   color: var(--text-secondary);
   cursor: pointer;

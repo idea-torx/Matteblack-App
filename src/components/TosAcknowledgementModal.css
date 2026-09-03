@@ -17,7 +17,7 @@
 .tos-modal {
   background: var(--bg-surface, #18181b);
   border: 1px solid var(--border, rgba(var(--tint-rgb), 0.08));
-  border-radius: 16px;
+  border-radius: 4px;
   max-width: 520px;
   width: 100%;
   max-height: 90vh;
@@ -157,7 +157,7 @@
   color: #fff;
   background: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: opacity 0.15s;
 }

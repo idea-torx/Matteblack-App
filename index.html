@@ -22,12 +22,16 @@
 
     <script>
       (function () {
+        // Mirrors THEMES in src/theme.ts. data-scheme drives every
+        // component-level CSS override; data-theme only picks the token block.
+        var SCHEMES = { dark: "dark", light: "light", "light-mono": "light", fal: "dark" };
+        var t = "dark";
         try {
-          var t = localStorage.getItem("mb-theme-v2");
-          document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-        } catch (e) {
-          document.documentElement.setAttribute("data-theme", "dark");
-        }
+          var v = localStorage.getItem("mb-theme-v2");
+          if (SCHEMES[v]) t = v;
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", t);
+        document.documentElement.setAttribute("data-scheme", SCHEMES[t]);
       })();
     </script>
     <link rel="icon" type="image/png" href="/favicon-light.png" />

@@ -65,8 +65,8 @@
 /* Two logo variants render together; CSS picks the right one for the
    active theme. Mirrors the IconRail dual-img pattern. */
 .mcs-logo--light { display: none; }
-[data-theme="light"] .mcs-logo--dark { display: none; }
-[data-theme="light"] .mcs-logo--light { display: block; }
+[data-scheme="light"] .mcs-logo--dark { display: none; }
+[data-scheme="light"] .mcs-logo--light { display: block; }
 
 .mcs-credits {
   font-size: 13px;
@@ -93,7 +93,7 @@
   color: var(--text-primary, #e8e8ed);
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -212,7 +212,7 @@
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   color: var(--text-primary, #e8e8ed);
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 4px;
   font-size: 14px;
   font-family: inherit;
   text-align: left;
