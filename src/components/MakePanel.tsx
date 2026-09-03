@@ -697,7 +697,7 @@ function ImageCards({
             { value: "16:9", w: 22, h: 12 },
           ].map(({ value: ar, w, h }) => (
             <button key={ar} type="button" className={`rpanel-ar-card ${aspectRatio === ar ? "rpanel-ar-card--active" : ""}`} onClick={() => setAspectRatio(ar)}>
-              <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}><rect width={w} height={h} rx="2" fill={aspectRatio === ar ? "var(--accent)" : "currentColor"} opacity={aspectRatio === ar ? 0.7 : 0.18} /></svg>
+              <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}><rect width={w} height={h} rx="2" fill="currentColor" opacity={aspectRatio === ar ? 0.9 : 0.18} /></svg>
               <span className="rpanel-ar-text">{ar}</span>
             </button>
           ))}
@@ -1503,7 +1503,7 @@ function VideoCards({
               { value: "1:1" as const, w: 18, h: 18 },
             ].map(({ value: ar, w, h }) => (
               <button key={ar} type="button" className={`rpanel-ar-card ${aspectRatio === ar ? "rpanel-ar-card--active" : ""}`} onClick={() => setAspectRatio(ar)}>
-                <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}><rect width={w} height={h} rx="2" fill={aspectRatio === ar ? "var(--accent)" : "currentColor"} opacity={aspectRatio === ar ? 0.7 : 0.18} /></svg>
+                <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h}><rect width={w} height={h} rx="2" fill="currentColor" opacity={aspectRatio === ar ? 0.9 : 0.18} /></svg>
                 <span className="rpanel-ar-text">{ar}</span>
               </button>
             ))}

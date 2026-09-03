@@ -243,9 +243,13 @@ function startServer() {
 // buttons read as floating on it. Only `symbolColor` flips with the theme so the
 // glyphs keep contrast. `height` must match --titlebar-h in index.css; 32px is
 // the native caption-button height, so there's no dead space around them.
+// Keyed by theme id (see THEMES in src/theme.ts). Unknown ids fall back to
+// `dark`. The fill is transparent, so only symbolColor really varies.
 const TITLEBAR_OVERLAY = {
   dark: { color: "#00000000", symbolColor: "#e8e8ed", height: 32 },
   light: { color: "#00000000", symbolColor: "#18181b", height: 32 },
+  "light-mono": { color: "#00000000", symbolColor: "#18181b", height: 32 },
+  fal: { color: "#00000000", symbolColor: "#ffffff", height: 32 },
 };
 
 function createWindow() {
@@ -323,7 +327,7 @@ ipcMain.handle("app:checkForUpdates", () => checkForUpdatesManually());
 ipcMain.handle("app:setTitleBarOverlay", (_e, theme) => {
   if (!mainWindow || typeof mainWindow.setTitleBarOverlay !== "function") return false;
   try {
-    mainWindow.setTitleBarOverlay(theme === "light" ? TITLEBAR_OVERLAY.light : TITLEBAR_OVERLAY.dark);
+    mainWindow.setTitleBarOverlay(TITLEBAR_OVERLAY[theme] || TITLEBAR_OVERLAY.dark);
     return true;
   } catch {
     return false; // platform without overlay support (macOS)

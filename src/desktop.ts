@@ -13,7 +13,7 @@ declare global {
       connectToClaude?: () => Promise<unknown>;
       getMcpConnectInfo?: () => Promise<unknown>;
       checkForUpdates?: () => Promise<unknown>;
-      setTitleBarOverlay?: (theme: "light" | "dark") => Promise<boolean>;
+      setTitleBarOverlay?: (theme: string) => Promise<boolean>;
     };
   }
 }

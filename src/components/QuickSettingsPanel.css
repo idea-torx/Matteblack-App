@@ -77,7 +77,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 14px 12px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.035);
   border: 1px solid rgba(var(--tint-rgb), 0.05);
 }
@@ -176,7 +176,7 @@
 .qs-guest-btn {
   display: flex; align-items: center; justify-content: center; width: 100%;
   font-size: 12px; font-weight: 600; color: #fff; padding: 9px 0;
-  border-radius: 6px; background: var(--accent); border: none; cursor: pointer;
+  border-radius: 4px; background: var(--accent); border: none; cursor: pointer;
   transition: background 0.12s;
 }
 .qs-guest-btn:hover { background: var(--accent-hover); }
@@ -187,7 +187,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 14px 12px 12px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.035);
   border: 1px solid rgba(var(--tint-rgb), 0.05);
 }
@@ -267,7 +267,7 @@
   font-weight: 600;
   color: var(--text-primary);
   padding: 8px 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.08);
   border: none;
   cursor: pointer;
@@ -286,7 +286,7 @@
   font-weight: 500;
   color: var(--text-secondary);
   padding: 9px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   text-align: left;
   background: none;
   border: none;
@@ -333,7 +333,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 9px;
+  border-radius: 4px;
   background: var(--danger);
   color: #fff;
   font-size: 10px;
@@ -392,7 +392,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.035);
   border: 1px solid rgba(var(--tint-rgb), 0.05);
   cursor: pointer;
@@ -447,7 +447,7 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.06);
   color: var(--text-primary);
 }
@@ -479,7 +479,7 @@
   align-items: center;
   gap: 6px;
   padding: 10px 10px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.035);
   border: 1px solid rgba(var(--tint-rgb), 0.05);
   color: var(--text-primary);
@@ -513,11 +513,11 @@
   white-space: nowrap;
 }
 
-[data-theme="light"] .qs-utility-btn {
+[data-scheme="light"] .qs-utility-btn {
   background: rgba(0, 0, 0, 0.025);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .qs-utility-btn:hover {
+[data-scheme="light"] .qs-utility-btn:hover {
   background: var(--overlay-hover);
   border-color: var(--border-strong);
 }
@@ -536,7 +536,7 @@
   color: #ffffff;
   background: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, transform 0.08s ease;
 }
@@ -553,7 +553,7 @@
 .qs-signout-card {
   margin-top: 4px;
   padding: 4px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: #ffffff;
   border: 1px solid rgba(15, 17, 21, 0.06);
   box-shadow:
@@ -568,16 +568,16 @@
 .qs-row--signout:hover { color: var(--danger); background: rgba(248, 113, 113, 0.08); }
 .qs-row--signout:hover .qs-row-icon { color: var(--danger); }
 
-[data-theme="dark"] .qs-signout-card {
+[data-scheme="dark"] .qs-signout-card {
   background: #1f1f24;
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 4px 12px rgba(0, 0, 0, 0.45);
 }
-[data-theme="dark"] .qs-row--signout { color: var(--danger-fg); }
-[data-theme="dark"] .qs-row--signout:hover { color: var(--danger-fg); background: rgba(248, 113, 113, 0.12); }
-[data-theme="dark"] .qs-row--signout:hover .qs-row-icon { color: var(--danger-fg); }
+[data-scheme="dark"] .qs-row--signout { color: var(--danger-fg); }
+[data-scheme="dark"] .qs-row--signout:hover { color: var(--danger-fg); background: rgba(248, 113, 113, 0.12); }
+[data-scheme="dark"] .qs-row--signout:hover .qs-row-icon { color: var(--danger-fg); }
 
 /* ─── Inbox popover ─── */
 .qs-inbox-popover {
@@ -679,24 +679,24 @@
 .qs-notif-time { font-size: 10px; color: var(--text-muted); }
 
 /* ─── Light-theme overrides ─── */
-[data-theme="light"] .qs-header { border-bottom: 1px solid var(--border-subtle); }
-[data-theme="light"] .qs-close:hover { background: var(--overlay-active); }
-[data-theme="light"] .qs-credits-bar { background: var(--overlay-active); }
-[data-theme="light"] .qs-buy-btn { background: var(--overlay-active); color: var(--text-primary); }
-[data-theme="light"] .qs-buy-btn:hover { background: var(--bg-hover); }
-[data-theme="light"] .qs-row:hover { background: var(--overlay-hover); }
-[data-theme="light"] .qs-row--active { background: var(--overlay-active); }
-[data-theme="light"] .qs-grid-card { background: rgba(0, 0, 0, 0.025); border-color: var(--border-subtle); }
-[data-theme="light"] .qs-grid-card:hover { background: var(--overlay-hover); border-color: var(--border-strong); }
-[data-theme="light"] .qs-grid-icon { background: rgba(0, 0, 0, 0.05); }
-[data-theme="light"] .qs-grid-tier-pill { background: rgba(0, 0, 0, 0.05); border-color: var(--border-subtle); color: var(--text-secondary); }
-[data-theme="light"] .qs-toggle { background: rgba(0, 0, 0, 0.15); }
-[data-theme="light"] .qs-inbox-popover { background: var(--panel-bg); }
-[data-theme="light"] .qs-inbox-header { border-bottom: 1px solid var(--border-subtle); }
-[data-theme="light"] .qs-notif-item { border-bottom: 1px solid var(--border-subtle); }
-[data-theme="light"] .qs-notif-item:hover { background: var(--overlay-hover); }
-[data-theme="light"] .qs-account-card,
-[data-theme="light"] .qs-credits-card { background: rgba(0, 0, 0, 0.025); border-color: var(--border-subtle); }
+[data-scheme="light"] .qs-header { border-bottom: 1px solid var(--border-subtle); }
+[data-scheme="light"] .qs-close:hover { background: var(--overlay-active); }
+[data-scheme="light"] .qs-credits-bar { background: var(--overlay-active); }
+[data-scheme="light"] .qs-buy-btn { background: var(--overlay-active); color: var(--text-primary); }
+[data-scheme="light"] .qs-buy-btn:hover { background: var(--bg-hover); }
+[data-scheme="light"] .qs-row:hover { background: var(--overlay-hover); }
+[data-scheme="light"] .qs-row--active { background: var(--overlay-active); }
+[data-scheme="light"] .qs-grid-card { background: rgba(0, 0, 0, 0.025); border-color: var(--border-subtle); }
+[data-scheme="light"] .qs-grid-card:hover { background: var(--overlay-hover); border-color: var(--border-strong); }
+[data-scheme="light"] .qs-grid-icon { background: rgba(0, 0, 0, 0.05); }
+[data-scheme="light"] .qs-grid-tier-pill { background: rgba(0, 0, 0, 0.05); border-color: var(--border-subtle); color: var(--text-secondary); }
+[data-scheme="light"] .qs-toggle { background: rgba(0, 0, 0, 0.15); }
+[data-scheme="light"] .qs-inbox-popover { background: var(--panel-bg); }
+[data-scheme="light"] .qs-inbox-header { border-bottom: 1px solid var(--border-subtle); }
+[data-scheme="light"] .qs-notif-item { border-bottom: 1px solid var(--border-subtle); }
+[data-scheme="light"] .qs-notif-item:hover { background: var(--overlay-hover); }
+[data-scheme="light"] .qs-account-card,
+[data-scheme="light"] .qs-credits-card { background: rgba(0, 0, 0, 0.025); border-color: var(--border-subtle); }
 
 /* When the floating Settings panel is open to the right of this panel,
  * the inbox popover is re-anchored so it clears the Settings panel
@@ -748,19 +748,19 @@ body:has(.settings-panel) .qs-panel { border-top-right-radius: 0; border-bottom-
  * The quick panel's cards were tinted grey on a grey ground, so they read as
  * dents rather than cards. Same white surface, border, shadow and 4px corner
  * as a settings card. */
-[data-theme="light"] .qs-grid-card,
-[data-theme="light"] .qs-utility-btn,
-[data-theme="light"] .qs-account-card,
-[data-theme="light"] .qs-credits-card,
-[data-theme="light"] .qs-signout-card {
+[data-scheme="light"] .qs-grid-card,
+[data-scheme="light"] .qs-utility-btn,
+[data-scheme="light"] .qs-account-card,
+[data-scheme="light"] .qs-credits-card,
+[data-scheme="light"] .qs-signout-card {
   background: #ffffff;
   border-color: rgba(15, 17, 21, 0.06);
   box-shadow:
     0 1px 2px rgba(15, 17, 21, 0.06),
     0 4px 12px rgba(15, 17, 21, 0.08);
 }
-[data-theme="light"] .qs-grid-card:hover,
-[data-theme="light"] .qs-utility-btn:hover {
+[data-scheme="light"] .qs-grid-card:hover,
+[data-scheme="light"] .qs-utility-btn:hover {
   background: #ffffff;
   border-color: rgba(15, 17, 21, 0.12);
   box-shadow:
@@ -781,3 +781,4 @@ body:has(.settings-panel) .qs-panel { border-top-right-radius: 0; border-bottom-
 .qs-guest-btn {
   border-radius: 4px;
 }
+

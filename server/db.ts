@@ -1253,6 +1253,18 @@ export async function initDB() {
     `);
   } catch { /* constraint already correct */ }
 
+  // Skills are publishable to the platform library like styles and workflows.
+  try {
+    await pool.query(`
+      ALTER TABLE platform_items DROP CONSTRAINT IF EXISTS platform_items_type_check;
+      ALTER TABLE platform_items ADD CONSTRAINT platform_items_type_check
+        CHECK (type IN ('style_pack', 'axiom_template', 'node_workflow', 'demo_asset', 'skill'));
+      ALTER TABLE platform_item_contents DROP CONSTRAINT IF EXISTS platform_item_contents_content_type_check;
+      ALTER TABLE platform_item_contents ADD CONSTRAINT platform_item_contents_content_type_check
+        CHECK (content_type IN ('style', 'axiom', 'workflow', 'asset', 'skill'));
+    `);
+  } catch { /* constraint already correct */ }
+
   try {
     const client = await pool.connect();
     try {

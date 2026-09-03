@@ -10,12 +10,17 @@
  * fading in and staying put. */
 
 /* Theming contract: style components with the tokens below, not hardcoded
- * colors. Light theme is activated by `data-theme="light"` on <html>
+ * colors. `data-theme` on <html> picks the token block (see THEMES in
+ * src/theme.ts); `data-scheme` ("light" | "dark") drives every component-
+ * level override, so a new theme reuses an existing shell for free.
  * (see src/theme.ts + the pre-paint script in index.html). Existing
  * dark-mode token values are frozen; new tokens must be defined for both
  * themes. */
 
-:root {
+/* .settings-theme-preview: theme cards reset to the dark baseline, then their
+ * own data-scheme / data-theme blocks (later in this file) layer on top. */
+:root,
+.settings-theme-preview {
   font-family: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   line-height: 1.4;
@@ -197,7 +202,7 @@
     0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
-[data-theme="light"] {
+[data-scheme="light"] {
   /* Surfaces — unified #F0F0F3 base so the body and panels sit on the
    * same off-white as the agent panel / raised surfaces. The canvas
    * (workspace) surface itself is set a touch darker so the dotted
@@ -282,6 +287,139 @@
   --panel-float-shadow:
     0 12px 28px rgba(15, 17, 21, 0.10),
     0 1px 3px rgba(15, 17, 21, 0.06);
+}
+
+
+/* ─── light-mono ────────────────────────────────────────────────────────
+ * The light shell with every brand hue pulled out. Inherits the whole
+ * [data-scheme="light"] block above (surfaces, borders, text) and only
+ * redefines the colour-carrying tokens, so no component rule knows this
+ * theme exists. */
+[data-theme="light-mono"] {
+  /* Brand ramp — one neutral fill, one neutral foreground. Every chip,
+   * tile and badge that reaches for a stop lands on grey. */
+  --c-periwinkle: #71717a;
+  --c-cyan: #71717a;
+  --c-mint: #71717a;
+  --c-chartreuse: #71717a;
+  --c-amber: #71717a;
+  --c-orange: #71717a;
+  --c-coral: #71717a;
+  --c-rose: #71717a;
+  --c-violet: #71717a;
+  --c-periwinkle-fg: #3f3f46;
+  --c-cyan-fg: #3f3f46;
+  --c-mint-fg: #3f3f46;
+  --c-chartreuse-fg: #3f3f46;
+  --c-amber-fg: #3f3f46;
+  --c-orange-fg: #3f3f46;
+  --c-coral-fg: #3f3f46;
+  --c-rose-fg: #3f3f46;
+  --c-violet-fg: #3f3f46;
+
+  /* Wordmark gradients become a graphite sweep (the stops above are
+   * inlined as hexes in :root, so these have to be restated). */
+  --gradient-brand: linear-gradient(90deg, #3f3f46 0%, #a1a1aa 50%, #3f3f46 100%);
+  --gradient-brand-diag: linear-gradient(135deg, #3f3f46 0%, #a1a1aa 50%, #3f3f46 100%);
+  --gradient-brand-radial: radial-gradient(circle at 30% 28%, #a1a1aa 0%, #52525b 100%);
+  --gradient-brand-loop: linear-gradient(90deg, #3f3f46, #a1a1aa, #3f3f46, #a1a1aa, #3f3f46);
+  --gradient-brand-conic: conic-gradient(from 210deg, #3f3f46, #a1a1aa, #3f3f46, #a1a1aa, #3f3f46);
+
+  /* Semantic + kind fills — solid mid-grey, white text still clears AA. */
+  --info: #52525b;
+  --success: #52525b;
+  --warning: #52525b;
+  --danger: #3f3f46;
+  --pending: #52525b;
+  --kind-video: #52525b;
+  --kind-audio: #52525b;
+  --kind-edit: #52525b;
+  --danger-rgb: 63, 63, 70;
+  --success-rgb: 82, 82, 91;
+
+  /* Accent — near-black, the one "colour" this theme keeps. */
+  --accent-rgb: 24, 24, 27;
+  --accent: #18181b;
+  --accent-hover: #000000;
+  --accent-bright: #3f3f46;
+  --accent-dim: rgba(24, 24, 27, 0.08);
+  --bg-active: rgba(24, 24, 27, 0.08);
+  --text-on-accent: #ffffff;
+}
+
+/* ─── fal ───────────────────────────────────────────────────────────────
+ * fal.ai's dark playground: near-black ground, hairline-bordered flat
+ * cards, saturated violet accent. Scheme is dark, so it inherits the whole
+ * :root token set and every [data-scheme="dark"] component rule. */
+[data-theme="fal"] {
+  /* Surfaces — near-black page, cards one step up, no elevation. */
+  --bg-base-rgb: 19, 19, 19;
+  --bg-base: #131313;
+  --rail-bg: #131313;
+  --panel-bg: #181818;
+  --panel-bg-translucent: #131313;
+  --bg-surface: #181818;
+  --bg-raised: #1c1c1c;
+  --bg-hover: #222222;
+  --bg-canvas: #0e0e0e;
+  --bg-code: #111111;
+
+  /* Borders — the 1px hairlines that define every fal card and field. */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  /* Text — pure white primary, zinc secondary. */
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-on-accent: #ffffff;
+
+  /* Accent — the violet primary button / selection outline. */
+  --accent-rgb: 109, 61, 245;
+  --accent: #6d3df5;
+  --accent-hover: #5b2fd6;
+  --accent-bright: #8b5cf6;
+  --accent-dim: rgba(109, 61, 245, 0.12);
+  --bg-active: rgba(109, 61, 245, 0.14);
+
+  /* Ramp — fal's own hues (violet / blue / lime / pink), used as tints. */
+  --c-periwinkle: #8b5cf6;
+  --c-cyan: #38bdf8;
+  --c-mint: #4ade80;
+  --c-chartreuse: #a3e635;
+  --c-amber: #fbbf24;
+  --c-orange: #fb923c;
+  --c-coral: #f472b6;
+  --c-rose: #ec4899;
+  --c-violet: #a78bfa;
+  /* Pill tags — tinted text on the low-alpha fills the app already uses. */
+  --c-violet-fg: #a78bfa;
+  --c-periwinkle-fg: #8b9dff;
+  --c-mint-fg: #4ade80;
+  --c-amber-fg: #fbbf24;
+  --c-cyan-fg: #38bdf8;
+  --c-coral-fg: #fb7185;
+  --c-rose-fg: #f472b6;
+  --c-orange-fg: #fb923c;
+  --c-chartreuse-fg: #a3e635;
+
+  /* Flat: no shadow, no glow. */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --panel-float-border: 1px solid rgba(255, 255, 255, 0.08);
+  --panel-float-shadow: none;
+
+  --overlay-hover: rgba(255, 255, 255, 0.05);
+  --overlay-active: rgba(255, 255, 255, 0.09);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+  --canvas-dot-color: rgba(255, 255, 255, 0.07);
+
+  --bg-tooltip: #181818;
+  --text-tooltip: #ffffff;
+  --border-tooltip: rgba(255, 255, 255, 0.08);
+  --bg-modal-backdrop: rgba(0, 0, 0, 0.8);
 }
 
 * {
@@ -392,4 +530,20 @@ input[type="number"]::-webkit-outer-spin-button {
 
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* Light theme: every neutral control is a white 4px card. Auto-collected from
+   grey-tint button/chip/select/search rules across src; add stragglers here. */
+[data-scheme="light"] :is(.agent-gen__action, .agent-panel__context-warning-btn, .alc-chip--active, .alc-ghost-btn, .alc-search, .audit-close-btn, .audit-download-all-btn, .audit-download-one-btn, .audit-filter-btn--active, .axiom-bucket-btn--active, .brandiq-analyze-picker-btn, .brandiq-btn, .brandiq-panel-ws-select, .brandiq-select, .brandiq-tag-pill, .cc-download-btn, .design-subtool-dropdown-tab--active, .folder-mgr-rename-btn, .freeform-canvas__grid-select, .gifmaker-download-btn, .gifmaker-retry-btn, .lib-btn-secondary, .lib-folder-chip, .lib-header-btn--done, .lib-source-tab, .platform-purchase-btn--secondary, .proj-settings-btn, .proj-side-create-btn, .proj-side-tab--active, .qs-buy-btn, .qs-utility-btn--active, .rpanel-action-btn--secondary, .rpanel-align-btn, .rpanel-btn-row-item, .rpanel-chip, .rpanel-pill, .rpanel-record-btn, .rpanel-rerecord-btn, .rpanel-search, .rpanel-select, .rpanel-shape-kind-btn, .rpanel-source-tab, .rpanel-upload-btn, .rpanel-upload-fallback-btn, .settings-btn-secondary, .settings-btn-sm, .settings-chip, .settings-chip--on, .settings-google-btn, .settings-nav-btn--active, .settings-panel-nav-btn--active, .settings-role-select, .settings-theme-btn, .sidebar-collapsed-btn--active, .sidebar-tab--active, .sidebar-user-buy-btn, .skilled-tab.is-active, .skills-search, .trash-action-btn) {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+[data-scheme="light"] :is(.settings-btn-secondary, .settings-btn-sm, .lib-btn-secondary, .brandiq-btn, .alc-ghost-btn, .rpanel-action-btn--secondary):hover:not(:disabled) { background: #f7f7f9; }
+
+/* fal: flat tinted controls get the 1px hairline every fal card and field has. */
+[data-theme="fal"] :is(.agent-gen__action, .agent-panel__context-warning-btn, .alc-chip--active, .alc-ghost-btn, .alc-search, .audit-close-btn, .audit-download-all-btn, .audit-download-one-btn, .audit-filter-btn--active, .axiom-bucket-btn--active, .brandiq-analyze-picker-btn, .brandiq-btn, .brandiq-panel-ws-select, .brandiq-select, .brandiq-tag-pill, .cc-download-btn, .design-subtool-dropdown-tab--active, .folder-mgr-rename-btn, .freeform-canvas__grid-select, .gifmaker-download-btn, .gifmaker-retry-btn, .lib-btn-secondary, .lib-folder-chip, .lib-header-btn--done, .lib-source-tab, .platform-purchase-btn--secondary, .proj-settings-btn, .proj-side-create-btn, .proj-side-tab--active, .qs-buy-btn, .qs-utility-btn--active, .rpanel-action-btn--secondary, .rpanel-align-btn, .rpanel-btn-row-item, .rpanel-chip, .rpanel-pill, .rpanel-record-btn, .rpanel-rerecord-btn, .rpanel-search, .rpanel-select, .rpanel-shape-kind-btn, .rpanel-source-tab, .rpanel-upload-btn, .rpanel-upload-fallback-btn, .settings-btn-secondary, .settings-btn-sm, .settings-chip, .settings-chip--on, .settings-google-btn, .settings-nav-btn--active, .settings-panel-nav-btn--active, .settings-role-select, .settings-theme-btn, .sidebar-collapsed-btn--active, .sidebar-tab--active, .sidebar-user-buy-btn, .skilled-tab.is-active, .skills-search, .trash-action-btn, .skills-scopes, .skills-scope.is-active, .skills-filter.is-active, .skills-tag) {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
 }

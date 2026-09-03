@@ -17,7 +17,7 @@
   width: calc(100% - 24px);
   margin: 0 12px 8px;
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   background: transparent;
   color: var(--text-primary);
@@ -70,7 +70,7 @@
   --gh-read: #10896a;
   --gh-write: #7c4dff;
 }
-[data-theme="dark"] .gh-tiles {
+[data-scheme="dark"] .gh-tiles {
   --gh-read: var(--success-fg);
   --gh-write: var(--c-violet-fg);
 }
@@ -94,7 +94,7 @@
 }
 .gh-mode {
   flex: none; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  padding: 2px 5px; border-radius: 3px;
+  padding: 2px 5px; border-radius: 4px;
   color: var(--gh-read);
   border: 1px solid color-mix(in srgb, var(--gh-read) 40%, transparent);
   background: color-mix(in srgb, var(--gh-read) 10%, transparent);
@@ -112,7 +112,7 @@
 
 .gh-branch {
   display: flex; align-items: center; gap: 6px; align-self: flex-start;
-  padding: 3px 8px 3px 6px;
+  padding: 7px 10px 7px 8px;
   border: 1px solid rgba(var(--tint-rgb), 0.14); border-radius: 4px;
   background: transparent; color: var(--text-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
@@ -155,7 +155,7 @@
 /* Card actions are buttons, not text links: same 4px chip as the branch
    control, so every control on a tile reads as the same kind of thing. */
 .gh-btn {
-  padding: 4px 9px;
+  padding: 8px 12px;
   border: 1px solid rgba(var(--tint-rgb), 0.14);
   border-radius: 4px;
   background: transparent;
@@ -174,3 +174,16 @@
 .gh-btn--write:hover:not(:disabled) { color: var(--gh-write); border-color: var(--gh-write); background: color-mix(in srgb, var(--gh-write) 10%, transparent); }
 
 .gh-rule { padding: 4px 2px; font-size: 10px; line-height: 1.45; color: var(--text-muted); }
+[data-scheme="light"] .gh-tiles { --gh-read: var(--c-mint); --gh-write: var(--c-violet); }
+[data-scheme="light"] .gh-tile { background: #fff; border-color: rgba(0,0,0,.08); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+[data-scheme="light"] .gh-tile--writable { border-color: var(--c-violet); }
+[data-scheme="light"] :is(.gh-btn, .gh-branch, .gh-search) { background: #fff; border-color: rgba(0,0,0,.1); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+[data-scheme="light"] .gh-mode { color: #fff; background: var(--gh-read); border-color: var(--gh-read); }
+[data-scheme="light"] .gh-mode--write { background: var(--gh-write); border-color: var(--gh-write); }
+[data-scheme="light"] .gh-tiles .gh-btn--write { color: #fff; background: var(--c-violet); border-color: var(--c-violet); }
+[data-scheme="light"] .gh-tiles .gh-btn--write:hover:not(:disabled) { color: #fff; background: var(--c-violet); border-color: var(--c-violet); filter: brightness(.95); }
+[data-scheme="light"] .gh-stat--clean { color: var(--c-mint); }
+.gh-tile-actions { flex-wrap: nowrap; }
+.gh-tile-actions .gh-btn:first-child { flex: 1; }
+.gh-btn svg { display: block; }
+.gh-remove:hover:not(:disabled) { color: var(--c-coral); border-color: var(--c-coral); }

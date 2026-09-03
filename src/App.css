@@ -104,7 +104,7 @@ html.is-mac .app-titlebar--top {
   align-items: center;
   gap: 2px;
   padding: 11px 14px 11px 18px;
-  background: rgba(14, 14, 18, 0.55);
+  background: var(--panel-bg-translucent);
   backdrop-filter: blur(40px) saturate(140%);
   -webkit-backdrop-filter: blur(40px) saturate(140%);
   transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -130,7 +130,7 @@ html.is-mac .app-titlebar--top {
   background: transparent;
   color: #9aa0a6;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -166,7 +166,8 @@ html.is-mac .app-titlebar--top {
 }
 
 .app-body--with-panel {
-  background: var(--panel-bg);
+  /* Same token as .project-tabs so the site behind the panels is one tone. */
+  background: var(--panel-bg-translucent);
 }
 
 .canvas-area {
@@ -343,7 +344,7 @@ html.is-mac .app-titlebar--top {
 .cinema-export-placeholder__btn {
   margin-top: 8px;
   padding: 8px 20px;
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid #27272a;
   background: #18181b;
   color: #52525b;
@@ -354,18 +355,20 @@ html.is-mac .app-titlebar--top {
 
 /* Light-theme overrides: dark literals above are kept pixel-perfect; the
  * affected properties are flipped here. */
-[data-theme="light"] .rpanel-top-tabs__share:hover:not(:disabled) { background: var(--accent); }
-[data-theme="light"] .rpanel-top-tabs__share:disabled { background: rgba(0, 0, 0, 0.06); color: rgba(0, 0, 0, 0.3); }
+[data-scheme="light"] .rpanel-top-tabs__share:hover:not(:disabled) { background: var(--accent); }
+[data-scheme="light"] .rpanel-top-tabs__share:disabled { background: rgba(0, 0, 0, 0.06); color: rgba(0, 0, 0, 0.3); }
 
-[data-theme="light"] .rpanel-top-tabs {
-  background: var(--panel-bg-translucent);
+[data-scheme="light"] .rpanel-top-tabs {
+  background: var(--rail-bg);
 }
-[data-theme="light"] .rpanel-top-tabs__btn { color: var(--text-secondary); }
-[data-theme="light"] .rpanel-top-tabs__btn:hover { color: var(--text-primary); }
-[data-theme="light"] .rpanel-top-tabs__btn--active {
-  background: var(--overlay-active);
+[data-scheme="light"] .rpanel-top-tabs__btn { color: var(--text-secondary); }
+[data-scheme="light"] .rpanel-top-tabs__btn:hover { color: var(--text-primary); }
+[data-scheme="light"] .rpanel-top-tabs__btn--active {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
   color: var(--text-primary);
 }
-[data-theme="light"] .rpanel-top-tabs__divider { background: var(--border-subtle); }
+[data-scheme="light"] .rpanel-top-tabs__divider { background: var(--border-subtle); }
 
 

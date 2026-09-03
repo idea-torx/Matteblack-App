@@ -479,14 +479,17 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             <span className="freeform-canvas__node-missing-label">{node.label || "Missing image"}</span>
           </div>
         ) : (
-          <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
+          <img className="freeform-canvas__node-img freeform-canvas__node-svg" src={node.src} alt={node.label} decoding="async" draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
       ) : node.metadata?.kind === "html" && node.metadata?.html_url ? (
         // Live document over its PNG: the picker edits this DOM directly; the PNG
         // shows through while the frame reloads (html_url changes, incl. our own saves).
         <>
-        <img className="freeform-canvas__node-img" src={node.src} alt="" draggable={false} />
-        <iframe
+        <img className="freeform-canvas__node-img" src={node.src} alt="" decoding="async" draggable={false} />
+        {/* The live document only exists while the node is selected (the picker
+            needs it); everywhere else the PNG stands in — N html nodes were N
+            live layouts and that was the canvas crawling. */}
+        {isSelected && <iframe
           key={liveFrameKey(node)}
           data-html-node={node.id}
           className="freeform-canvas__node-html"
@@ -498,7 +501,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             height: (node.metadata.pixel_height as number) || node.height,
             transform: `scale(${node.width / ((node.metadata.pixel_width as number) || node.width)}, ${node.height / ((node.metadata.pixel_height as number) || node.height)})`,
           }}
-        />
+        />}
         </>
       ) : node.src ? (
         imgError ? (
@@ -507,7 +510,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
             <span className="freeform-canvas__node-missing-label">{node.label || "Missing image"}</span>
           </div>
         ) : (
-          <img className="freeform-canvas__node-img" src={node.src} alt={node.label} draggable={false} style={contentClipStyle} onError={handleImgError} />
+          <img className="freeform-canvas__node-img" src={node.src} alt={node.label} decoding="async" draggable={false} style={contentClipStyle} onError={handleImgError} />
         )
       ) : node.gradient ? (
         <div className="freeform-canvas__node-gradient" style={{ background: node.gradient, ...contentClipStyle }} />

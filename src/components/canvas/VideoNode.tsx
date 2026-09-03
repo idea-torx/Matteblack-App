@@ -27,19 +27,16 @@ export const VideoNode = memo(function VideoNode({ node, isPlaying, onTogglePlay
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
 
-  const thumbnail = useVideoThumbnail(node.src || undefined);
+  const thumbnail = useVideoThumbnail(isInViewport ? node.src || undefined : undefined);
+  // Attach the media once it has been on screen and keep it: attaching all N
+  // videos at mount stalls the app, detaching on scroll-out is the black flash.
+  const [seen, setSeen] = useState(isInViewport);
+  useEffect(() => { if (isInViewport) setSeen(true); }, [isInViewport]);
 
   useEffect(() => {
     setHasLoaded(false);
     setIsBuffering(false);
   }, [node.src]);
-
-  useEffect(() => {
-    if (!isInViewport) {
-      setHasLoaded(false);
-      setIsBuffering(false);
-    }
-  }, [isInViewport]);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -116,7 +113,7 @@ export const VideoNode = memo(function VideoNode({ node, isPlaying, onTogglePlay
           <video
             ref={videoRef}
             className={`freeform-canvas__node-video${!hasLoaded ? " freeform-canvas__node-video--hidden" : ""}`}
-            src={isInViewport ? node.src : undefined}
+            src={seen ? node.src : undefined}
             muted={isMuted}
             loop
             playsInline

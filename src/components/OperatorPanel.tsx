@@ -570,10 +570,17 @@ export function OperatorPanel({
   const refreshStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/operator/status", { credentials: "include" });
-      if (res.ok) setStatus(await res.json());
+      if (res.ok) { setStatus(await res.json()); return true; }
     } catch { /* offline */ }
+    return false;
   }, []);
-  useEffect(() => { refreshStatus(); }, [refreshStatus]);
+  // Boot: the server may still be coming up; retry until it answers so a
+  // logged-in user never sees the install gate on restart.
+  useEffect(() => {
+    let alive = true;
+    (async () => { for (let i = 0; i < 20 && alive; i++) { if (await refreshStatus()) return; await new Promise((r) => setTimeout(r, 500)); } })();
+    return () => { alive = false; };
+  }, [refreshStatus]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -769,8 +776,9 @@ export function OperatorPanel({
     }
   }, []);
 
-  const send = useCallback(async () => {
-    const message = input.trim();
+  const send = useCallback(async (override?: string) => {
+    // Starter chips pass their text; the composer's onClick passes an event.
+    const message = (typeof override === "string" ? override : input).trim();
     if (!message) return;
     // Interrupt, don't refuse. Aborting the fetch closes the SSE stream, and the
     // route kills the `claude` child on close — so this is a real interrupt of
@@ -1147,11 +1155,35 @@ export function OperatorPanel({
     if (archived && id === chatIdRef.current) newChat();
   }, [newChat]);
 
+  // "/" in an otherwise-empty composer opens the skill picker; typing filters it.
+  const slashQuery = /^\/(?!login\b)([^\n]*)$/.exec(input)?.[1];
+  const [slashSkills, setSlashSkills] = useState<Array<{ slug: string; title: string; description: string; kind?: string }> | null>(null);
+  const [slashIdx, setSlashIdx] = useState(0);
+  useEffect(() => {
+    if (slashQuery === undefined || slashSkills) return;
+    fetch("/api/skills", { credentials: "include" }).then((r) => r.json())
+      .then((j) => setSlashSkills(j.skills ?? [])).catch(() => setSlashSkills([]));
+  }, [slashQuery, slashSkills]);
+  const slashHits = slashQuery === undefined ? [] : (slashSkills ?? [])
+    .filter((s) => `${s.slug} ${s.title}`.toLowerCase().includes(slashQuery.trim().toLowerCase())).slice(0, 8);
+  useEffect(() => { setSlashIdx(0); }, [slashQuery]);
+  const pickSlash = (s: { slug: string; title: string }) => {
+    setInput(`Use my "${s.title}" skill (slug: ${s.slug}) — read it with get_skill first, then follow it. `);
+    textareaRef.current?.focus();
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashHits.length) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSlashIdx((i) => (i + 1) % slashHits.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSlashIdx((i) => (i - 1 + slashHits.length) % slashHits.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSlash(slashHits[slashIdx]); return; }
+      if (e.key === "Escape") { e.preventDefault(); setInput(""); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
   const ready = status?.binaryFound === true;
+  const runnerLabel = status?.runners?.find((r) => r.id === status.runner)?.label ?? "Claude Code";
   // The header brands the route that's actually running, not the app's default.
   const isCodex = runner === "codex";
   const isOpenCode = runner === "opencode";
@@ -1170,7 +1202,7 @@ export function OperatorPanel({
             ? <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor" aria-label="OpenCode" role="img" style={{ opacity: streaming ? 0.6 : 1 }}><path d="M4 2h16v20H4zM8 6v12h8V6z" /></svg>
             : isCodex
               ? <CodexMark size={24} thinking={streaming} ariaLabel="Codex" />
-              : <ClaudePixel size={28} thinking={streaming} ariaLabel="Claude" />}
+              : <ClaudePixel size={28} color="currentColor" thinking={streaming} ariaLabel="Claude" />}
         </div>
         {/* Sessions | Bots rides the header line: the runner's name came out of
             here (the sprite already brands it), and the back/forward thread
@@ -1416,17 +1448,29 @@ export function OperatorPanel({
         </div>
       )}
 
-      {!ready ? (
+      {!status ? (
+        <div className="agent-panel__messages" />
+      ) : !ready ? (
         <div className="agent-panel__messages">
           <div className="agent-panel__hero">
-            <h1 className="agent-panel__hero-title">Install Claude Code</h1>
+            <h1 className="agent-panel__hero-title">Install {runnerLabel}</h1>
             <p className="agent-panel__hero-sub">Matte runs on your Claude subscription — no API key, no token to copy.</p>
             <ol className="operator-setup__steps">
               <li>Install <a href="https://claude.com/code" target="_blank" rel="noreferrer">Claude Code</a>.</li>
               <li>Run <code>claude</code> once and sign in to your subscription.</li>
               <li>Come back and type <code>/login</code> here.</li>
             </ol>
-            <button type="button" className="agent-panel__hero-signin" onClick={() => { void refreshStatus(); }}>
+            <button
+              type="button"
+              className="agent-panel__hero-signin"
+              onClick={() => {
+                // Same installer Settings → Setup uses: our command, in a Terminal window.
+                void fetch("/api/setup/install", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: status?.runner ?? "claude" }) });
+              }}
+            >
+              Install {runnerLabel} in Terminal
+            </button>
+            <button type="button" className="agent-panel__hero-signin agent-panel__hero-signin--quiet" onClick={() => { void refreshStatus(); }}>
               Check again
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
             </button>
@@ -1482,6 +1526,14 @@ export function OperatorPanel({
                   <span>More</span>
                 </div>
               </div>
+              )}
+
+              {!activeBot && (
+                <div className="operator-starters">
+                  {["Set me up with fal.ai", "What can you make?", "20 s clip, H3 Turbo, 480p, 9:16"].map((t) => (
+                    <button key={t} type="button" className="operator-resume operator-starter" onClick={() => void send(t)}>{t}</button>
+                  ))}
+                </div>
               )}
 
               {lastChat && (
@@ -1584,6 +1636,23 @@ export function OperatorPanel({
             </div>
           )}
           <div className={`agent-panel__textarea-wrap${streaming ? " agent-panel__textarea-wrap--generating" : ""}`}>
+            {slashHits.length > 0 && (
+              <div className="operator-slash" role="listbox">
+                {slashHits.map((s, i) => (
+                  <button
+                    key={s.slug}
+                    type="button"
+                    role="option"
+                    aria-selected={i === slashIdx}
+                    className={`operator-slash__item${i === slashIdx ? " is-active" : ""}`}
+                    onMouseDown={(e) => { e.preventDefault(); pickSlash(s); }}
+                  >
+                    <span className="operator-slash__slug">/{s.slug}</span>
+                    <span className="operator-slash__desc">{s.description || s.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="agent-panel__glow agent-panel__glow--sharp" aria-hidden="true" />
             <div className="agent-panel__glow-blur" aria-hidden="true"><div className="agent-panel__glow agent-panel__glow--soft" /></div>
             <textarea

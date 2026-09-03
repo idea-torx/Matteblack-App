@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 4px;
   color: var(--text-muted);
   background: transparent;
   border: none;
@@ -124,7 +124,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 4px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -183,18 +183,18 @@
 /* Light-theme overrides. The rail's full border + shadow already come
  * from theme tokens (--panel-float-border / --panel-float-shadow), so
  * no per-theme override is needed for the shell itself. */
-[data-theme="light"] .icon-rail-btn::after {
+[data-scheme="light"] .icon-rail-btn::after {
   background: var(--bg-tooltip);
   color: var(--text-tooltip);
   border-color: var(--border-tooltip);
 }
-[data-theme="light"] .icon-rail-avatar--active {
+[data-scheme="light"] .icon-rail-avatar--active {
   background: var(--overlay-active);
 }
-[data-theme="light"] .icon-rail-avatar-circle--guest {
+[data-scheme="light"] .icon-rail-avatar-circle--guest {
   background: var(--overlay-active);
 }
-[data-theme="light"] .icon-rail-avatar-dot {
+[data-scheme="light"] .icon-rail-avatar-dot {
   border-color: var(--rail-bg);
 }
 
@@ -214,4 +214,14 @@ html.is-mac .icon-rail {
    * centre, which is a full pixel on a retina display and reads as "the rail
    * is off". A shadow paints outside the box and costs no width. */
   box-shadow: 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+/* fal: tinted tile — a low-alpha wash of the colour behind a coloured glyph,
+ * never a solid fill with a white glyph. */
+[data-theme="fal"] .icon-rail-btn:hover,
+[data-theme="fal"] .icon-rail-btn--active,
+[data-theme="fal"] .icon-rail-btn--active:hover {
+  color: var(--rail-color);
+  background: color-mix(in srgb, var(--rail-color) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rail-color) 30%, transparent);
 }

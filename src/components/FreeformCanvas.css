@@ -80,7 +80,7 @@
   position: absolute;
   border: 2px dashed var(--accent, #0d35ff);
   background: rgba(13, 53, 255, 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   pointer-events: none;
   z-index: 999999;
   overflow: hidden;
@@ -179,11 +179,38 @@
   will-change: transform;
 }
 
+/* Read-only provenance lineage: sits under the nodes, inside the pan/zoom
+   transform, so it pans and zooms with them. */
+.freeform-canvas__lineage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.freeform-canvas__lineage-edge {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-opacity: 0.55;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.freeform-canvas__lineage-edge--hot {
+  stroke: var(--text-primary);
+  stroke-opacity: 1;
+  stroke-width: 3;
+}
+
 .freeform-canvas__node {
   position: absolute;
   cursor: pointer;
   box-sizing: border-box;
-  border-radius: 6px;
+  border-radius: 4px;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -472,27 +499,27 @@
   to   { opacity: 1; }
 }
 
-[data-theme="light"] .freeform-canvas__floating-toolbar__glass-backdrop {
+[data-scheme="light"] .freeform-canvas__floating-toolbar__glass-backdrop {
   background: rgba(255, 255, 255, 0.65);
 }
 
-[data-theme="light"] .freeform-canvas__floating-toolbar__glass-shadow {
+[data-scheme="light"] .freeform-canvas__floating-toolbar__glass-shadow {
   box-shadow:
     0 1px 8px rgba(0, 0, 0, 0.1),
     0 0 0 0.5px rgba(0, 0, 0, 0.06),
     inset 0 0.5px 0 rgba(255, 255, 255, 0.7);
 }
 
-[data-theme="light"] .freeform-canvas__toolbar-btn {
+[data-scheme="light"] .freeform-canvas__toolbar-btn {
   color: rgba(0, 0, 0, 0.55);
 }
 
-[data-theme="light"] .freeform-canvas__toolbar-btn:hover {
+[data-scheme="light"] .freeform-canvas__toolbar-btn:hover {
   background: rgba(0, 0, 0, 0.08);
   color: rgba(0, 0, 0, 0.85);
 }
 
-[data-theme="light"] .freeform-canvas__toolbar-btn--danger:hover {
+[data-scheme="light"] .freeform-canvas__toolbar-btn--danger:hover {
   background: rgba(220, 38, 38, 0.12);
   color: var(--danger);
 }
@@ -847,7 +874,7 @@
 .freeform-canvas__zoom-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 4px;
   border: none;
   background: transparent;
   padding: 0;
@@ -918,46 +945,46 @@
  * The pill toolbar gets its own translucent light-glass surface so
  * the canvas tint shows through (the standard --panel-bg in light
  * mode is opaque #f0f0f3, which would make the pill feel heavy). */
-[data-theme="light"] .freeform-canvas__toolbar {
+[data-scheme="light"] .freeform-canvas__toolbar {
   background: rgba(255, 255, 255, 0.62);
 }
-[data-theme="light"] .freeform-canvas__toolbar-sep {
+[data-scheme="light"] .freeform-canvas__toolbar-sep {
   background: var(--border-subtle);
 }
-[data-theme="light"] .freeform-canvas__zoom-btn {
+[data-scheme="light"] .freeform-canvas__zoom-btn {
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__zoom-btn:hover {
+[data-scheme="light"] .freeform-canvas__zoom-btn:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__zoom-btn--active {
+[data-scheme="light"] .freeform-canvas__zoom-btn--active {
   background: rgba(var(--accent-rgb), 0.16);
   color: rgba(37, 99, 235, 1);
 }
-[data-theme="light"] .freeform-canvas__zoom-btn--active:hover {
+[data-scheme="light"] .freeform-canvas__zoom-btn--active:hover {
   background: rgba(var(--accent-rgb), 0.22);
 }
-[data-theme="light"] .freeform-canvas__bulk-download-btn {
+[data-scheme="light"] .freeform-canvas__bulk-download-btn {
   color: var(--text-secondary);
 }
-[data-theme="light"] .freeform-canvas__bulk-download-btn:hover {
+[data-scheme="light"] .freeform-canvas__bulk-download-btn:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__zoom-pct {
+[data-scheme="light"] .freeform-canvas__zoom-pct {
   color: var(--text-secondary);
 }
-[data-theme="light"] .freeform-canvas__zoom-pct:hover {
+[data-scheme="light"] .freeform-canvas__zoom-pct:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__grid-select {
+[data-scheme="light"] .freeform-canvas__grid-select {
   background: var(--bg-base);
   border-color: var(--border-subtle);
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__grid-select:hover {
+[data-scheme="light"] .freeform-canvas__grid-select:hover {
   border-color: var(--border-strong);
 }
 
@@ -980,7 +1007,7 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
@@ -1063,7 +1090,7 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 8px;
+  border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   margin-left: 4px;
 }
@@ -1105,7 +1132,7 @@
   width: 100%;
   height: 100%;
   position: relative;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
 }
@@ -1308,7 +1335,7 @@
   gap: 2px;
   padding: 4px;
   background: rgba(0, 0, 0, 0.85);
-  border-radius: 8px;
+  border-radius: 4px;
   pointer-events: auto;
 }
 
@@ -1321,7 +1348,7 @@
 .freeform-canvas__align-toolbar button {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1364,7 +1391,7 @@
   width: 160px;
   height: 100px;
   background: rgba(0, 0, 0, 0.85);
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   overflow: hidden;
   cursor: crosshair;
@@ -1396,7 +1423,7 @@
   padding: 24px 32px;
   background: var(--bg-surface, #1a1a2e);
   border: 1px solid var(--border, #333);
-  border-radius: 12px;
+  border-radius: 4px;
   max-width: 360px;
   text-align: center;
 }
@@ -1412,7 +1439,7 @@
   background: var(--accent, var(--accent-hover));
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -1447,7 +1474,7 @@
   left: calc(6px / var(--zoom, 1));
   min-width: 20px;
   height: 20px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: rgba(99, 130, 180, 0.7);
   color: #fff;
   font-size: 10px;
@@ -1471,7 +1498,7 @@
   z-index: 9999;
   transform: translate(-50%, -50%);
   opacity: 0.75;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   border: 2px solid var(--accent, var(--accent-hover));
@@ -1483,30 +1510,30 @@
 }
 
 /* ---- Light mode: align toolbar, minimap, frame label, error overlay ---- */
-[data-theme="light"] .freeform-canvas__align-toolbar {
+[data-scheme="light"] .freeform-canvas__align-toolbar {
   background: var(--panel-bg);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-md);
 }
-[data-theme="light"] .freeform-canvas__align-toolbar button {
+[data-scheme="light"] .freeform-canvas__align-toolbar button {
   color: var(--text-secondary);
 }
-[data-theme="light"] .freeform-canvas__align-toolbar button:hover,
-[data-theme="light"] .freeform-canvas__align-toolbar button.active {
+[data-scheme="light"] .freeform-canvas__align-toolbar button:hover,
+[data-scheme="light"] .freeform-canvas__align-toolbar button.active {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .freeform-canvas__align-sep {
+[data-scheme="light"] .freeform-canvas__align-sep {
   background: var(--border-subtle);
 }
 
-[data-theme="light"] .freeform-canvas__minimap {
+[data-scheme="light"] .freeform-canvas__minimap {
   background: var(--panel-bg);
   border-color: var(--border-subtle);
   box-shadow: var(--shadow-sm);
 }
 
-[data-theme="light"] .freeform-canvas__frame-label-text {
+[data-scheme="light"] .freeform-canvas__frame-label-text {
   background: var(--bg-raised);
   color: var(--text-secondary);
   box-shadow: var(--shadow-sm);
@@ -1517,8 +1544,8 @@
  * because they predate the theme tokens. Item text/hover use
  * rgba(var(--tint-rgb), …) and flip automatically; only the surface
  * itself needs overriding. Mirrors the library context menu pattern. */
-[data-theme="light"] .freeform-canvas__context-menu,
-[data-theme="light"] .freeform-canvas__context-folder-submenu {
+[data-scheme="light"] .freeform-canvas__context-menu,
+[data-scheme="light"] .freeform-canvas__context-folder-submenu {
   background: var(--bg-surface);
   border-color: var(--border-subtle);
   box-shadow: var(--shadow-md);
@@ -1526,11 +1553,11 @@
   -webkit-backdrop-filter: none;
 }
 
-[data-theme="light"] .freeform-canvas__context-divider {
+[data-scheme="light"] .freeform-canvas__context-divider {
   background: var(--border-subtle);
 }
 
-[data-theme="light"] .freeform-canvas__context-folder-submenu::-webkit-scrollbar-thumb {
+[data-scheme="light"] .freeform-canvas__context-folder-submenu::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.18);
 }
 

@@ -6,7 +6,7 @@
   background: var(--bg-base);
   scroll-snap-type: y mandatory;
   border: 2px solid transparent;
-  border-radius: 12px;
+  border-radius: 4px;
   transition: border-color 0.15s;
 }
 
@@ -24,7 +24,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   color: rgba(var(--tint-rgb), 0.2);
 }
 
@@ -180,7 +180,7 @@
 
 /* Visible content with the actual aspect ratio */
 .canvas-gen-img-inner {
-  border-radius: 8px;
+  border-radius: 4px;
   transition: box-shadow 0.15s;
   position: relative;
   overflow: hidden;
@@ -196,7 +196,7 @@
   display: flex;
   gap: 0;
   padding: 2px;
-  border-radius: 7px;
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -213,7 +213,7 @@
 .canvas-gen-hover-btn {
   width: 26px;
   height: 26px;
-  border-radius: 5px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -277,7 +277,7 @@
 .canvas-fullscreen-img {
   width: min(90vw, 90vh * var(--fs-ratio, 1));
   height: min(90vh, 90vw / var(--fs-ratio, 1));
-  border-radius: 10px;
+  border-radius: 4px;
   cursor: default;
   position: relative;
   overflow: hidden;
@@ -290,7 +290,7 @@
   right: 20px;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -471,5 +471,5 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: 4px;
 }

@@ -41,7 +41,7 @@
 
 /* Flat light chrome: the band takes the icon rail's surface so the whole
  * left/top frame reads as one colour. */
-[data-theme="light"] .project-tabs {
+[data-scheme="light"] .project-tabs {
   background: var(--rail-bg);
 }
 
@@ -184,7 +184,7 @@
   justify-content: center;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;

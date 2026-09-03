@@ -118,7 +118,7 @@
  * a soft translucent blue tint, the pulsating border is widened, and the
  * spinner scales up so it reads from a distance. Same calm "alive" rhythm,
  * just sized for a brighter background. */
-[data-theme="light"] .gen-node__glow-blur {
+[data-scheme="light"] .gen-node__glow-blur {
   opacity: 0.85;
 }
 
@@ -134,16 +134,16 @@
   }
 }
 
-[data-theme="light"] .gen-node--failed {
+[data-scheme="light"] .gen-node--failed {
   background: linear-gradient(135deg, rgba(var(--danger-rgb), 0.10) 0%, rgba(220, 38, 38, 0.10) 100%);
   border: 1px solid rgba(220, 38, 38, 0.45);
 }
 
-[data-theme="light"] .gen-node--failed .gen-node__content {
+[data-scheme="light"] .gen-node--failed .gen-node__content {
   color: #991b1b;
 }
 
-[data-theme="light"] .gen-node__prompt {
+[data-scheme="light"] .gen-node__prompt {
   color: rgba(15, 23, 42, 0.55);
 }
 
@@ -162,7 +162,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid rgba(var(--danger-rgb), 0.45);
   background: rgba(15, 15, 18, 0.55);
   color: rgba(254, 202, 202, 0.95);

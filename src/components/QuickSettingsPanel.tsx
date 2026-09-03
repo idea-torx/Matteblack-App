@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCreditsContext } from "../contexts/CreditsContext";
-import { useTheme } from "../theme";
 import { useSubscription } from "../hooks/useSubscription";
 import type { Notification } from "../hooks/useNotifications";
 import "./QuickSettingsPanel.css";
@@ -75,7 +74,6 @@ export function QuickSettingsPanel({
 }: QuickSettingsPanelProps) {
   const { user, loading: authLoading, logout, signIn, isLocal } = useAuth();
   const { balance, totalReceived, periodAllotment, bonusCredits, loading: creditsLoading, unlimited, isWorkspacePool } = useCreditsContext();
-  const { theme, toggleTheme } = useTheme();
   const { subscription } = useSubscription();
   const [inboxOpen, setInboxOpen] = useState(false);
   const inboxAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -330,31 +328,6 @@ export function QuickSettingsPanel({
               <span className="qs-utility-label">Inbox</span>
               {unreadCount > 0 && <span className="qs-row-badge">{unreadCount}</span>}
             </button>
-          )}
-          {(user || isLocal) && (
-          <button
-            type="button"
-            className="qs-utility-btn"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          >
-            <span className="qs-utility-icon">
-              {theme === "dark" ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                </svg>
-              )}
-            </span>
-            <span className="qs-utility-label">{theme === "dark" ? "Dark" : "Light"}</span>
-            <span className={`qs-toggle ${theme === "dark" ? "qs-toggle--on" : "qs-toggle--off"}`} aria-hidden="true">
-              <span className="qs-toggle-knob" />
-            </span>
-          </button>
           )}
         </div>
 

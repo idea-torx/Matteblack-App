@@ -286,7 +286,7 @@
   color: var(--text-muted, #a4a8b0);
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
@@ -319,7 +319,7 @@
 .agent-panel__history-item {
   background: rgba(var(--tint-rgb), 0.03);
   border: 1px solid rgba(var(--tint-rgb), 0.06);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -369,7 +369,7 @@
   color: var(--text-primary, #e6e9ee);
   font-size: 12.5px;
   padding: 4px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
   outline: none;
   font-family: inherit;
 }
@@ -385,7 +385,7 @@
   color: var(--text-muted, #a4a8b0);
   font-size: 10.5px;
   padding: 2px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
@@ -470,7 +470,7 @@
   padding: 14px;
   background: rgba(var(--tint-rgb), 0.025);
   border: 1px solid rgba(var(--tint-rgb), 0.07);
-  border-radius: 12px;
+  border-radius: 4px;
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -489,7 +489,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--accent);
   margin-bottom: 6px;
@@ -700,7 +700,7 @@
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   color: var(--text-primary, #18181b);
   padding: 9px 12px;
-  border-radius: 14px;
+  border-radius: 4px;
   white-space: pre-wrap;
   box-shadow: 0 4px 12px rgba(17, 24, 39, 0.06), 0 1px 2px rgba(17, 24, 39, 0.04);
 }
@@ -733,7 +733,7 @@
   color: #fecaca;
   white-space: pre-wrap;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 4px;
 }
 
 /* ----- Markdown styling within assistant bubbles ----- */
@@ -765,7 +765,7 @@
 .agent-panel__markdown pre {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 10px;
   margin: 8px 0;
   overflow-x: auto;
@@ -845,7 +845,7 @@
 .agent-panel__msg-img {
   width: 56px;
   height: 56px;
-  border-radius: 8px;
+  border-radius: 4px;
   background-size: cover;
   background-position: center;
   border: 1px solid rgba(var(--tint-rgb), 0.1);
@@ -876,7 +876,7 @@
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   color: var(--text-muted, #a4a8b0);
   padding: 3px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
   font-size: 11px;
   cursor: pointer;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
@@ -921,7 +921,7 @@
   margin-bottom: 4px;
   background: #1a1a1f;
   border: 1px solid rgba(var(--tint-rgb), 0.1);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px;
   display: flex;
   flex-direction: column;
@@ -969,7 +969,7 @@
   position: relative;
   width: 64px;
   height: 64px;
-  border-radius: 8px;
+  border-radius: 4px;
   /* Show the whole reference image (letterboxed if needed) instead of
    * cropping it. Portraits and wide images both read at a glance and
    * the image edges line up cleanly with the chip's rounded border. */
@@ -1029,7 +1029,7 @@
   background: rgba(var(--danger-rgb), 0.08);
   border: 1px solid rgba(var(--danger-rgb), 0.24);
   padding: 6px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 /* The user-facing "In chat" / "On canvas" toggle has been removed.
@@ -1078,7 +1078,7 @@
   gap: 8px;
   font-size: 11.5px;
   padding: 6px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
   line-height: 1.35;
 }
 .agent-panel__context-warning--warn {
@@ -1508,7 +1508,7 @@
 .agent-gen {
   background: rgba(var(--tint-rgb), 0.03);
   border: 1px solid rgba(var(--tint-rgb), 0.08);
-  border-radius: 10px;
+  border-radius: 4px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1542,7 +1542,7 @@
   font-size: 12.5px;
   line-height: 1.5;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 4px;
   margin-top: 0;
   gap: 6px;
   border-color: rgba(var(--tint-rgb), 0.08);
@@ -1611,7 +1611,7 @@
 .agent-gen__media--music {
   aspect-ratio: auto;
   background: rgba(var(--tint-rgb), 0.06);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 8px;
 }
 
@@ -1622,7 +1622,7 @@
 .agent-gen__audio {
   width: 100%;
   height: 36px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .agent-gen__music-generating {
@@ -1633,7 +1633,7 @@
   font-size: 12px;
   color: rgba(var(--tint-rgb), 0.55);
   background: rgba(var(--tint-rgb), 0.04);
-  border-radius: 8px;
+  border-radius: 4px;
   animation: agent-gen-music-pulse 2s ease-in-out infinite;
 }
 
@@ -1692,7 +1692,7 @@
   color: #fff;
   background: rgba(var(--danger-rgb), 0.85);
   border: 1px solid rgba(var(--tint-rgb), 0.18);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
 }
 
@@ -1846,7 +1846,7 @@
   border: 1px solid rgba(var(--tint-rgb), 0.08);
   color: var(--text, #e6e9ee);
   padding: 4px 8px;
-  border-radius: 5px;
+  border-radius: 4px;
   font-size: 11px;
   cursor: pointer;
   transition: background 0.12s;
@@ -1885,7 +1885,7 @@
   background: transparent;
   border: none;
   color: #fff;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
   padding: 0;
   transition: background 0.12s, color 0.12s;
@@ -1963,7 +1963,7 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 4px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
@@ -2037,7 +2037,7 @@
    card padding/radius for touch-friendly tap targets. */
 .agent-panel--mobile .agent-panel__msg--user .agent-panel__bubble {
   padding: 10px 13px;
-  border-radius: 14px;
+  border-radius: 4px;
 }
 .agent-panel--mobile .agent-panel__msg--assistant .agent-panel__bubble {
   padding: 0;
@@ -2085,7 +2085,7 @@
   height: 36px;
   bottom: 10px;
   right: 10px;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 /* Text variant on mobile keeps its auto width so "Sign in" stays legible. */
@@ -2160,21 +2160,21 @@
 /* ============================================================
    Light mode overrides
    Dark mode is unchanged. All rules below only apply when
-   [data-theme="light"] is set on <html>.
+   [data-scheme="light"] is set on <html>.
    ============================================================ */
 
-[data-theme="light"] .agent-panel {
+[data-scheme="light"] .agent-panel {
   background: var(--bg-surface);
   color: var(--text-primary);
 }
 /* Header / composer borders are removed in the base rules so the panel
    reads as a single quiet surface. The history-header and refs strip
    keep their separators since they're internal sub-sections. */
-[data-theme="light"] .agent-panel__history-header,
-[data-theme="light"] .agent-panel__refs {
+[data-scheme="light"] .agent-panel__history-header,
+[data-scheme="light"] .agent-panel__refs {
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__history {
+[data-scheme="light"] .agent-panel__history {
   background: var(--bg-surface);
   border-color: var(--border-subtle);
 }
@@ -2184,10 +2184,10 @@
  * dark bar at the bottom of the screen in light mode. Flip them to
  * the light panel surface here so the composer area blends with the
  * rest of the mobile shell. */
-[data-theme="light"] .agent-panel--mobile .agent-panel__composer {
+[data-scheme="light"] .agent-panel--mobile .agent-panel__composer {
   background: var(--panel-bg);
 }
-[data-theme="light"] .agent-panel--mobile .agent-panel__history {
+[data-scheme="light"] .agent-panel--mobile .agent-panel__history {
   background: var(--bg-surface);
 }
 
@@ -2195,42 +2195,42 @@
  * the main header buttons (.agent-panel__new, .agent-panel__close) are
  * intentionally NOT listed here: their base rule already paints them
  * as white pills with a drop shadow that works in both themes. */
-[data-theme="light"] .agent-panel__history-close,
-[data-theme="light"] .agent-panel__history-action,
-[data-theme="light"] .agent-panel__context-warning-btn {
+[data-scheme="light"] .agent-panel__history-close,
+[data-scheme="light"] .agent-panel__history-action,
+[data-scheme="light"] .agent-panel__context-warning-btn {
   background: var(--overlay-hover);
   border-color: var(--border-subtle);
   color: var(--text-secondary);
 }
-[data-theme="light"] .agent-panel__history-close:hover,
-[data-theme="light"] .agent-panel__history-action:hover,
-[data-theme="light"] .agent-panel__context-warning-btn:hover:not(:disabled) {
+[data-scheme="light"] .agent-panel__history-close:hover,
+[data-scheme="light"] .agent-panel__history-action:hover,
+[data-scheme="light"] .agent-panel__context-warning-btn:hover:not(:disabled) {
   background: var(--overlay-active);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
 /* History list items */
-[data-theme="light"] .agent-panel__history-item {
+[data-scheme="light"] .agent-panel__history-item {
   background: var(--overlay-hover);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__history-item:hover {
+[data-scheme="light"] .agent-panel__history-item:hover {
   background: var(--overlay-active);
   border-color: var(--border-strong);
 }
-[data-theme="light"] .agent-panel__history-item--active {
+[data-scheme="light"] .agent-panel__history-item--active {
   background: var(--bg-active);
 }
 
 /* Empty-state suggestion chips */
-[data-theme="light"] .agent-panel__empty .agent-panel__suggestion {
+[data-scheme="light"] .agent-panel__empty .agent-panel__suggestion {
   background: var(--overlay-hover);
   border-color: var(--border-subtle);
   color: var(--text-secondary);
 }
-[data-theme="light"] .agent-panel__empty .agent-panel__suggestion:hover,
-[data-theme="light"] .agent-panel__empty .agent-panel__suggestion:focus-visible {
+[data-scheme="light"] .agent-panel__empty .agent-panel__suggestion:hover,
+[data-scheme="light"] .agent-panel__empty .agent-panel__suggestion:focus-visible {
   background: var(--overlay-active);
   border-color: var(--border-strong);
   color: var(--text-primary);
@@ -2238,7 +2238,7 @@
 
 /* Assistant bubble in light mode is bare text — only the color rule needs
    to flip; background/border were already removed in the base rule. */
-[data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
+[data-scheme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
   background: transparent;
   border: none;
   color: var(--text-primary);
@@ -2246,7 +2246,7 @@
 
 /* User card in light mode: lighter translucent fill, lighter border, and
    a softer shadow since the panel sits over a pale background. */
-[data-theme="light"] .agent-panel__msg--user .agent-panel__bubble {
+[data-scheme="light"] .agent-panel__msg--user .agent-panel__bubble {
   background: rgba(15, 17, 21, 0.04);
   border-color: var(--border-subtle);
   color: var(--text-primary);
@@ -2255,36 +2255,36 @@
 
 /* Light theme welcome typography uses the project's standard text colors
    so the heading reads dark on the light panel background. */
-[data-theme="light"] .agent-panel__welcome-title {
+[data-scheme="light"] .agent-panel__welcome-title {
   color: var(--text-primary);
 }
-[data-theme="light"] .agent-panel__welcome-body,
-[data-theme="light"] .agent-panel__welcome-cta {
+[data-scheme="light"] .agent-panel__welcome-body,
+[data-scheme="light"] .agent-panel__welcome-cta {
   color: var(--text-secondary);
 }
 
 /* Markdown code blocks */
-[data-theme="light"] .agent-panel__markdown code {
+[data-scheme="light"] .agent-panel__markdown code {
   background: var(--bg-code);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__markdown pre {
+[data-scheme="light"] .agent-panel__markdown pre {
   background: var(--bg-code);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__markdown a { color: var(--accent-hover); }
-[data-theme="light"] .agent-panel__markdown a:hover { color: #1d4ed8; }
-[data-theme="light"] .agent-panel__markdown blockquote,
-[data-theme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
+[data-scheme="light"] .agent-panel__markdown a { color: var(--accent-hover); }
+[data-scheme="light"] .agent-panel__markdown a:hover { color: #1d4ed8; }
+[data-scheme="light"] .agent-panel__markdown blockquote,
+[data-scheme="light"] .agent-panel__msg--assistant .agent-panel__bubble {
   border-left-color: var(--border-strong);
 }
 
 /* Refs (image/video reference thumbnails attached to composer) */
-[data-theme="light"] .agent-panel__ref {
+[data-scheme="light"] .agent-panel__ref {
   background-color: var(--overlay-hover);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .agent-panel__ref-x {
+[data-scheme="light"] .agent-panel__ref-x {
   background: var(--bg-raised);
   color: var(--text-primary);
   border-color: var(--border-strong);
@@ -2293,11 +2293,11 @@
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state below use a pure white fill so the text entry area
  * reads as a bright, distinct chip on the panel paper. */
-[data-theme="light"] .agent-panel__textarea-wrap {
+[data-scheme="light"] .agent-panel__textarea-wrap {
   --composer-bg: #ffffff;
 }
 
-[data-theme="light"] .agent-panel__textarea {
+[data-scheme="light"] .agent-panel__textarea {
   background: #ffffff;
   background-clip: padding-box;
   border-color: transparent;
@@ -2310,7 +2310,7 @@
 /* Pill (idle) state — pure white fill so the text entry chip stands
  * out brightly against the panel paper bg, with a hairline border +
  * soft drop shadow that lifts it as a distinct floating chip. */
-[data-theme="light"] .agent-panel__textarea:not(:focus):placeholder-shown {
+[data-scheme="light"] .agent-panel__textarea:not(:focus):placeholder-shown {
   background: #ffffff;
   background-clip: padding-box;
   border-color: transparent;
@@ -2318,10 +2318,10 @@
     0 1px 2px rgba(15, 17, 21, 0.08),
     0 6px 18px rgba(15, 17, 21, 0.10);
 }
-[data-theme="light"] .agent-panel__textarea::placeholder {
+[data-scheme="light"] .agent-panel__textarea::placeholder {
   color: var(--text-muted);
 }
-[data-theme="light"] .agent-panel__textarea:focus {
+[data-scheme="light"] .agent-panel__textarea:focus {
   border-color: transparent;
   box-shadow: none;
 }
@@ -2332,71 +2332,71 @@
  * tweak knows the disabled state is intentionally branded. */
 
 /* Split menu popover */
-[data-theme="light"] .agent-panel__split-menu {
+[data-scheme="light"] .agent-panel__split-menu {
   background: var(--bg-base);
   border-color: var(--border-subtle);
   box-shadow: var(--shadow-md);
 }
-[data-theme="light"] .agent-panel__split-menu button:hover {
+[data-scheme="light"] .agent-panel__split-menu button:hover {
   background: var(--overlay-hover);
 }
 
 /* Inline agent generation cards */
-[data-theme="light"] .agent-gen {
+[data-scheme="light"] .agent-gen {
   background: var(--bg-raised);
   border-color: var(--border-subtle);
 }
 /* On-canvas variant has no card backdrop — it's just a slim chip inline
  * with the assistant text. The base rule above would otherwise paint a
  * grey block next to the chip in light theme. */
-[data-theme="light"] .agent-gen--on-canvas {
+[data-scheme="light"] .agent-gen--on-canvas {
   background: transparent;
   border: none;
 }
-[data-theme="light"] .agent-gen--on-canvas .agent-gen__placed-chip {
+[data-scheme="light"] .agent-gen--on-canvas .agent-gen__placed-chip {
   background: var(--overlay-hover);
   border-color: var(--border-subtle);
   color: var(--text-secondary);
 }
-[data-theme="light"] .agent-gen--on-canvas .agent-gen__placed-chip:hover {
+[data-scheme="light"] .agent-gen--on-canvas .agent-gen__placed-chip:hover {
   background: var(--overlay-active);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
-[data-theme="light"] .agent-gen__action {
+[data-scheme="light"] .agent-gen__action {
   background: var(--overlay-hover);
   border-color: var(--border-subtle);
   color: var(--text-primary);
 }
-[data-theme="light"] .agent-gen__action:hover {
+[data-scheme="light"] .agent-gen__action:hover {
   background: var(--overlay-active);
 }
-[data-theme="light"] .agent-gen__action--ghost {
+[data-scheme="light"] .agent-gen__action--ghost {
   background: transparent;
   border-color: var(--border-subtle);
   color: var(--text-secondary);
 }
-[data-theme="light"] .agent-gen__action--ghost:hover {
+[data-scheme="light"] .agent-gen__action--ghost:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .agent-gen__icon-btn {
+[data-scheme="light"] .agent-gen__icon-btn {
   color: var(--text-secondary);
 }
-[data-theme="light"] .agent-gen__icon-btn:hover {
+[data-scheme="light"] .agent-gen__icon-btn:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
-[data-theme="light"] .agent-gen__icon-btn:focus-visible {
+[data-scheme="light"] .agent-gen__icon-btn:focus-visible {
   background: var(--overlay-hover);
 }
-[data-theme="light"] .agent-gen__icon-btn--danger {
+[data-scheme="light"] .agent-gen__icon-btn--danger {
   color: var(--text-muted);
 }
-[data-theme="light"] .agent-gen__split-caret {
+[data-scheme="light"] .agent-gen__split-caret {
   color: var(--text-muted);
 }
-[data-theme="light"] .agent-gen__split-caret:hover {
+[data-scheme="light"] .agent-gen__split-caret:hover {
   background: var(--overlay-hover);
   color: var(--text-primary);
 }
@@ -2410,7 +2410,7 @@
    leaving the layout / shadows / typography untouched.
    ============================================================ */
 
-[data-theme="dark"] .agent-panel {
+[data-scheme="dark"] .agent-panel {
   /* Panel paper → dark surface, slightly lifted off the canvas
    * (var(--bg-canvas) is #141416 in dark) so the chat reads as a
    * distinct floating card. Restore the white tint + light text
@@ -2425,14 +2425,14 @@
   background: var(--agent-surface);
   border-color: rgba(255, 255, 255, 0.06);
 }
-[data-theme="dark"] .agent-panel::before {
+[data-scheme="dark"] .agent-panel::before {
   background: var(--agent-backdrop, #131316);
 }
 
 /* Header chips (History pill, New chat (+), Close ×) — flip the
  * white pill to a dark raised chip. Hover lightens slightly. */
-[data-theme="dark"] .agent-panel__new,
-[data-theme="dark"] .agent-panel__close {
+[data-scheme="dark"] .agent-panel__new,
+[data-scheme="dark"] .agent-panel__close {
   background: #1f1f24;
   border-color: rgba(255, 255, 255, 0.08);
   color: #c8cbd1;
@@ -2440,8 +2440,8 @@
     0 1px 1px rgba(0, 0, 0, 0.35),
     0 2px 6px rgba(0, 0, 0, 0.45);
 }
-[data-theme="dark"] .agent-panel__new:hover,
-[data-theme="dark"] .agent-panel__close:hover {
+[data-scheme="dark"] .agent-panel__new:hover,
+[data-scheme="dark"] .agent-panel__close:hover {
   background: #26262c;
   border-color: rgba(255, 255, 255, 0.14);
   color: #ffffff;
@@ -2449,20 +2449,20 @@
     0 1px 2px rgba(0, 0, 0, 0.40),
     0 4px 10px rgba(0, 0, 0, 0.55);
 }
-[data-theme="dark"] .agent-panel__new:active,
-[data-theme="dark"] .agent-panel__close:active {
+[data-scheme="dark"] .agent-panel__new:active,
+[data-scheme="dark"] .agent-panel__close:active {
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.35),
     0 2px 4px rgba(0, 0, 0, 0.45);
 }
-[data-theme="dark"] .agent-panel__new:disabled {
+[data-scheme="dark"] .agent-panel__new:disabled {
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 
 /* User message bubble — white card → dark raised card. The base
  * shadow uses near-black at low alpha which already reads on dark,
  * but soften it a touch so the bubble lifts without a hard edge. */
-[data-theme="dark"] .agent-panel__msg--user .agent-panel__bubble {
+[data-scheme="dark"] .agent-panel__msg--user .agent-panel__bubble {
   background: #1f1f24;
   border-color: rgba(255, 255, 255, 0.08);
   color: #e8e8ed;
@@ -2473,11 +2473,11 @@
 
 /* Composer textarea — both expanded (focused / has content) and the
  * idle pill state. White pill → dark raised pill in dark mode. */
-[data-theme="dark"] .agent-panel__textarea-wrap {
+[data-scheme="dark"] .agent-panel__textarea-wrap {
   --composer-bg: #1b1b1f;
 }
 
-[data-theme="dark"] .agent-panel__textarea {
+[data-scheme="dark"] .agent-panel__textarea {
   background: #1b1b1f;
   background-clip: padding-box;
   border-color: transparent;
@@ -2486,7 +2486,7 @@
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 8px 22px rgba(0, 0, 0, 0.45);
 }
-[data-theme="dark"] .agent-panel__textarea:not(:focus):placeholder-shown {
+[data-scheme="dark"] .agent-panel__textarea:not(:focus):placeholder-shown {
   background: #1b1b1f;
   background-clip: padding-box;
   border-color: transparent;
@@ -2494,10 +2494,10 @@
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 6px 18px rgba(0, 0, 0, 0.40);
 }
-[data-theme="dark"] .agent-panel__textarea::placeholder {
+[data-scheme="dark"] .agent-panel__textarea::placeholder {
   color: #8a8a96;
 }
-[data-theme="dark"] .agent-panel__textarea:focus {
+[data-scheme="dark"] .agent-panel__textarea:focus {
   border-color: transparent;
   box-shadow: none;
 }
@@ -2505,7 +2505,7 @@
 /* Alive (online) spinner — base rule uses a low-alpha grey ring that
  * reads on the light paper but disappears against the dark panel.
  * Bump the ring contrast so the "online" cue stays legible. */
-[data-theme="dark"] .agent-panel__alive-dot {
+[data-scheme="dark"] .agent-panel__alive-dot {
   border-color: rgba(170, 170, 180, 0.28);
   border-top-color: rgba(200, 200, 210, 0.85);
   box-shadow: 0 0 0 2px rgba(170, 170, 180, 0.08);
@@ -2515,7 +2515,7 @@
  * is *lighter* than the dark panel (#131316) and reads as an inverted
  * floating dot. Use a slightly raised dark surface that lifts cleanly
  * off the ref tile and the panel beneath. */
-[data-theme="dark"] .agent-panel__ref-x {
+[data-scheme="dark"] .agent-panel__ref-x {
   background: #2a2a30;
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.18);
@@ -2541,7 +2541,7 @@
   background: #ffffff;
   color: var(--text-primary);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  border-radius: 4px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
   padding: 8px 0 6px;
   max-height: 320px;
@@ -2686,52 +2686,52 @@
 }
 
 /* Dark theme — match the dark composer surface. */
-[data-theme="dark"] .agent-panel__mention {
+[data-scheme="dark"] .agent-panel__mention {
   background: #1c1c20;
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.30);
   color: #e8e8ec;
 }
 
-[data-theme="dark"] .agent-panel__mention-header,
-[data-theme="dark"] .agent-panel__mention-slug,
-[data-theme="dark"] .agent-panel__mention-hint {
+[data-scheme="dark"] .agent-panel__mention-header,
+[data-scheme="dark"] .agent-panel__mention-slug,
+[data-scheme="dark"] .agent-panel__mention-hint {
   color: #a8a8b0;
 }
 
-[data-theme="dark"] .agent-panel__mention-name {
+[data-scheme="dark"] .agent-panel__mention-name {
   color: #f1f1f4;
 }
 
-[data-theme="dark"] .agent-panel__mention-item--active {
+[data-scheme="dark"] .agent-panel__mention-item--active {
   background: rgba(var(--accent-rgb), 0.18);
 }
 
-[data-theme="dark"] .agent-panel__mention-dot {
+[data-scheme="dark"] .agent-panel__mention-dot {
   border-color: rgba(255, 255, 255, 0.18);
 }
 
-[data-theme="dark"] .agent-panel__mention-thumb {
+[data-scheme="dark"] .agent-panel__mention-thumb {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.06);
   color: #c7c8cc;
 }
 
-[data-theme="dark"] .agent-panel__mention-thumb--placeholder {
+[data-scheme="dark"] .agent-panel__mention-thumb--placeholder {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04));
 }
 
-[data-theme="dark"] .agent-panel__mention-source {
+[data-scheme="dark"] .agent-panel__mention-source {
   background: rgba(255, 255, 255, 0.08);
   color: #c7c8cc;
 }
 
-[data-theme="dark"] .agent-panel__mention-source--platform {
+[data-scheme="dark"] .agent-panel__mention-source--platform {
   color: #93c5fd;
   background: rgba(var(--accent-rgb), 0.18);
 }
 
-[data-theme="dark"] .agent-panel__mention-source--workspace {
+[data-scheme="dark"] .agent-panel__mention-source--workspace {
   color: #c4b5fd;
   background: rgba(139, 92, 246, 0.18);
 }
@@ -2801,26 +2801,26 @@
 
 .agent-panel__product-chip-x:hover { color: var(--text-primary); background: rgba(0, 0, 0, 0.06); }
 
-[data-theme="dark"] .agent-panel__product-chip {
+[data-scheme="dark"] .agent-panel__product-chip {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.10);
 }
 
-[data-theme="dark"] .agent-panel__product-chip-thumb {
+[data-scheme="dark"] .agent-panel__product-chip-thumb {
   background: rgba(255, 255, 255, 0.08);
   color: #c7c8cc;
 }
 
-[data-theme="dark"] .agent-panel__product-chip-x:hover {
+[data-scheme="dark"] .agent-panel__product-chip-x:hover {
   background: rgba(255, 255, 255, 0.10);
   color: #fff;
 }
 
-[data-theme="dark"] .agent-panel__mention-hint {
+[data-scheme="dark"] .agent-panel__mention-hint {
   border-top-color: rgba(255, 255, 255, 0.06);
 }
 
-[data-theme="dark"] .agent-panel__mention-hint kbd {
+[data-scheme="dark"] .agent-panel__mention-hint kbd {
   color: #c7c8cc;
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.10);
@@ -2872,7 +2872,7 @@
   text-overflow: ellipsis;
 }
 
-[data-theme="dark"] .agent-panel__pin {
+[data-scheme="dark"] .agent-panel__pin {
   background: #2a2a30;
   color: #fff;
   border-color: rgba(255, 255, 255, 0.12);
@@ -2932,3 +2932,11 @@
 @media (prefers-reduced-motion: reduce) {
   [style*="codex-mark-spin"] { animation: none !important; }
 }
+
+[data-theme="fal"] .agent-panel__send { background: var(--accent); animation: none; }
+
+/* Mascot tint: solid Claude blue only on plain dark; every other theme
+   colors the sprite from its own tokens. */
+.agent-panel__alive { color: #007AFF; }
+[data-scheme="light"] .agent-panel__alive { color: var(--text-primary); }
+[data-theme="fal"] .agent-panel__alive { color: var(--accent-bright); }

@@ -701,6 +701,31 @@ export function FreeformCanvas({
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [gridSize, setGridSize] = useState(DEFAULT_GRID_SIZE);
   const [showMinimap, setShowMinimap] = useState(false);
+  const [showEdges, setShowEdges] = useState(() => localStorage.getItem("canvasShowEdges") !== "0");
+  useEffect(() => { localStorage.setItem("canvasShowEdges", showEdges ? "1" : "0"); }, [showEdges]);
+  const [provenanceEdges, setProvenanceEdges] = useState<{ from: string; to: string; kind: string }[]>([]);
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  // Re-derive lineage when a generation resolves: App.tsx's job poller flips the
+  // placeholder's node_type via updateNode, which moves this signature. No new poller.
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n] as const)), [nodes]);
+  const edgeSig = useMemo(
+    () => nodes.filter((n) => n.job_id).map((n) => `${n.id}:${n.node_type}`).join(","),
+    [nodes],
+  );
+  useEffect(() => {
+    if (!canvasId || !showEdges) return;
+    let cancelled = false;
+    (async () => {
+      const { authFetch } = await import("../contexts/AuthContext");
+      try {
+        const r = await authFetch(`/api/canvas/${canvasId}/edges`);
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (!cancelled) setProvenanceEdges(data.edges || []);
+      } catch { /* lineage is decorative — a blip just leaves the last set up */ }
+    })();
+    return () => { cancelled = true; };
+  }, [canvasId, showEdges, edgeSig]);
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
 
   // Live-HTML frame edits: each save is a fresh immutable src/map/html triple,
@@ -3184,7 +3209,34 @@ export function FreeformCanvas({
       <div
         className="freeform-canvas__transform"
         style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, "--zoom": settledZoom } as React.CSSProperties}
+        onPointerOver={(e) => {
+          const el = (e.target as HTMLElement).closest?.("[data-node-id]") as HTMLElement | null;
+          setHoverNodeId(el?.dataset.nodeId ?? null);
+        }}
+        onPointerLeave={() => setHoverNodeId(null)}
       >
+        {showEdges && provenanceEdges.length > 0 && (
+          <svg className="freeform-canvas__lineage" aria-hidden="true">
+            {provenanceEdges.map((e) => {
+              const a = nodeById.get(e.from);
+              const b = nodeById.get(e.to);
+              if (!a || !b || a.visible === false || b.visible === false) return null;
+              const x1 = a.x + a.width, y1 = a.y + a.height / 2;
+              const x2 = b.x, y2 = b.y + b.height / 2;
+              const dx = Math.max(40, Math.abs(x2 - x1) / 2);
+              const hot = hoverNodeId === e.from || hoverNodeId === e.to;
+              return (
+                <path
+                  key={`${e.from}-${e.to}-${e.kind}`}
+                  className={`freeform-canvas__lineage-edge${hot ? " freeform-canvas__lineage-edge--hot" : ""}`}
+                  d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                >
+                  <title>{e.kind}</title>
+                </path>
+              );
+            })}
+          </svg>
+        )}
         {sortedNodes.map((node) => {
           if (node.visible === false) return null;
           if (node.node_type === "group") return null;
@@ -3204,7 +3256,7 @@ export function FreeformCanvas({
               isFirstFrame={firstFrameId === node.id}
               isLastFrame={lastFrameId === node.id}
               canvasId={canvasId}
-              zoom={zoom}
+              zoom={settledZoom}
               clipRect={nodeClipRects.get(node.id) || null}
               insideFrame={nodesInFrames.has(node.id) || false}
               hideHandles={hideHandles}
@@ -3520,6 +3572,7 @@ export function FreeformCanvas({
         snapEnabled={snapEnabled}
         gridSize={gridSize}
         showMinimap={showMinimap}
+        showEdges={showEdges}
         toolbarExpanded={toolbarExpanded}
         presentMode={presentMode}
         undoStack={undoStack}
@@ -3532,6 +3585,7 @@ export function FreeformCanvas({
         onSetSnapEnabled={setSnapEnabled}
         onSetGridSize={setGridSize}
         onSetShowMinimap={setShowMinimap}
+        onSetShowEdges={setShowEdges}
         onSetToolbarExpanded={setToolbarExpanded}
         onUndo={undo}
         onRedo={redo}

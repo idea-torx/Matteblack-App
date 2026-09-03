@@ -9,6 +9,7 @@ export type ZoomToolbarProps = {
   snapEnabled: boolean;
   gridSize: number;
   showMinimap: boolean;
+  showEdges: boolean;
   toolbarExpanded: boolean;
   presentMode?: boolean;
   undoStack: MutableRefObject<UndoCommand[]>;
@@ -21,6 +22,7 @@ export type ZoomToolbarProps = {
   onSetSnapEnabled: (fn: (v: boolean) => boolean) => void;
   onSetGridSize: (size: number) => void;
   onSetShowMinimap: (fn: (v: boolean) => boolean) => void;
+  onSetShowEdges: (fn: (v: boolean) => boolean) => void;
   onSetToolbarExpanded: (fn: (v: boolean) => boolean) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -36,6 +38,7 @@ export function ZoomToolbar({
   snapEnabled,
   gridSize,
   showMinimap,
+  showEdges,
   toolbarExpanded,
   undoStack,
   redoStack,
@@ -47,6 +50,7 @@ export function ZoomToolbar({
   onSetSnapEnabled,
   onSetGridSize,
   onSetShowMinimap,
+  onSetShowEdges,
   onSetToolbarExpanded,
   onUndo,
   onRedo,
@@ -225,6 +229,19 @@ export function ZoomToolbar({
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="20" height="20" rx="2" /><rect x="6" y="6" width="6" height="4" rx="1" opacity="0.5" /><rect x="14" y="12" width="4" height="6" rx="1" opacity="0.5" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className={`freeform-canvas__zoom-btn ${showEdges ? "freeform-canvas__zoom-btn--active" : ""}`}
+            onClick={() => onSetShowEdges((v) => !v)}
+            title="Toggle generation lineage"
+            aria-label="Toggle generation lineage"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="5" cy="6" r="2.5" /><circle cx="19" cy="12" r="2.5" /><circle cx="5" cy="18" r="2.5" />
+              <path d="M7.5 6c5 0 4 6 9 6" /><path d="M7.5 18c5 0 4-6 9-6" />
             </svg>
           </button>
 

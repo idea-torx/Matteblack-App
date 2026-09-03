@@ -11,6 +11,7 @@ import { useSubscription } from "../hooks/useSubscription";
 import { useCreditsContext } from "../contexts/CreditsContext";
 import { getWorkspace, updateWorkspace, getMembers, getInvitations, sendInvitation, resendInvitation, revokeInvitation, changeRole, removeMember, type Workspace, type Member, type Invitation } from "../api/workspace";
 import { StyleGuidePage } from "./StyleGuidePage";
+import { THEMES, useTheme } from "../theme";
 import "./SettingsPage.css";
 
 type SettingsPageProps = {
@@ -53,6 +54,11 @@ const BILLING_SECTIONS: Section[] = [
 ];
 
 const PREFERENCES_SECTIONS: Section[] = [
+  {
+    id: "themes",
+    label: "Themes",
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor" stroke="none" /></svg>,
+  },
   {
     id: "providers",
     label: "Providers",
@@ -119,6 +125,7 @@ const SECTION_LABELS: Record<string, string> = {
   security: "Security",
   subscription: "Subscription",
   usage: "Usage",
+  themes: "Themes",
   providers: "Providers",
   connectors: "Connectors",
   notifications: "Notifications",
@@ -268,6 +275,7 @@ export function SettingsPage({ onClose, initialSection = "subscription", onSignI
             {activeSection === "profile" && <ProfileSection />}
             {activeSection === "security" && <SecuritySection onDeleted={() => setActiveSection("auth")} />}
             {activeSection === "subscription" && <SubscriptionSection />}
+            {activeSection === "themes" && <ThemesSection />}
             {activeSection === "providers" && <><SetupSection /><ProvidersSection /></>}
             {activeSection === "connectors" && <ConnectorsSection />}
             {activeSection === "scheduled-runs" && <ScheduledRunsSection />}
@@ -1363,6 +1371,14 @@ function SetupSection() {
   type SetupRow = { id: string; label: string; found: boolean; path: string; install: string | null; note?: string };
   const [rows, setRows] = useState<SetupRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [falCheck, setFalCheck] = useState<string | null>(null);
+  const checkFal = async () => {
+    setFalCheck("Checking…");
+    try {
+      const d = await (await fetch("/api/setup/fal-check", { credentials: "include" })).json();
+      setFalCheck(!d.falKeySet ? "No key saved — paste one below." : d.falKeyValid === true ? `Key ${d.masked} accepted by fal.ai.` : d.falKeyValid === false ? `Key ${d.masked} rejected (HTTP ${d.httpStatus}) — copy it again from fal.ai.` : `fal.ai unreachable (${d.error}).`);
+    } catch { setFalCheck("Could not reach the app server."); }
+  };
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/setup/doctor", { credentials: "include" });
@@ -1415,6 +1431,14 @@ function SetupSection() {
             )}
           </div>
         ))}
+        <div className="settings-toggle-row">
+          <ServiceLogo name="fal.ai" />
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">fal.ai key</span>
+            <span className="settings-toggle-desc">{falCheck ?? "Generation runs on your own fal.ai key — $1 of credit is enough to start."}</span>
+          </div>
+          <button type="button" className="settings-btn-primary" disabled={falCheck === "Checking…"} onClick={() => void checkFal()}>Check</button>
+        </div>
         <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.
         </div>
@@ -1965,6 +1989,48 @@ function ScheduledRunsSection() {
             <button type="button" className="settings-btn-primary" disabled={busy} onClick={() => void create()}>Add scheduled run</button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemesSection() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Themes</h2>
+      <p className="settings-section-desc">Pick how the whole app is painted. Applies instantly, everywhere.</p>
+      <div className="settings-theme-grid" role="radiogroup" aria-label="Theme">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={theme === t.id}
+            className={`settings-theme-card${theme === t.id ? " is-active" : ""}`}
+            onClick={() => setTheme(t.id)}
+          >
+            {/* The preview is painted with the theme's own tokens: stamping
+                data-theme/data-scheme here scopes the cascade to this box. */}
+            <span className="settings-theme-preview" data-theme={t.id} data-scheme={t.scheme} aria-hidden="true">
+              <span className="settings-theme-preview__rail" />
+              <span className="settings-theme-preview__canvas">
+                <span className="settings-theme-preview__chip" />
+                <span className="settings-theme-preview__line" />
+                <span className="settings-theme-preview__line settings-theme-preview__line--short" />
+              </span>
+              <span className="settings-theme-preview__panel">
+                <span className="settings-theme-preview__line" />
+                <span className="settings-theme-preview__line settings-theme-preview__line--short" />
+                <span className="settings-theme-preview__btn" />
+              </span>
+            </span>
+            <span className="settings-theme-card__meta">
+              <span className="settings-theme-card__name">{t.label}</span>
+              <span className="settings-theme-card__scheme">{t.scheme === "light" ? "Light" : "Dark"}</span>
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

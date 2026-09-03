@@ -10,7 +10,7 @@
 .payment-result-card {
   background: var(--bg-secondary, #18181b);
   border: 1px solid var(--border, rgba(var(--tint-rgb), 0.08));
-  border-radius: 16px;
+  border-radius: 4px;
   padding: 48px 40px;
   max-width: 440px;
   width: 100%;
@@ -55,7 +55,7 @@
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 10px 24px;
   font-size: 14px;
   font-weight: 500;

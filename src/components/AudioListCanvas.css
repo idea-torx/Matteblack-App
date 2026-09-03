@@ -42,7 +42,7 @@
 
 .alc-chip {
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: 4px;
   border: 1px solid rgba(var(--tint-rgb), 0.1);
   background: transparent;
   color: rgba(var(--tint-rgb), 0.5);
@@ -146,7 +146,7 @@
   gap: 14px;
   padding: 10px 16px;
   margin-bottom: 6px;
-  border-radius: 8px;
+  border-radius: 4px;
   transition: background 0.15s;
   cursor: default;
 }
@@ -175,7 +175,7 @@
   width: 44px;
   height: 44px;
   min-width: 44px;
-  border-radius: 6px;
+  border-radius: 4px;
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
@@ -298,7 +298,7 @@
 .alc-row-action-btn {
   width: 30px;
   height: 30px;
-  border-radius: 6px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -349,7 +349,7 @@
   background: rgba(10, 10, 10, 0.7);
   backdrop-filter: blur(44px);
   -webkit-backdrop-filter: blur(44px);
-  border-radius: 24px;
+  border-radius: 4px;
   border-top: 1px solid rgba(var(--tint-rgb), 0.06);
   display: flex;
   align-items: center;
@@ -548,7 +548,7 @@
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.03);
   pointer-events: none;
 }
@@ -557,7 +557,7 @@
   width: 44px;
   height: 44px;
   min-width: 44px;
-  border-radius: 6px;
+  border-radius: 4px;
   opacity: 0.25;
 }
 
@@ -613,7 +613,7 @@
 .alc-ghost-btn {
   width: 24px;
   height: 24px;
-  border-radius: 5px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.03);
 }
 
@@ -670,180 +670,180 @@
 
 /* ============================================================
    Light mode overrides
-   Dark mode is unchanged. Only applies when [data-theme="light"]
+   Dark mode is unchanged. Only applies when [data-scheme="light"]
    is set on <html>.
    ============================================================ */
 
-[data-theme="light"] .alc-canvas {
+[data-scheme="light"] .alc-canvas {
   background: var(--bg-canvas);
 }
 
-[data-theme="light"] .alc-toolbar {
+[data-scheme="light"] .alc-toolbar {
   border-bottom-color: var(--border-subtle);
 }
 
 /* Filter chips */
-[data-theme="light"] .alc-chip {
+[data-scheme="light"] .alc-chip {
   border-color: var(--border-subtle);
   color: var(--text-secondary);
 }
-[data-theme="light"] .alc-chip:hover {
+[data-scheme="light"] .alc-chip:hover {
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-chip--active {
+[data-scheme="light"] .alc-chip--active {
   background: var(--overlay-active);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
 /* Search input */
-[data-theme="light"] .alc-search {
+[data-scheme="light"] .alc-search {
   background: var(--bg-base);
   border-color: var(--border-subtle);
 }
-[data-theme="light"] .alc-search:focus-within {
+[data-scheme="light"] .alc-search:focus-within {
   border-color: var(--border-strong);
 }
-[data-theme="light"] .alc-search-icon {
+[data-scheme="light"] .alc-search-icon {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-search-input {
+[data-scheme="light"] .alc-search-input {
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-search-input::placeholder {
+[data-scheme="light"] .alc-search-input::placeholder {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-search-clear {
+[data-scheme="light"] .alc-search-clear {
   background: var(--overlay-active);
   color: var(--text-secondary);
 }
-[data-theme="light"] .alc-search-clear:hover {
+[data-scheme="light"] .alc-search-clear:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 
-[data-theme="light"] .alc-no-results {
+[data-scheme="light"] .alc-no-results {
   color: var(--text-muted);
 }
 
 /* Track rows */
-[data-theme="light"] .alc-row:hover {
+[data-scheme="light"] .alc-row:hover {
   background: var(--overlay-hover);
 }
-[data-theme="light"] .alc-row--playing {
+[data-scheme="light"] .alc-row--playing {
   background: var(--overlay-active);
 }
-[data-theme="light"] .alc-row--playing:hover {
+[data-scheme="light"] .alc-row--playing:hover {
   background: var(--bg-hover);
 }
-[data-theme="light"] .alc-row-name {
+[data-scheme="light"] .alc-row-name {
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-row-name:hover {
+[data-scheme="light"] .alc-row-name:hover {
   color: var(--accent);
 }
-[data-theme="light"] .alc-row-name-input {
+[data-scheme="light"] .alc-row-name-input {
   background: var(--bg-base);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-row-prompt {
+[data-scheme="light"] .alc-row-prompt {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-row-prompt:hover {
+[data-scheme="light"] .alc-row-prompt:hover {
   color: var(--text-secondary);
 }
-[data-theme="light"] .alc-row-duration {
+[data-scheme="light"] .alc-row-duration {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-row-generating {
+[data-scheme="light"] .alc-row-generating {
   color: var(--text-muted);
 }
 
 /* Row action buttons */
-[data-theme="light"] .alc-row-action-btn {
+[data-scheme="light"] .alc-row-action-btn {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-row-action-btn:hover {
+[data-scheme="light"] .alc-row-action-btn:hover {
   color: var(--text-primary);
   background: var(--overlay-hover);
 }
-[data-theme="light"] .alc-row-action-btn--play {
+[data-scheme="light"] .alc-row-action-btn--play {
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-row-action-btn--play:hover {
+[data-scheme="light"] .alc-row-action-btn--play:hover {
   background: var(--overlay-active);
 }
 
 /* Bottom player bar */
-[data-theme="light"] .alc-bottom-bar {
+[data-scheme="light"] .alc-bottom-bar {
   background: rgba(245, 245, 247, 0.85);
   border-top-color: var(--border-subtle);
   box-shadow: var(--shadow-md);
 }
-[data-theme="light"] .alc-bottom-bar-track-name {
+[data-scheme="light"] .alc-bottom-bar-track-name {
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-bottom-bar-track-type {
+[data-scheme="light"] .alc-bottom-bar-track-type {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-bottom-bar-btn {
+[data-scheme="light"] .alc-bottom-bar-btn {
   color: var(--text-secondary);
 }
-[data-theme="light"] .alc-bottom-bar-btn:hover {
+[data-scheme="light"] .alc-bottom-bar-btn:hover {
   color: var(--text-primary);
 }
-[data-theme="light"] .alc-bottom-bar-btn--play {
+[data-scheme="light"] .alc-bottom-bar-btn--play {
   background: var(--text-primary);
   color: var(--bg-base);
 }
-[data-theme="light"] .alc-bottom-bar-btn--play:hover {
+[data-scheme="light"] .alc-bottom-bar-btn--play:hover {
   background: #000;
   color: var(--bg-base);
 }
-[data-theme="light"] .alc-bottom-bar-btn--active {
+[data-scheme="light"] .alc-bottom-bar-btn--active {
   color: var(--accent);
 }
-[data-theme="light"] .alc-bottom-bar-time {
+[data-scheme="light"] .alc-bottom-bar-time {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-bottom-bar-right {
+[data-scheme="light"] .alc-bottom-bar-right {
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-bottom-bar-volume::-webkit-slider-thumb {
+[data-scheme="light"] .alc-bottom-bar-volume::-webkit-slider-thumb {
   background: var(--text-primary);
 }
-[data-theme="light"] .alc-bottom-bar-volume::-moz-range-thumb {
+[data-scheme="light"] .alc-bottom-bar-volume::-moz-range-thumb {
   background: var(--text-primary);
 }
 
 /* Idle bottom-bar state */
-[data-theme="light"] .alc-bottom-bar--idle .alc-bottom-bar-btn--play {
+[data-scheme="light"] .alc-bottom-bar--idle .alc-bottom-bar-btn--play {
   background: var(--overlay-active);
   color: var(--text-muted);
 }
-[data-theme="light"] .alc-bottom-bar-idle-cover {
+[data-scheme="light"] .alc-bottom-bar-idle-cover {
   background: var(--overlay-active);
 }
-[data-theme="light"] .alc-bottom-bar-track-name--idle {
+[data-scheme="light"] .alc-bottom-bar-track-name--idle {
   color: var(--text-muted);
 }
 
 /* Empty-state ghost rows */
-[data-theme="light"] .alc-ghost-row {
+[data-scheme="light"] .alc-ghost-row {
   background: var(--overlay-hover);
 }
-[data-theme="light"] .alc-ghost-name {
+[data-scheme="light"] .alc-ghost-name {
   background: var(--overlay-active);
 }
-[data-theme="light"] .alc-ghost-prompt,
-[data-theme="light"] .alc-ghost-wave,
-[data-theme="light"] .alc-ghost-duration,
-[data-theme="light"] .alc-ghost-btn {
+[data-scheme="light"] .alc-ghost-prompt,
+[data-scheme="light"] .alc-ghost-wave,
+[data-scheme="light"] .alc-ghost-duration,
+[data-scheme="light"] .alc-ghost-btn {
   background: var(--overlay-hover);
 }
 
-[data-theme="light"] .alc-canvas {
+[data-scheme="light"] .alc-canvas {
   background: var(--bg-canvas);
 }

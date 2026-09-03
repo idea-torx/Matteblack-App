@@ -35,7 +35,7 @@
   font-size: 13px;
   color: var(--text-secondary);
   padding: 7px 10px;
-  border-radius: 6px;
+  border-radius: 4px;
   text-decoration: none;
   transition: color 0.12s, background 0.12s;
   cursor: pointer;
@@ -116,7 +116,7 @@
 .sg-color-swatch {
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   background: rgba(var(--tint-rgb), 0.03);
   border: 1px solid rgba(var(--tint-rgb), 0.04);
@@ -180,7 +180,7 @@
   gap: 6px;
   padding: 16px;
   background: rgba(var(--tint-rgb), 0.02);
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid rgba(var(--tint-rgb), 0.04);
 }
 
@@ -276,7 +276,7 @@
 }
 
 .sg-card {
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 20px;
 }
 
@@ -328,7 +328,7 @@
   align-items: center;
   gap: 6px;
   padding: 14px 8px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(var(--tint-rgb), 0.02);
   border: 1px solid rgba(var(--tint-rgb), 0.04);
   transition: background 0.12s;
@@ -355,7 +355,7 @@
   gap: 4px;
   max-width: 270px;
   background: #000;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 12px;
 }
 
