@@ -5180,7 +5180,8 @@ router.get("/api/agent/canvas", requireMcpToken, requireAuth, async (req: AuthRe
 export type ArrangeMove = { id: string; x?: number; y?: number; width?: number; height?: number };
 
 const MAX_MOVES = 200;
-const STEP_MS = 250;
+const STEP_MS = 600;
+const LINGER_MS = 1500;
 
 /** Validate an `arrange_canvas` payload. Exported for the self-check in
  *  agent.arrange.test.ts — the model sends these ids and numbers straight from
@@ -5288,6 +5289,8 @@ router.post("/api/agent/canvas/arrange", requireMcpToken, requireAuth, async (re
     if (!res.headersSent) res.status(500).json({ error: "Failed to arrange the canvas" });
   } finally {
     if (joined) {
+      // Response is already sent; linger so a one-node move still shows the bot.
+      await new Promise((r) => setTimeout(r, LINGER_MS));
       presenceRemoveSession(canvasId, sessionId);
       broadcastPresenceLeave(getPresenceTransport(), canvasId, sessionId, userId);
     }
