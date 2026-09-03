@@ -1,5 +1,5 @@
-export type PlatformItemType = 'style_pack' | 'axiom_template' | 'node_workflow' | 'demo_asset';
-export type ContentType = 'style' | 'axiom' | 'workflow' | 'asset';
+export type PlatformItemType = 'style_pack' | 'axiom_template' | 'node_workflow' | 'demo_asset' | 'skill';
+export type ContentType = 'style' | 'axiom' | 'workflow' | 'asset' | 'skill';
 export type EntitlementSource = 'purchase' | 'grant' | 'promo' | 'subscription';
 
 export interface PlatformItem {

@@ -281,7 +281,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "see_canvas",
     description:
-      "See the layout of the canvas the user is looking at right now: every node with its id, type, label, position and size. This is the spatial view (list_canvas is the generation log). Call it before arranging anything, and again afterwards to confirm.",
+      "See the layout of the canvas the user is looking at right now: every node with its id, type, label, position and size. This is the spatial view (list_canvas is the generation log). Call it before arranging anything, and again afterwards to confirm. It also reports `edges` — the generation lineage (from → to, plus a kind like reference/continuation/upscale/keyframe) — so you can find the head and tail of a continuation chain, or the original keyframe a shot grew from.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -365,7 +365,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "list_skills",
     description:
-      "List the user's saved skills — reusable generation recipes they've written down (video scripts, house styles, prompt formulas). Call this FIRST when the user names a skill, says 'use my <x> skill', or asks for something you've made before: a skill carries their exact working prompts, so following one beats improvising.",
+      "List the user's saved skills — reusable generation recipes they've written down (video scripts, house styles, prompt formulas). Call this FIRST when the user names a skill, says 'use my <x> skill', or asks for something you've made before: a skill carries their exact working prompts, so following one beats improvising. Each row also shows its kind (system / general / script / workflow) and tags, so you can tell a standing bot workflow from a one-off recipe.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -1066,6 +1066,7 @@ async function runSeeCanvas(): Promise<CallToolResult> {
       canvasId: string;
       viewport?: { x: number; y: number; width: number; height: number; zoom?: number } | null;
       nodes?: CanvasNodeRow[];
+      edges?: { from: string; to: string; kind: string }[];
     };
     const nodes = data.nodes ?? [];
     const v = data.viewport;
@@ -1084,6 +1085,11 @@ async function runSeeCanvas(): Promise<CallToolResult> {
       lines.push(
         `\u2022 ${n.id} [${n.type}] "${(n.label || "").slice(0, 60)}" at (${Math.round(n.x)}, ${Math.round(n.y)}) ${Math.round(n.width)}\u00d7${Math.round(n.height)}${n.locked ? " locked" : ""}`,
       );
+    }
+    const edges = data.edges ?? [];
+    if (edges.length > 0) {
+      lines.push("", `Lineage (${edges.length} edge(s), input \u2192 result):`);
+      for (const e of edges) lines.push(`  \u2022 ${e.from} \u2192 ${e.to} [${e.kind}]`);
     }
     lines.push("", "Pass these ids to arrange_canvas to lay them out. Never move a node marked locked.");
     return ok(lines.join("\n"));
@@ -1314,7 +1320,7 @@ async function runEstimateCost(args: Record<string, unknown>): Promise<CallToolR
   }
 }
 
-interface SkillRow { slug: string; title: string; description?: string; updatedAt?: string }
+interface SkillRow { slug: string; title: string; description?: string; updatedAt?: string; kind?: string; tags?: string[]; uses?: number }
 
 async function runListSkills(): Promise<CallToolResult> {
   const ep = readEndpoint();
@@ -1325,7 +1331,8 @@ async function runListSkills(): Promise<CallToolResult> {
     if (skills.length === 0) return ok("The skill library is empty. Save one with save_skill when a run is worth repeating.");
     const lines = [`${skills.length} skill(s):`, ""];
     for (const sk of skills) {
-      lines.push(`• ${sk.slug} — ${sk.title}${sk.description ? `: ${sk.description}` : ""}`);
+      const tail = [sk.kind, (sk.tags ?? []).join(", "), sk.uses ? `used ${sk.uses}×` : ""].filter(Boolean).join(" · ");
+      lines.push(`• ${sk.slug} — ${sk.title}${sk.description ? `: ${sk.description}` : ""}${tail ? ` [${tail}]` : ""}`);
     }
     lines.push("", "Call get_skill with a slug to read one in full before following it.");
     return ok(lines.join("\n"));
