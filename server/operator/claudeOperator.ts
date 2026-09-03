@@ -22,7 +22,7 @@ import { operatorSystemPrompt } from "../skills/builtin.js";
 import { skillIndex, pinnedInstructions } from "../skills/skillStore.js";
 import { memoryInstructions } from "../skills/agentMemory.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
-import { getOperatorRunner, getOperatorModels } from "../config/userConfig.js";
+import { getOperatorRunner, getOperatorModels, getFalKey } from "../config/userConfig.js";
 import { claudeRunner, resolveClaudeBinary } from "./runners/claude.js";
 import { codexRunner } from "./runners/codex.js";
 import { opencodeRunner, refreshOpencodeModels } from "./runners/opencode.js";
@@ -285,6 +285,8 @@ export interface RunOperatorOptions {
   review?: boolean;
   /** Override the configured runner for this turn. */
   runner?: RunnerId;
+  /** The user has never completed a generation: lead with the help menu. */
+  firstSession?: boolean;
   /** Run as this bot: its own durable memory instead of the shared session
    *  memory, both in the system prompt and in the recall/remember/forget tools.
    *  Validated by the route against the caller's bots. */
@@ -326,7 +328,11 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
       + (opts.botPersona.description ? ` They describe you as: ${opts.botPersona.description}` : "")
       + " Work as that collaborator — it is your brief, and it outranks your generic defaults where they disagree."
     : "";
-  const systemPrompt = operatorSystemPrompt() + persona + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId);
+  // Install-day state the operator cannot see otherwise. No key means nothing
+  // can generate, so setup comes before whatever they typed.
+  const stateNote = (getFalKey() ? "" : "\n\nNO FAL KEY SAVED: nothing can generate yet. Fetch the `setup` skill and walk the user through it before anything else.")
+    + (opts.firstSession && getFalKey() ? "\n\nFIRST SESSION: this user has not generated anything yet. Unless the ask is already specific, fetch the `help` skill and offer its menu before starting." : "");
+  const systemPrompt = operatorSystemPrompt() + persona + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId) + stateNote;
   // Codex reads AGENTS.md out of its cwd; Claude keeps --append-system-prompt
   // (it reads CLAUDE.md, and duplicating the doc into its context helps nobody).
   // Rewritten every turn — memory and the skill index move. Safe to drop in

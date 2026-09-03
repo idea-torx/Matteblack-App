@@ -299,6 +299,23 @@ function parseFalError(err: unknown): { errorType: string | null; errorTitle: st
  * a FAL_KEY/VITE_FAL_KEY env var, and may change at runtime — so we resolve it
  * on every dispatch rather than once at module load.
  */
+/** Is a fal key saved, and does fal accept it? The probe is a status lookup for
+ *  a request id that cannot exist — a bad key gets 401 before the id is even
+ *  looked at, a good key gets past auth. Free; the key never leaves the server. */
+export async function probeFalKey(): Promise<{ falKeySet: boolean; masked?: string; falKeyValid: boolean | null; httpStatus?: number; error?: string }> {
+  const key = getFalKey();
+  if (!key) return { falKeySet: false, falKeyValid: null };
+  const masked = `${key.slice(0, 4)}…${key.slice(-4)}`;
+  try {
+    const r = await fetch("https://queue.fal.run/fal-ai/fast-sdxl/requests/00000000-0000-0000-0000-000000000000/status", {
+      headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(10_000),
+    });
+    return { falKeySet: true, masked, falKeyValid: r.status !== 401 && r.status !== 403, httpStatus: r.status };
+  } catch (err) {
+    return { falKeySet: true, masked, falKeyValid: null, error: err instanceof Error ? err.message : "fal unreachable" };
+  }
+}
+
 export function ensureFalConfigured(): boolean {
   const key = getFalKey();
   if (key) {

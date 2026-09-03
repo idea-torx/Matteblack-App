@@ -1363,6 +1363,14 @@ function SetupSection() {
   type SetupRow = { id: string; label: string; found: boolean; path: string; install: string | null; note?: string };
   const [rows, setRows] = useState<SetupRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [falCheck, setFalCheck] = useState<string | null>(null);
+  const checkFal = async () => {
+    setFalCheck("Checking…");
+    try {
+      const d = await (await fetch("/api/setup/fal-check", { credentials: "include" })).json();
+      setFalCheck(!d.falKeySet ? "No key saved — paste one below." : d.falKeyValid === true ? `Key ${d.masked} accepted by fal.ai.` : d.falKeyValid === false ? `Key ${d.masked} rejected (HTTP ${d.httpStatus}) — copy it again from fal.ai.` : `fal.ai unreachable (${d.error}).`);
+    } catch { setFalCheck("Could not reach the app server."); }
+  };
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/setup/doctor", { credentials: "include" });
@@ -1415,6 +1423,14 @@ function SetupSection() {
             )}
           </div>
         ))}
+        <div className="settings-toggle-row">
+          <ServiceLogo name="fal.ai" />
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">fal.ai key</span>
+            <span className="settings-toggle-desc">{falCheck ?? "Generation runs on your own fal.ai key — $1 of credit is enough to start."}</span>
+          </div>
+          <button type="button" className="settings-btn-primary" disabled={falCheck === "Checking…"} onClick={() => void checkFal()}>Check</button>
+        </div>
         <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.
         </div>

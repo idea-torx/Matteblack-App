@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { requireAuth, type AuthRequest } from "../sessions.js";
 import { DATA_DIR, ensureDataDir } from "../config/runtime.js";
 import { doctor } from "../setup/doctor.js";
+import { probeFalKey } from "../fal.js";
 
 const router = Router();
 
@@ -41,6 +42,12 @@ router.post("/api/setup/install", requireAuth, (req: AuthRequest, res) => {
     if (err) console.error("[setup] failed to open Terminal:", err);
   });
   res.json({ ok: true });
+});
+
+/** Settings → Setup: is the fal key saved and accepted? Same probe as the
+ *  operator's check_setup tool. */
+router.get("/api/setup/fal-check", requireAuth, async (_req: AuthRequest, res) => {
+  res.json(await probeFalKey());
 });
 
 export default router;

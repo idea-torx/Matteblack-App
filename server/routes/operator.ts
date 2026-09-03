@@ -486,12 +486,15 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     setTimeout(sweep, 5000);
   });
 
+  // ponytail: one count per turn; cheap on a jobs table with an index on user_id.
+  const firstSession = (await pool.query("SELECT 1 FROM jobs WHERE user_id = $1 AND status = 'complete' LIMIT 1", [req.userId])).rows.length === 0;
   try {
     const run = runOperator({
       message,
       sessionId,
       model,
       effort,
+      firstSession,
       botId,
       botPersona,
       signal: ac.signal,

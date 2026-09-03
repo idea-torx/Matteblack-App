@@ -900,3 +900,7 @@
 [data-theme="dark"] .operator-btn:hover { background: rgba(255, 255, 255, 0.08); }
 [data-theme="dark"] .operator-icons__cell:hover { background: rgba(255, 255, 255, 0.1); }
 [data-theme="dark"] .operator-icons__cell.is-on { background: rgba(255, 255, 255, 0.16); }
+
+.operator-starters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.operator-starter { width: auto; padding: 8px 12px; border-radius: 999px; }
+.agent-panel__hero-signin--quiet { background: transparent; color: var(--text-primary); border: 1px solid rgba(17, 24, 39, 0.12); margin-top: 8px; }
