@@ -61,6 +61,7 @@ type MakePanelProps = {
   externalPrompt?: string | null;
   onClearExternalPrompt?: () => void;
   onFrameChange?: (firstFrameId: string | null, lastFrameId: string | null) => void;
+  onOpenDirector?: () => void;
 };
 
 export function MakePanel({
@@ -77,6 +78,7 @@ export function MakePanel({
   externalPrompt,
   onClearExternalPrompt,
   onFrameChange,
+  onOpenDirector,
 }: MakePanelProps) {
   const [currentImageNumber, setCurrentImageNumber] = useState(1);
   const [pricingModel, setPricingModel] = useState<string | undefined>();
@@ -138,6 +140,7 @@ export function MakePanel({
               referenceImage={referenceImage}
               canvasReferenceImages={canvasReferenceImages}
               onFrameChange={onFrameChange}
+              onOpenDirector={onOpenDirector}
               onPricingChange={(model, duration, resolution) => { setPricingModel(model); setPricingDuration(duration); setPricingResolution(resolution); }}
               onAudioChange={setPricingAudio}
               onGenerate={(params) => {
@@ -776,6 +779,7 @@ function VideoCards({
   referenceImage,
   canvasReferenceImages,
   onFrameChange,
+  onOpenDirector,
   onGenerate,
   onPricingChange,
   onAudioChange,
@@ -787,6 +791,7 @@ function VideoCards({
   referenceImage?: ReferenceImage | null;
   canvasReferenceImages: ReferenceImage[];
   onFrameChange?: (firstFrameId: string | null, lastFrameId: string | null) => void;
+  onOpenDirector?: () => void;
   onGenerate: (params: GenerationParams) => void;
   onPricingChange?: (model: string, duration: string, resolution?: string) => void;
   onAudioChange?: (audio: boolean) => void;
@@ -1478,6 +1483,13 @@ function VideoCards({
               MiniMax H3 Max Turbo
               <span className="rpanel-tag">Fast</span>
             </button>
+            {onOpenDirector && (
+              <button type="button" className="rpanel-list-btn" onClick={() => { onOpenDirector(); toggle("model"); }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M2 12h4M18 12h4M12 2v4M12 18v4" /></svg>
+                MiniMax H3 Max Director
+                <span className="rpanel-tag">Live</span>
+              </button>
+            )}
             <CustomModelGroup
               models={customModels} mediaType="video" selected={customKey}
               onSelect={(k) => { setCustomKey(k); setCustomValues({}); toggle("model"); }}

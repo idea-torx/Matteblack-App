@@ -303,6 +303,18 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     return acc;
   }, {}),
 
+  // H3 Max Director: live WebRTC session, billed per wall-clock second with a
+  // 60s minimum (promo $0.02/s until 2026-09-14; standard quoted).
+  "h3-max-director": {
+    endpoint: "minimax/h3-max/director",
+    unitPrice: 0.08,
+    unit: "seconds",
+    cost: (p) => {
+      const secs = Math.max(60, n(p, "duration", 60));
+      return { usd: 0.08 * secs, accuracy: "exact", basis: `$0.08/s x ${secs}s (60s minimum)` };
+    },
+  },
+
   // MiniMax H3 Max: flat per-second, two resolution tiers. Standard rates
   // (fal's launch promo halves these until 2026-09-01; we quote the standard
   // rate so an estimate never comes in under the bill).

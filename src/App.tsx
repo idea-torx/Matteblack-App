@@ -24,6 +24,7 @@ import { UpscalePanel } from "./components/UpscalePanel";
 import { ResizePanel } from "./components/ResizePanel";
 import { RemovePanel } from "./components/RemovePanel";
 import { MakePanel, type GenerationParams } from "./components/MakePanel";
+import { DirectorPanel } from "./components/DirectorPanel";
 import { AudioPanel, type TTSParams } from "./components/AudioPanel";
 import { MusicPanel, type MusicGenerationParams } from "./components/MusicPanel";
 import { VoiceChangerPanel, type VoiceChangerParams } from "./components/VoiceChangerPanel";
@@ -238,6 +239,7 @@ function App() {
   const { playStart, playComplete, playError } = useGenerationSound();
   const [, setGenAspectRatio] = useState("1:1");
   const [gifMakerOpen, setGifMakerOpen] = useState(false);
+  const [directorOpen, setDirectorOpen] = useState(false);
   const [svgMakerOpen, setSvgMakerOpen] = useState(false);
   const [axiomCreatorOpen, setAxiomCreatorOpen] = useState(false);
   const [styleCreatorOpen, setStyleCreatorOpen] = useState(false);
@@ -2696,7 +2698,26 @@ function App() {
           }} userBalance={balance} unlimited={unlimited} initialValues={reuseParams?.tts ?? null} reuseVersion={reuseVersion} />
         ) : selectionContext.type === "cinema" ? (
           <CinemaExportPanel timelineStateRaw={selectedCinemaTimelineState} />
-        ) : (!isCanvasMounted && !isGuest) ? null : selectedTool === "make" || selectedTool === "create" ? (
+        ) : (!isCanvasMounted && !isGuest) ? null : directorOpen && (selectedTool === "make" || selectedTool === "create") ? (
+          <DirectorPanel
+            onClose={() => setDirectorOpen(false)}
+            onSave={async (blob: Blob, seconds: number) => {
+              const formData = new FormData();
+              formData.append("file", new File([blob], `director-${Date.now()}.webm`, { type: "video/webm" }));
+              formData.append("seconds", String(seconds));
+              const res = await fetch("/api/director/save", { method: "POST", credentials: "include", body: formData });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || "Save failed");
+              const api = canvasApiProxy;
+              if (data.url && api?.isLive?.() && api.addNode && api.getNodes && api.getViewport) {
+                const baseSize = placeholderSize("quality", "16:9", "video");
+                const slot = findEmptySlots(api.getViewport(), [baseSize], api.getNodes())[0];
+                if (slot) api.addNode(slot.x, slot.y, { node_type: "video", width: slot.w, height: slot.h, src: data.url, label: "Director take", metadata: { source: "h3-max-director", model_key: "h3-max-director", seconds } });
+              }
+              refreshCredits();
+            }}
+          />
+        ) : selectedTool === "make" || selectedTool === "create" ? (
           <MakePanel
             videoMode={makeVideoMode}
             onVideoModeChange={setMakeVideoMode}
@@ -2710,6 +2731,7 @@ function App() {
             externalPrompt={externalPrompt}
             onClearExternalPrompt={() => setExternalPrompt(null)}
             onFrameChange={handleFrameChange}
+            onOpenDirector={() => setDirectorOpen(true)}
           />
         ) : selectedTool === "upscale" ? (
           <UpscalePanel onUpscaleImage={startGeneration} userBalance={balance} unlimited={unlimited} referenceImage={referenceImage} referenceVideo={referenceVideo} videoDuration={selectedVideoInfo?.duration} onClearReference={handleClearReference} />

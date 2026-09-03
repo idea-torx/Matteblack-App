@@ -2062,6 +2062,8 @@ function buildSystemPromptStatic(
     "",
     "Model selection (generate_media):",
     "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'seedream 5', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'gemini omni', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedream-5, seedance-2.5, seedance-2.0, gemini-omni, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
+    "- 'H3 Max Director' / 'director' is fal's LIVE session (minimax/h3-max/director, $0.08/s, 60s minimum) — it is not a queue model and generate_media cannot run it. get_skill 'director' for how to coach it, then tell the user to open Make → Video → model list → 'MiniMax H3 Max Director'; the saved take lands on the canvas as a normal video node.",
+    "- 'H3 Max Director' / 'director' is fal's LIVE session (minimax/h3-max/director, $0.08/s, 60s minimum) — not a queue model, so generate_media cannot run it. Tell the user to open Make → Video → model list → 'MiniMax H3 Max Director' and direct it there; the saved take lands on the canvas as a normal video node.",
     "- NEVER substitute a different model than the one the user named. If the named model can't do what's asked (e.g. veo3.1-lite has no multi-reference mode), say so and ask — don't silently generate with another one.",
     "- Otherwise use `tier`. Default 'premium' (nano-banana-2 for images, seedance-2.5 for video — the highest-quality options).",
     "- 'quality' is the mid step (kling-o3-pro for video; for images it's the same as premium).",
