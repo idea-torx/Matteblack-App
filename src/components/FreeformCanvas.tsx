@@ -2615,9 +2615,9 @@ export function FreeformCanvas({
   }, [zoom]);
 
   // Multiplayer presence: subscribe to SSE for snapshot/join/leave/cursor/idle
-  // events and broadcast our own pointer at ~16 Hz. Disabled in cinema and
-  // present mode where the canvas isn't being edited collaboratively.
-  const presenceEnabled = !isCinema && !presentMode && !!canvasId;
+  // events and broadcast our own pointer at ~16 Hz. Disabled only in present
+  // mode: a canvas with cinema frames is still edited (and walked by the bot).
+  const presenceEnabled = !presentMode && !!canvasId;
   usePresenceChannel(presenceEnabled ? canvasId : null);
   useCursorBroadcast({
     canvasId: presenceEnabled ? canvasId : null,
