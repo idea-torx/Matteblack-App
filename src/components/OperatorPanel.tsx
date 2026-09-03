@@ -1155,8 +1155,11 @@ export function OperatorPanel({
     if (archived && id === chatIdRef.current) newChat();
   }, [newChat]);
 
-  // "/" in an otherwise-empty composer opens the skill picker; typing filters it.
-  const slashQuery = /^\/(?!login\b)([^\n]*)$/.exec(input)?.[1];
+  // A "/" token at the end of the composer opens the skill picker; typing
+  // filters it. Anywhere, not just at the start, so one message can chain
+  // several skills: "/brand /bridge make me a trailer".
+  const slashMatch = /(^|\s)\/(?!login\b)([^\s/]*)$/.exec(input);
+  const slashQuery = slashMatch?.[2];
   const [slashSkills, setSlashSkills] = useState<Array<{ slug: string; title: string; description: string; kind?: string }> | null>(null);
   const [slashIdx, setSlashIdx] = useState(0);
   useEffect(() => {
@@ -1168,7 +1171,8 @@ export function OperatorPanel({
     .filter((s) => `${s.slug} ${s.title}`.toLowerCase().includes(slashQuery.trim().toLowerCase())).slice(0, 8);
   useEffect(() => { setSlashIdx(0); }, [slashQuery]);
   const pickSlash = (s: { slug: string; title: string }) => {
-    setInput(`Use my "${s.title}" skill (slug: ${s.slug}) — read it with get_skill first, then follow it. `);
+    const head = slashMatch ? input.slice(0, slashMatch.index + slashMatch[1].length) : "";
+    setInput(`${head}Use my "${s.title}" skill (slug: ${s.slug}) — read it with get_skill first, then follow it. `);
     textareaRef.current?.focus();
   };
 
