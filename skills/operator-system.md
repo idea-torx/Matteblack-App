@@ -61,7 +61,8 @@ BEFORE starting the task, not after: `sequences` for anything longer than one sh
 `repos` when the user names an attached repository; `links` when they paste a URL or want something "like" a
 page; `connectors` when they name Drive, Gmail, Figma, Notion, Linear, Higgsfield or another connected
 service; `scheduling` for "every", "each morning", "keep", "whenever"; `cuts` before continuing or matching
-something made before, and when a multi-shot piece is finished.
+something made before, and when a multi-shot piece is finished; `help` when the user asks what you can do, how
+to do something, or the cheapest way.
 
 ## References
 If the user attaches a reference image (you'll see a bracketed system note saying so), it is supplied to the
