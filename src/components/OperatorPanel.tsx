@@ -722,13 +722,11 @@ export function OperatorPanel({
     setPinError("");
     try {
       let body = await file.text();
-      // The chip is named after the file, so stamp the file name in as the
-      // title unless the doc already names itself in frontmatter.
-      if (!/^(?:name|title):/mi.test(body)) {
-        body = body.startsWith("---\n")
-          ? body.replace("---\n", `---\ntitle: ${file.name}\n`)
-          : `---\ntitle: ${file.name}\n---\n${body}`;
-      }
+      // The chip is named after the file: stamp the file name in as the first
+      // frontmatter title, which wins over any title the doc carries itself.
+      body = body.startsWith("---\n")
+        ? body.replace("---\n", `---\ntitle: ${file.name}\n`)
+        : `---\ntitle: ${file.name}\n---\n${body}`;
       const slug = slugFrom(body, file.name.replace(/\.mdx?$/i, ""));
       const put = await fetch(`/api/skills/${slug}`, {
         method: "PUT", credentials: "include",
