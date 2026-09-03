@@ -147,19 +147,23 @@ export function parseLine(obj: Record<string, unknown>): OperatorEvent[] {
   return [];
 }
 
-let refreshed = false;
+let refresh: Promise<void> | null = null;
 /** Replace the seed list with whatever `opencode models` prints, once per
- *  process. ponytail: fire-and-forget, so the very first status call still
- *  shows the seed; the panel's next refresh sees the full catalog. */
-export function refreshOpencodeModels(): void {
-  if (refreshed) return;
+ *  process. Resolves when the catalog is in (or the probe failed); the status
+ *  route waits on it briefly so the panel's first load sees the real list. */
+export function refreshOpencodeModels(): Promise<void> {
+  if (refresh) return refresh;
   const bin = resolveOpencodeBinary();
-  if (!bin.found) return;
-  refreshed = true;
-  execFile(bin.path, ["models"], { timeout: 20_000 }, (err, stdout) => {
-    if (err) { refreshed = false; return; }
-    const ids = String(stdout).split("\n").map((l) => l.trim()).filter((l) => /^[\w.-]+\/[\w.-]+$/.test(l));
-    if (ids.length === 0) return;
-    opencodeRunner.models = ids.map((id) => ({ id, label: id.replace(/^opencode\//, "").replace(/^opencode-go\//, "Go · ") }));
+  if (!bin.found) return Promise.resolve();
+  refresh = new Promise((resolve) => {
+    execFile(bin.path, ["models"], { timeout: 20_000 }, (err, stdout) => {
+      if (err) { refresh = null; resolve(); return; }
+      const ids = String(stdout).split("\n").map((l) => l.trim()).filter((l) => /^[\w.-]+\/[\w.-]+$/.test(l));
+      if (ids.length > 0) {
+        opencodeRunner.models = ids.map((id) => ({ id, label: id.replace(/^opencode\//, "").replace(/^opencode-go\//, "Go · ") }));
+      }
+      resolve();
+    });
   });
+  return refresh;
 }

@@ -721,7 +721,14 @@ export function OperatorPanel({
     if (file.size > 200 * 1024) { setPinError("That file is too big to pin (200KB max)."); return; }
     setPinError("");
     try {
-      const body = await file.text();
+      let body = await file.text();
+      // The chip is named after the file, so stamp the file name in as the
+      // title unless the doc already names itself in frontmatter.
+      if (!/^(?:name|title):/mi.test(body)) {
+        body = body.startsWith("---\n")
+          ? body.replace("---\n", `---\ntitle: ${file.name}\n`)
+          : `---\ntitle: ${file.name}\n---\n${body}`;
+      }
       const slug = slugFrom(body, file.name.replace(/\.mdx?$/i, ""));
       const put = await fetch(`/api/skills/${slug}`, {
         method: "PUT", credentials: "include",
