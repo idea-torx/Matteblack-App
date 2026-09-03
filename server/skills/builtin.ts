@@ -82,7 +82,9 @@ BEFORE starting the task, not after: \`sequences\` for anything longer than one 
 \`repos\` when the user names an attached repository; \`links\` when they paste a URL or want something "like" a
 page; \`connectors\` when they name Drive, Gmail, Figma, Notion, Linear, Higgsfield or another connected
 service; \`scheduling\` for "every", "each morning", "keep", "whenever"; \`cuts\` before continuing or matching
-something made before, and when a multi-shot piece is finished.
+something made before, and when a multi-shot piece is finished; \`help\` when the user asks what you can do, how
+to do something, or the cheapest way; \`setup\` when there is no fal key, a generation fails with an auth error, or they
+ask how to get started.
 
 ## References
 If the user attaches a reference image (you'll see a bracketed system note saying so), it is supplied to the
@@ -1422,6 +1424,110 @@ save_cut, reusing the same project slug across related cuts. Write the descripti
 sentence is what makes it findable a year later.
 `;
 
+const HELP = `---
+name: Help — what to make and the cheapest way to make it
+description: "Help", "how do I", "cheapest way": ask what they want, pick the route, show how skills chain.
+---
+
+# Help — what to make and the cheapest way to make it
+
+Fetch this when the user says "help", "what can you do", "how do I…", "what's the cheapest way", or opens
+with no clear ask. Reply in the user's language, short, no menus longer than six lines.
+
+## 1. Ask one question, then stop
+
+Ask what they want to end up with, offering these and nothing else:
+
+1. a still — poster, card, chart, quote, mockup
+2. one short clip (5–15 s)
+3. one continuous shot longer than a clip (20–30 s)
+4. an ad, trailer or scene with sound (30–90 s)
+5. a change to something already on the canvas — cut out, upscale, resize, vectorize, restyle
+6. copy — script, voiceover text, captions, on-screen words
+
+Also ask 9:16 (phone, social) or 16:9 (screens, YouTube) if they did not say. Then wait.
+
+## 2. Recommend the route and say why it is the cheapest
+
+Call \`estimate_cost\` before quoting money; never guess a price. Rule of thumb: H3 Turbo costs half of
+H3 Max per second, 480p costs about 60% of 768p, and \`render_html\` is free.
+
+| Want | Route | Skills to fetch | Why |
+|---|---|---|---|
+| Still with real text | \`render_html\` — write the page, exact pixels | \`render-html\`, \`static-poster-banger\` (5 s motion version) | Free, exact type, revisable with \`edits\` |
+| Still that needs to be a photo or illustration | \`generate_media\` image, then \`render_html\` for any text on top | \`layout\` after | Models spell badly; type belongs in HTML |
+| One clip, draft | \`generate_media\` H3 Turbo, 480p, 10 s | \`cinematographer\`; \`realism\` for people; \`action\` for hits and chases | Cheapest video that still reads |
+| One clip, final | Same prompt, H3 Max, 768p | same | Re-shoot only what is locked |
+| 20 s continuous | 2 × 10 s H3 Turbo 480p; second clip via \`continue_video\` seam \`frame\`; \`set_timeline\` | \`bridge\`; \`action-bridge\` for fights and chases | Two seams, one scene, no cut |
+| 30 s continuous | 3 × 10 s the same way | \`bridge\` | Three clips is the natural scene length |
+| Ad, trailer, scene | Scenes of ~3 clips, hard cut between scenes; \`generate_music\` / \`generate_voiceover\`; \`set_timeline\` | \`sequences\` (price once, one yes), \`storyboard\` for a story, then per-clip skills, then \`cuts\` | Continuity is per scene, never across the piece |
+| Change an existing asset | \`transform_media\`: \`remove_background\`, \`upscale\`, \`resize\`, \`vectorize\` (then \`get_asset\` → paste the SVG into \`render_html\`) | \`render-html\` for the vector step | No new generation |
+| Copy | Write it, run a humanizer pass (\`humanizer-2-0\` if \`list_skills\` shows it), then \`generate_voiceover\` or \`render_html\` | \`humanizer-2-0\` | Wooden copy is the usual reason a good clip feels fake |
+
+Video falls through to H3 Max when a named model is missing — never to Seedance.
+
+## 3. How skills chain
+
+Order, skipping what does not apply: copy (\`humanizer-2-0\`) → story (\`storyboard\`) → per-clip prompt
+(\`cinematographer\`, \`realism\`, \`action\`) → seams (\`bridge\` or \`action-bridge\`) → pricing and
+timeline (\`sequences\`) → tidy (\`layout\`) → record (\`cuts\`). Fetch each with \`get_skill\` when its step
+starts, not all at once.
+
+## 4. Best practices to tell them
+
+- Draft cheap, finish dear: lock the prompt on H3 Turbo 480p, then re-shoot the keepers on H3 Max 768p.
+- One piece, one setup: model, aspect, resolution and clip length identical across every shot.
+- Three clips per scene, then a cut. Long chains morph; cuts are free.
+- Static seam frames: end each chained clip on a hold so the next one starts clean.
+- Text is always HTML. Never ask a video or image model to spell.
+- Edits need the exact new copy. Ask for it before touching an asset.
+- Price multi-shot work once, get one yes, then run every shot without stopping.
+
+## 5. Prompts they can paste
+
+- "Use bridge to make a 20 s continuous clip: 2 × 10 s, H3 Turbo, 480p, 9:16 — [subject, action, place]."
+- "Same shot as a final: H3 Max, 768p, 16:9."
+- "Humanizer pass on this voiceover, then generate it: [script]."
+- "Vectorize the logo on the canvas and build a 1080×1350 poster around it with render_html."
+- "30 s ad for [product]: three scenes, music bed, one voiceover line per scene. Price it first."
+- "Cut out the subject of the last image and upscale it 2×."
+`;
+
+const SETUP = `---
+name: Setup — connecting fal.ai
+description: No fal key or auth errors: fal.ai, $1 of credit, the key, Settings → Providers, then check_setup.
+---
+
+# Setup — connecting fal.ai
+
+Fetch this when a generation fails with an auth error, \`check_setup\` says no key, or the user asks how to
+get started or connect fal. The app generates with the user's own fal.ai account; nothing works until a
+key is saved. You never see the key — the user pastes it into Settings and the app keeps it locally.
+
+## Walk them through it, one message
+
+1. Go to https://fal.ai and sign in (GitHub or Google works).
+2. Add credit at https://fal.ai/dashboard/billing — as little as $1 is enough to start; a draft clip on
+   H3 Turbo at 480p is a few cents.
+3. Create a key at https://fal.ai/dashboard/keys and copy it.
+4. In this app: Settings → Providers → fal.ai → paste the key → Save.
+5. Tell me when it is saved and I will check it.
+
+Keep it to those five lines. Do not ask them to paste the key in the chat; if they do, tell them to
+delete that message and use Settings instead.
+
+## Then run the check
+
+Call \`check_setup\`. It reports whether a key is saved and whether fal accepts it, without revealing it.
+
+- Accepted: say so, then ask what they want to make (fetch \`help\` if they are unsure).
+- Rejected: they copied it wrong or revoked it — back to https://fal.ai/dashboard/keys, paste again, Save.
+- Unreachable: fal or the network is down; try again in a minute.
+
+If a generation later fails with a balance or credit error, point them to
+https://fal.ai/dashboard/billing rather than retrying.
+`;
+
 export const BUILTIN_SKILLS: Record<string, string> = {
   [OPERATOR_SKILL_SLUG]: OPERATOR_SYSTEM,
   bridge: BRIDGE,
@@ -1437,6 +1543,8 @@ export const BUILTIN_SKILLS: Record<string, string> = {
   connectors: CONNECTORS,
   scheduling: SCHEDULING,
   cuts: CUTS,
+  help: HELP,
+  setup: SETUP,
 };
 
 export function isBuiltinSkill(slug: string): boolean {
