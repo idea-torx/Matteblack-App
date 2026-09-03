@@ -17,6 +17,11 @@ export type StreamInfo = {
   isH264: boolean;
   width?: number;
   height?: number;
+  fps?: number;
+  frames?: number;
+  /** Near-duplicate frames at the head / tail of the clip (a parked seam pose). */
+  headHold?: number;
+  tailHold?: number;
 };
 
 export function buildFFmpegCommand(
@@ -125,26 +130,6 @@ export function buildFFmpegCommand(
     return { args };
   }
 
-  if (canPassthrough && videoClips.length > 1) {
-    const concatLines = videoClips.map((e) => `file '${e.filename}'`).join("\n");
-    const args: string[] = [
-      "-f", "concat",
-      "-safe", "0",
-      "-i", "concat_list.txt",
-      "-c:v", "copy",
-      "-bsf:v", "h264_metadata=level=5.1",
-    ];
-
-    if (config.includeAudio) {
-      args.push("-c:a", "aac", "-b:a", "128k");
-    } else {
-      args.push("-an");
-    }
-
-    args.push("-movflags", "+faststart");
-    args.push(outputName);
-    return { args, concatListContent: concatLines };
-  }
 
   const scaleFilter = resolutionChange
     ? `,scale=${resolutionMap[config.resolution].w}:${resolutionMap[config.resolution].h}:force_original_aspect_ratio=decrease,pad=${resolutionMap[config.resolution].w}:${resolutionMap[config.resolution].h}:(ow-iw)/2:(oh-ih)/2:color=black`
@@ -172,6 +157,26 @@ export function buildFFmpegCommand(
   }
 
   const videoInputIndexMap = new Map<string, number>();
+  // Every clip in a chain ends on the frame the next one starts on (the seam
+  // frame is generated twice), and the model parks the subject for a few
+  // frames either side of it. Drop the seam frame plus the parked run from
+  // each side, by frame index: the container (audio) often outlasts the last
+  // video frame, so a time cut can land past it and drop nothing. Audio riding
+  // on those clips shifts with them; standalone audio keeps absolute time.
+  const seamCut = new Map<string, { start: number; end: number; endFrame?: number; shift: number }>();
+  let shift = 0;
+  videoClips.forEach((entry, i) => {
+    const info = streamInfoMap.get(entry.clip.id);
+    const fps = info?.fps || 24;
+    const isVideo = entry.clip.type === "video";
+    const headDrop = isVideo && i > 0 ? info?.headHold ?? 0 : 0;
+    const tailDrop = isVideo && i < videoClips.length - 1 ? 1 + (info?.tailHold ?? 0) : 0;
+    const start = Math.max(entry.clip.trimStart, headDrop / fps);
+    const endFrame = tailDrop && info?.frames ? info.frames - tailDrop : undefined;
+    const end = endFrame !== undefined ? endFrame / fps : entry.clip.duration - entry.clip.trimEnd - tailDrop / fps;
+    seamCut.set(entry.clip.id, { start, end, endFrame, shift });
+    shift += start - entry.clip.trimStart + (entry.clip.duration - entry.clip.trimEnd - end);
+  });
 
   for (const entry of videoClips) {
     const effDur = getEffectiveDuration(entry.clip);
@@ -193,7 +198,7 @@ export function buildFFmpegCommand(
     const vLabel = `v${videoSegmentLabels.length}`;
     const imageFilter = `,scale=${res.w}:${res.h}:force_original_aspect_ratio=decrease,pad=${res.w}:${res.h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p`;
     filterParts.push(
-      `[${thisIdx}:v]trim=start=${entry.clip.trimStart.toFixed(4)}:end=${(entry.clip.duration - entry.clip.trimEnd).toFixed(4)},setpts=PTS-STARTPTS${isImage ? imageFilter : scaleFilter}[${vLabel}]`
+      `[${thisIdx}:v]trim=start=${seamCut.get(entry.clip.id)!.start.toFixed(4)}:${seamCut.get(entry.clip.id)!.endFrame !== undefined ? `end_frame=${seamCut.get(entry.clip.id)!.endFrame}` : `end=${seamCut.get(entry.clip.id)!.end.toFixed(4)}`},setpts=PTS-STARTPTS${isImage ? imageFilter : scaleFilter}[${vLabel}]`
     );
     videoSegmentLabels.push(`[${vLabel}]`);
 
@@ -235,8 +240,12 @@ export function buildFFmpegCommand(
 
       const aLabel = `a${mixAudioLabels.length}`;
       const vol = entry.clip.volume ?? 1;
+      const cut = seamCut.get(entry.clip.linkedClipId ?? entry.clip.id);
+      const aStart = cut?.start ?? entry.clip.trimStart;
+      const aEnd = cut?.end ?? entry.clip.duration - entry.clip.trimEnd;
+      const delay = Math.round((entry.clip.startOffset - (cut?.shift ?? 0)) * 1000);
       filterParts.push(
-        `[${thisIdx}:a]atrim=start=${entry.clip.trimStart.toFixed(4)}:end=${(entry.clip.duration - entry.clip.trimEnd).toFixed(4)},asetpts=PTS-STARTPTS,volume=${vol.toFixed(2)},adelay=${Math.round(entry.clip.startOffset * 1000)}|${Math.round(entry.clip.startOffset * 1000)},apad=whole_dur=${totalDuration.toFixed(4)}[${aLabel}]`
+        `[${thisIdx}:a]atrim=start=${aStart.toFixed(4)}:end=${aEnd.toFixed(4)},asetpts=PTS-STARTPTS,volume=${vol.toFixed(2)},adelay=${delay}|${delay},apad=whole_dur=${totalDuration.toFixed(4)}[${aLabel}]`
       );
       mixAudioLabels.push(`[${aLabel}]`);
     }
