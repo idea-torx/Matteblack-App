@@ -300,6 +300,9 @@ export function FreeformCanvas({
       if (selectedImageIds.includes(localId)) {
         const next = selectedImageIds.map((id) => (id === localId ? serverId : id));
         onSelectMultiple?.(next);
+        // App keys node meta by id; re-emit under the server id or the chip vanishes.
+        const node = nodesRef.current.find((n) => n.id === localId || n.id === serverId);
+        if (node) emitNodeMetaRef.current(serverId, node);
       }
     },
   });
