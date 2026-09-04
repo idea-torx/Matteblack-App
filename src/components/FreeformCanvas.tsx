@@ -921,13 +921,10 @@ export function FreeformCanvas({
         svgPathEdit.exitEditMode();
       } else if (e.button === 1 || (e.button === 0 && spaceDown.current)) {
       } else if (e.button === 0 && (e.target === viewportRef.current || (e.target as HTMLElement).classList.contains("freeform-canvas__grid"))) {
-        const rect = viewportRef.current!.getBoundingClientRect();
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
-        setMarquee({ startX: sx, startY: sy, currentX: sx, currentY: sy });
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        svgPathEdit.selectPointsInRect(0, 0, 0, 0);
-        return;
+        // A press on bare canvas is the way out of the editor, the same as it
+        // is the way out of a selection. Staying in was what made SVG nodes
+        // feel impossible to let go of.
+        svgPathEdit.exitEditMode();
       } else {
         return;
       }
@@ -1342,6 +1339,8 @@ export function FreeformCanvas({
     if (svgPathEdit.editingNodeId === nodeId) {
       return;
     }
+    // Pressing any other node leaves the editor behind with it.
+    if (svgPathEdit.editingNodeId) svgPathEdit.exitEditMode();
 
     if (e.button === 0 && activeToolRef.current === "design") {
       const subTool = designSubToolRef.current;

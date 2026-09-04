@@ -441,7 +441,10 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
                 height={node.height}
                 viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
                 preserveAspectRatio="none"
-                style={{ ...contentClipStyle, width: "100%", height: "100%", display: "block", overflow: "visible" }}
+                // Clipped unless you are editing: artwork spilling past the node
+                // box keeps hit-testing out there too, and swallows the click on
+                // bare canvas that was meant to deselect.
+                style={{ ...contentClipStyle, width: "100%", height: "100%", display: "block", overflow: isEditingPath ? "visible" : "hidden" }}
               >
                 {(() => {
                   const hasPerSubPathColors = pd.subPaths.some((sp) => sp.fill !== undefined || sp.stroke !== undefined);
