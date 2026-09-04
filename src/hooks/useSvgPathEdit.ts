@@ -35,6 +35,8 @@ type DragState = {
   clickGroup?: number;
   additive?: boolean;
   moved?: boolean;
+  /** Every shape as a canvas-space rect, so the smart guides see them. */
+  rects?: CanvasNode[];
 } | null;
 
 type UseSvgPathEditParams = {
@@ -45,6 +47,9 @@ type UseSvgPathEditParams = {
   pushUndo: (cmd: UndoCommand) => void;
   canvasId: string | null;
   saveNodesBatchDebounced: (canvasId: string, updates: { id: string; [key: string]: unknown }[]) => void;
+  /** Canvas smart guides, so shapes inside an SVG snap like nodes do. */
+  snapRects?: (rects: CanvasNode[], ids: Set<string>, dx: number, dy: number) => { snapDx: number; snapDy: number };
+  clearGuides?: () => void;
 };
 
 export function useSvgPathEdit({
@@ -54,6 +59,8 @@ export function useSvgPathEdit({
   pushUndo,
   canvasId,
   saveNodesBatchDebounced,
+  snapRects,
+  clearGuides,
 }: UseSvgPathEditParams) {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [selectedPoints, setSelectedPoints] = useState<SelectedPoint[]>([]);
@@ -70,6 +77,10 @@ export function useSvgPathEdit({
   const beforeEditBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  const snapRectsRef = useRef(snapRects);
+  snapRectsRef.current = snapRects;
+  const clearGuidesRef = useRef(clearGuides);
+  clearGuidesRef.current = clearGuides;
   const canvasIdRef = useRef(canvasId);
   canvasIdRef.current = canvasId;
 
@@ -364,6 +375,45 @@ export function useSvgPathEdit({
   }, [editingNodeId, nodesRef, getViewBoxScale]);
 
   /**
+   * Every shape in this SVG as a canvas-space rect, plus the node's own box,
+   * which is what the smart guides expect to be handed.
+   */
+  const groupRects = useCallback((nodeId: string, pathData: PathData): CanvasNode[] => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (!node) return [];
+    const { vbScaleX, vbScaleY } = getViewBoxScale(nodeId);
+    const vbX = pathData.viewBox?.x ?? 0;
+    const vbY = pathData.viewBox?.y ?? 0;
+    const box = new Map<number, { x0: number; y0: number; x1: number; y1: number }>();
+    pathData.subPaths.forEach((sp, i) => {
+      const g = sp.group ?? i;
+      let b = box.get(g);
+      if (!b) { b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }; box.set(g, b); }
+      for (const a of sp.anchors) {
+        for (const p of [a, a.handleIn, a.handleOut]) {
+          if (!p) continue;
+          b.x0 = Math.min(b.x0, p.x); b.y0 = Math.min(b.y0, p.y);
+          b.x1 = Math.max(b.x1, p.x); b.y1 = Math.max(b.y1, p.y);
+        }
+      }
+    });
+    const rects: CanvasNode[] = [
+      { id: "__node__", x: node.x, y: node.y, width: node.width, height: node.height } as CanvasNode,
+    ];
+    for (const [g, b] of box) {
+      if (!(b.x1 > b.x0) || !(b.y1 > b.y0)) continue;
+      rects.push({
+        id: String(g),
+        x: node.x + (b.x0 - vbX) / vbScaleX,
+        y: node.y + (b.y0 - vbY) / vbScaleY,
+        width: (b.x1 - b.x0) / vbScaleX,
+        height: (b.y1 - b.y0) / vbScaleY,
+      } as CanvasNode);
+    }
+    return rects;
+  }, [nodesRef, getViewBoxScale]);
+
+  /**
    * Press on a shape that is already picked: a drag moves everything picked, a
    * press that never moves is the click that goes into the shape.
    */
@@ -390,9 +440,10 @@ export function useSvgPathEdit({
       clickGroup: group,
       additive: e.shiftKey || e.metaKey || e.ctrlKey,
       moved: false,
+      rects: groupRects(editingNodeId, pathData),
     };
     (e.target as SVGElement).setPointerCapture(e.pointerId);
-  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups, groupRects]);
 
   /** Drag a corner of the box around the open shapes to scale them together. */
   const handleGroupScalePointerDown = useCallback((e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => {
@@ -437,7 +488,20 @@ export function useSvgPathEdit({
       if (!ds.moved) return;
       const snap = ds.snapshot!;
       const gs = new Set(ds.groups!);
-      const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
+      // Same guides the canvas uses for nodes, fed the shapes of this SVG:
+      // the snap comes back in canvas pixels, so scale it into viewBox units.
+      let tx = dx, ty = dy;
+      if (snapRectsRef.current && ds.rects) {
+        const { snapDx, snapDy } = snapRectsRef.current(
+          ds.rects,
+          new Set(ds.groups!.map(String)),
+          (e.clientX - ds.startX) / z,
+          (e.clientY - ds.startY) / z,
+        );
+        tx = snapDx * ds.vbScaleX;
+        ty = snapDy * ds.vbScaleY;
+      }
+      const pt = (p: { x: number; y: number }) => ({ x: p.x + tx, y: p.y + ty });
       updatePathData(editingNodeId, {
         ...snap,
         subPaths: snap.subPaths.map((sp, i) => !gs.has(sp.group ?? i) ? sp : {
@@ -487,6 +551,7 @@ export function useSvgPathEdit({
       const ds = dragState.current;
       setIsDragging(false);
       dragState.current = null;
+      clearGuidesRef.current?.();
       if (ds?.type === "translate" && !ds.moved) {
         setActiveGroup(ds.clickGroup!, ds.additive);
         return;

@@ -548,6 +548,8 @@ export function FreeformCanvas({
     setUndoRedoVersion((v) => v + 1);
   }, []);
 
+  const { guides: smartGuides, distanceLabels: smartDistanceLabels, computeSnap: computeSmartSnap, computeResizeSnap: computeSmartResizeSnap, clearGuides: clearSmartGuides } = useSmartGuides();
+
   const svgPathEdit = useSvgPathEdit({
     nodes,
     nodesRef,
@@ -556,6 +558,14 @@ export function FreeformCanvas({
     pushUndo,
     canvasId,
     saveNodesBatchDebounced,
+    // Shapes inside an SVG snap against each other and the node box, the same
+    // way whole nodes snap against each other on the canvas.
+    snapRects: (rects, ids, dx, dy) => computeSmartSnap(
+      rects, ids, dx, dy, zoomRef.current, panXRef.current, panYRef.current,
+      viewportRef.current?.clientWidth || window.innerWidth,
+      viewportRef.current?.clientHeight || window.innerHeight,
+    ),
+    clearGuides: clearSmartGuides,
   });
 
   const penDrawHandlers = usePenDraw({
@@ -626,7 +636,6 @@ export function FreeformCanvas({
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, nodePositions: new Map<string, { x: number; y: number }>() });
   const didDragRef = useRef(false);
-  const { guides: smartGuides, distanceLabels: smartDistanceLabels, computeSnap: computeSmartSnap, computeResizeSnap: computeSmartResizeSnap, clearGuides: clearSmartGuides } = useSmartGuides();
 
   const [editingFrameLabel, setEditingFrameLabel] = useState<string | null>(null);
 
