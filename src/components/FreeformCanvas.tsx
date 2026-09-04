@@ -1983,9 +1983,12 @@ export function FreeformCanvas({
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (svgPathEdit.editingNodeId) return;
+        // Inside an SVG the editor owns Delete only while something in it is
+        // picked; with nothing picked the key still deletes the node itself.
+        if (svgPathEdit.editingNodeId && (svgPathEdit.activeGroups.length > 0 || svgPathEdit.selectedPoints.length > 0)) return;
         if (selectedIdsRef.current.size > 0 || activeGroupId) {
           e.preventDefault();
+          if (svgPathEdit.editingNodeId) svgPathEdit.exitEditMode();
           deleteSelectedNodes();
         }
       }
@@ -2093,7 +2096,7 @@ export function FreeformCanvas({
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [deleteSelectedNodes, undo, redo, layerMoveUp, layerMoveDown, layerBringToTop, layerSendToBottom, activeGroupId, insideGroupId]);
+  }, [deleteSelectedNodes, undo, redo, layerMoveUp, layerMoveDown, layerBringToTop, layerSendToBottom, activeGroupId, insideGroupId, svgPathEdit.editingNodeId, svgPathEdit.activeGroups, svgPathEdit.selectedPoints, svgPathEdit.exitEditMode]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

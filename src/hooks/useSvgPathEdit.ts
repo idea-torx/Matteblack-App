@@ -210,12 +210,33 @@ export function useSvgPathEdit({
     );
   }, [getPathData, nodesRef, setNodes]);
 
+  /** Nodes whose markup is being fetched, so a second double-click is a no-op. */
+  const fetchingSvg = useRef(new Set<string>());
+
   const enterEditMode = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (!node || node.node_type !== "svg") return;
 
     const pathData = ensurePathData(nodeId);
-    if (!pathData) return;
+    if (!pathData) {
+      // A generated vector can land with only its URL — the job's svg_content
+      // never reached the node. Pull the markup off src and come back in.
+      if (!node.src || fetchingSvg.current.has(nodeId)) return;
+      fetchingSvg.current.add(nodeId);
+      void fetch(node.src)
+        .then((r) => r.text())
+        .then((text) => {
+          const head = text.trimStart();
+          if (!head.startsWith("<svg") && !head.startsWith("<?xml")) return;
+          setNodes((prev) => prev.map((n) => (
+            n.id === nodeId ? { ...n, metadata: { ...n.metadata, svg_content: text } } : n
+          )));
+          setTimeout(() => enterEditModeRef.current(nodeId), 0);
+        })
+        .catch(() => {})
+        .finally(() => { fetchingSvg.current.delete(nodeId); });
+      return;
+    }
 
     normalizePathBounds(nodeId);
     setEditingNodeId(nodeId);
@@ -223,7 +244,9 @@ export function useSvgPathEdit({
     setActiveGroupsState([]);
     setEnteredGroup(null);
     setEditTool("move");
-  }, [nodesRef, ensurePathData, normalizePathBounds]);
+  }, [nodesRef, ensurePathData, normalizePathBounds, setNodes]);
+  const enterEditModeRef = useRef(enterEditMode);
+  enterEditModeRef.current = enterEditMode;
 
   const exitEditMode = useCallback(() => {
     // Each edit already went on the undo stack as it happened; leaving is just
@@ -629,6 +652,52 @@ export function useSvgPathEdit({
     normalizePathBounds(editingNodeId);
   }, [editingNodeId, activeGroups, getPathData, updatePathData, normalizePathBounds]);
 
+  /** One blob at a time: the shapes you have picked, ready to paste back. */
+  const blobClipboard = useRef<PathData["subPaths"]>([]);
+
+  const handleCopyActiveGroups = useCallback(() => {
+    if (!editingNodeId || activeGroups.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const gs = new Set(activeGroups);
+    blobClipboard.current = pathData.subPaths
+      .map((sp, i) => ({ ...sp, group: sp.group ?? i }))
+      .filter((sp) => gs.has(sp.group as number));
+  }, [editingNodeId, activeGroups, getPathData]);
+
+  const handlePasteBlobs = useCallback(() => {
+    const clip = blobClipboard.current;
+    if (!editingNodeId || clip.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    // Pin every existing group id first, then hand the copies fresh ones, so
+    // nothing renumbers under the selection.
+    const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: sp.group ?? i }));
+    let next = Math.max(-1, ...pinned.map((sp) => sp.group as number)) + 1;
+    const remap = new Map<number, number>();
+    const O = 12;
+    const added = clip.map((sp) => {
+      const g = sp.group as number;
+      if (!remap.has(g)) remap.set(g, next++);
+      return {
+        ...sp,
+        group: remap.get(g)!,
+        anchors: sp.anchors.map((a) => ({
+          ...a,
+          x: a.x + O,
+          y: a.y + O,
+          handleIn: a.handleIn ? { x: a.handleIn.x + O, y: a.handleIn.y + O } : undefined,
+          handleOut: a.handleOut ? { x: a.handleOut.x + O, y: a.handleOut.y + O } : undefined,
+        })),
+      };
+    });
+    updatePathData(editingNodeId, { ...pathData, subPaths: [...pinned, ...added] }, true);
+    setActiveGroupsState([...remap.values()]);
+    setEnteredGroup(null);
+    setSelectedPoints([]);
+    normalizePathBounds(editingNodeId);
+  }, [editingNodeId, getPathData, updatePathData, normalizePathBounds]);
+
   const handleSimplify = useCallback(() => {
     if (!editingNodeId) return;
     const pathData = getPathData(editingNodeId);
@@ -685,11 +754,23 @@ export function useSvgPathEdit({
       if (enteredGroup === null && activeGroups.length > 0) handleDeleteActiveGroups();
       else handleDeleteSelected();
     }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
+      if (activeGroups.length === 0) return;
+      e.preventDefault();
+      handleCopyActiveGroups();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "v" || e.key === "V")) {
+      if (blobClipboard.current.length === 0) return;
+      e.preventDefault();
+      handlePasteBlobs();
+      return;
+    }
     if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleJoinSelected();
     }
-  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected]);
+  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected, handleCopyActiveGroups, handlePasteBlobs]);
 
   const isEditingPath = useCallback((nodeId: string) => editingNodeId === nodeId, [editingNodeId]);
 
@@ -808,6 +889,8 @@ export function useSvgPathEdit({
     handleEditPointerUp,
     handleSegmentClick,
     handleDeleteSelected,
+    handleCopyActiveGroups,
+    handlePasteBlobs,
     handleSimplify,
     handleCutSelected,
     handleJoinSelected,
