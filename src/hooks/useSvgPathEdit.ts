@@ -3,6 +3,7 @@ import type { CanvasNode, UndoCommand } from "../types/canvas";
 import type { PathData } from "../utils/svgPathModel";
 import type { SvgEditTool } from "../components/canvas/SvgEditToolbar";
 import {
+  simplifyPathData,
   extractPathDataFromSvg,
   moveAnchor,
   moveHandle,
@@ -16,7 +17,7 @@ import {
 type SelectedPoint = { subPathIdx: number; anchorIdx: number };
 
 type DragState = {
-  type: "anchor" | "handleIn" | "handleOut";
+  type: "anchor" | "handleIn" | "handleOut" | "scale" | "translate";
   subPathIdx: number;
   anchorIdx: number;
   startX: number;
@@ -25,6 +26,15 @@ type DragState = {
   origY: number;
   vbScaleX: number;
   vbScaleY: number;
+  /** Scale only: the corner held still, and the shapes being scaled. */
+  fixedX?: number;
+  fixedY?: number;
+  snapshot?: PathData;
+  groups?: number[];
+  /** Translate only: the shape under the pointer, in case this is just a click. */
+  clickGroup?: number;
+  additive?: boolean;
+  moved?: boolean;
 } | null;
 
 type UseSvgPathEditParams = {
@@ -47,6 +57,12 @@ export function useSvgPathEdit({
 }: UseSvgPathEditParams) {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [selectedPoints, setSelectedPoints] = useState<SelectedPoint[]>([]);
+  // Which shape is open for point editing. Null means the whole artwork is
+  // showing and a shape has to be clicked into first, as in Figma.
+  const [activeGroups, setActiveGroupsState] = useState<number[]>([]);
+  // Selecting a shape is not the same as being inside it: points only appear
+  // once you click a second time, so a multi-shape selection stays readable.
+  const [enteredGroup, setEnteredGroup] = useState<number | null>(null);
   const [editTool, setEditTool] = useState<SvgEditTool>("move");
   const [isDragging, setIsDragging] = useState(false);
   const dragState = useRef<DragState>(null);
@@ -67,6 +83,9 @@ export function useSvgPathEdit({
     const node = nodesRef.current.find((n) => n.id === nodeId);
     const pathData = getPathData(nodeId);
     if (!node || !pathData) return { vbScaleX: 1, vbScaleY: 1 };
+    if (pathData.viewBox) {
+      return { vbScaleX: pathData.viewBox.width / node.width, vbScaleY: pathData.viewBox.height / node.height };
+    }
     let vbW = 0;
     let vbH = 0;
     for (const sp of pathData.subPaths) {
@@ -115,7 +134,9 @@ export function useSvgPathEdit({
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (!node) return;
 
-    let minX = 0, minY = 0, maxX = node.width, maxY = node.height;
+    // Seeded from the artwork, not from the node: a node with whitespace around
+    // its shapes has to shrink onto them, not just grow to fit strays.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const sp of pathData.subPaths) {
       for (const a of sp.anchors) {
         minX = Math.min(minX, a.x);
@@ -137,7 +158,10 @@ export function useSvgPathEdit({
       }
     }
 
-    if (minX >= 0 && minY >= 0 && maxX <= node.width && maxY <= node.height) return;
+    if (!(maxX > minX) || !(maxY > minY)) return;
+    // Already wrapped tight; re-laying it out every time would jitter the node.
+    if (Math.abs(minX) < 0.5 && Math.abs(minY) < 0.5 &&
+        Math.abs(maxX - node.width) < 0.5 && Math.abs(maxY - node.height) < 0.5) return;
 
     const offsetX = -minX;
     const offsetY = -minY;
@@ -146,6 +170,8 @@ export function useSvgPathEdit({
 
     const shifted: PathData = {
       ...pathData,
+      // The node was resized; the viewBox the canvas renders through follows it.
+      viewBox: pathData.viewBox ? { x: 0, y: 0, width: newWidth, height: newHeight } : undefined,
       subPaths: pathData.subPaths.map((sp) => ({
         ...sp,
         anchors: sp.anchors.map((a) => ({
@@ -187,6 +213,8 @@ export function useSvgPathEdit({
     beforeEditBounds.current = { x: freshNode.x, y: freshNode.y, width: freshNode.width, height: freshNode.height };
     setEditingNodeId(nodeId);
     setSelectedPoints([]);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
     setEditTool("move");
   }, [nodesRef, ensurePathData, normalizePathBounds]);
 
@@ -212,9 +240,28 @@ export function useSvgPathEdit({
     }
     setEditingNodeId(null);
     setSelectedPoints([]);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
     beforeEditMetadata.current = null;
     beforeEditBounds.current = null;
   }, [editingNodeId, nodesRef, pushUndo, setNodes, saveNodesBatchDebounced]);
+
+  const setActiveGroup = useCallback((g: number | null, additive = false) => {
+    setSelectedPoints([]);
+    if (g === null) {
+      setActiveGroupsState([]);
+      setEnteredGroup(null);
+      return;
+    }
+    if (additive) {
+      setActiveGroupsState(activeGroups.includes(g) ? activeGroups.filter((x) => x !== g) : [...activeGroups, g]);
+      setEnteredGroup(null);
+      return;
+    }
+    // Clicking the one shape already picked is the click that goes into it.
+    setEnteredGroup(activeGroups.length === 1 && activeGroups[0] === g ? g : null);
+    setActiveGroupsState([g]);
+  }, [activeGroups]);
 
   const persistChanges = useCallback((nodeId: string) => {
     const cid = canvasIdRef.current;
@@ -316,6 +363,64 @@ export function useSvgPathEdit({
     (e.target as SVGElement).setPointerCapture(e.pointerId);
   }, [editingNodeId, nodesRef, getViewBoxScale]);
 
+  /**
+   * Press on a shape that is already picked: a drag moves everything picked, a
+   * press that never moves is the click that goes into the shape.
+   */
+  const handleGroupMovePointerDown = useCallback((e: React.PointerEvent, group: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "translate",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: 0,
+      origY: 0,
+      vbScaleX,
+      vbScaleY,
+      snapshot: pathData,
+      groups: activeGroups,
+      clickGroup: group,
+      additive: e.shiftKey || e.metaKey || e.ctrlKey,
+      moved: false,
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+
+  /** Drag a corner of the box around the open shapes to scale them together. */
+  const handleGroupScalePointerDown = useCallback((e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "scale",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: grabX,
+      origY: grabY,
+      vbScaleX,
+      vbScaleY,
+      fixedX,
+      fixedY,
+      snapshot: pathData,
+      groups: activeGroups,
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+
   const handleEditPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragState.current || !editingNodeId) return;
     const ds = dragState.current;
@@ -327,7 +432,47 @@ export function useSvgPathEdit({
     const dx = (e.clientX - ds.startX) / z * ds.vbScaleX;
     const dy = (e.clientY - ds.startY) / z * ds.vbScaleY;
 
-    if (ds.type === "anchor") {
+    if (ds.type === "translate") {
+      if (Math.abs(e.clientX - ds.startX) + Math.abs(e.clientY - ds.startY) > 3) ds.moved = true;
+      if (!ds.moved) return;
+      const snap = ds.snapshot!;
+      const gs = new Set(ds.groups!);
+      const pt = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
+      updatePathData(editingNodeId, {
+        ...snap,
+        subPaths: snap.subPaths.map((sp, i) => !gs.has(sp.group ?? i) ? sp : {
+          ...sp,
+          anchors: sp.anchors.map((a) => ({
+            ...a,
+            ...pt(a),
+            handleIn: a.handleIn ? pt(a.handleIn) : undefined,
+            handleOut: a.handleOut ? pt(a.handleOut) : undefined,
+          })),
+        }),
+      });
+    } else if (ds.type === "scale") {
+      const snap = ds.snapshot!;
+      const fx = ds.fixedX!, fy = ds.fixedY!;
+      const spanX = ds.origX - fx, spanY = ds.origY - fy;
+      let sx = Math.abs(spanX) < 1e-6 ? 1 : (ds.origX + dx - fx) / spanX;
+      let sy = Math.abs(spanY) < 1e-6 ? 1 : (ds.origY + dy - fy) / spanY;
+      // Shift keeps the proportions, the way every other scale handle does.
+      if (e.shiftKey) { const u = Math.abs(sx) > Math.abs(sy) ? sx : sy; sx = u; sy = u; }
+      const pt = (p: { x: number; y: number }) => ({ x: fx + (p.x - fx) * sx, y: fy + (p.y - fy) * sy });
+      const gs = new Set(ds.groups!);
+      updatePathData(editingNodeId, {
+        ...snap,
+        subPaths: snap.subPaths.map((sp, i) => !gs.has(sp.group ?? i) ? sp : {
+          ...sp,
+          anchors: sp.anchors.map((a) => ({
+            ...a,
+            ...pt(a),
+            handleIn: a.handleIn ? pt(a.handleIn) : undefined,
+            handleOut: a.handleOut ? pt(a.handleOut) : undefined,
+          })),
+        }),
+      });
+    } else if (ds.type === "anchor") {
       const moved = moveAnchor(pathData, ds.subPathIdx, ds.anchorIdx, ds.origX + dx - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].x, ds.origY + dy - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].y);
       updatePathData(editingNodeId, moved);
     } else {
@@ -339,14 +484,19 @@ export function useSvgPathEdit({
 
   const handleEditPointerUp = useCallback(() => {
     if (isDragging) {
+      const ds = dragState.current;
       setIsDragging(false);
       dragState.current = null;
+      if (ds?.type === "translate" && !ds.moved) {
+        setActiveGroup(ds.clickGroup!, ds.additive);
+        return;
+      }
       if (editingNodeId) {
         normalizePathBounds(editingNodeId);
         setTimeout(() => persistChanges(editingNodeId), 0);
       }
     }
-  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds]);
+  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds, setActiveGroup]);
 
   const handleSegmentClick = useCallback((_e: React.MouseEvent, subPathIdx: number, segmentIdx: number) => {
     if (!editingNodeId) return;
@@ -376,6 +526,14 @@ export function useSvgPathEdit({
     updatePathData(editingNodeId, pathData, true);
     setSelectedPoints([]);
   }, [editingNodeId, selectedPoints, getPathData, updatePathData]);
+
+  const handleSimplify = useCallback(() => {
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    updatePathData(editingNodeId, simplifyPathData(pathData), true);
+    setSelectedPoints([]);
+  }, [editingNodeId, getPathData, updatePathData]);
 
   const handleCutSelected = useCallback(() => {
     if (!editingNodeId || selectedPoints.length !== 1) return;
@@ -414,7 +572,10 @@ export function useSvgPathEdit({
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!editingNodeId) return;
     if (e.key === "Escape") {
-      exitEditMode();
+      // Step out one level at a time: out of the shape, then out of edit mode.
+      if (enteredGroup !== null) setEnteredGroup(null);
+      else if (activeGroups.length > 0) setActiveGroup(null);
+      else exitEditMode();
       return;
     }
     if (e.key === "Delete" || e.key === "Backspace") {
@@ -424,7 +585,7 @@ export function useSvgPathEdit({
       e.preventDefault();
       handleJoinSelected();
     }
-  }, [editingNodeId, exitEditMode, handleDeleteSelected, handleJoinSelected]);
+  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleJoinSelected]);
 
   const isEditingPath = useCallback((nodeId: string) => editingNodeId === nodeId, [editingNodeId]);
 
@@ -525,6 +686,9 @@ export function useSvgPathEdit({
     editingNodeId,
     isEditingPath,
     selectedPoints,
+    activeGroups,
+    enteredGroup,
+    setActiveGroup,
     editTool,
     setEditTool,
     isDragging,
@@ -532,12 +696,15 @@ export function useSvgPathEdit({
     exitEditMode,
     getPathData,
     ensurePathData,
+    handleGroupMovePointerDown,
+    handleGroupScalePointerDown,
     handleAnchorPointerDown,
     handleHandlePointerDown,
     handleEditPointerMove,
     handleEditPointerUp,
     handleSegmentClick,
     handleDeleteSelected,
+    handleSimplify,
     handleCutSelected,
     handleJoinSelected,
     handleKeyDown,

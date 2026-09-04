@@ -157,6 +157,7 @@ function App() {
     isEditing: boolean;
     selectedPoints: { subPathIdx: number; anchorIdx: number }[];
     pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean }[] }[] } | null;
+    activeGroups?: number[];
   } | null>(null);
   const [fitAllTrigger, setFitAllTrigger] = useState(0);
   const [presentMode, setPresentMode] = useState(false);

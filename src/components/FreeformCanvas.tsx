@@ -588,11 +588,12 @@ export function FreeformCanvas({
         isEditing: true,
         selectedPoints: svgPathEdit.selectedPoints,
         pathData: svgEditPathDataForPanel,
+        activeGroups: svgPathEdit.activeGroups,
       });
     } else {
       onSvgEditStateChange(null);
     }
-  }, [svgPathEdit.editingNodeId, svgPathEdit.selectedPoints, svgEditPathDataForPanel, onSvgEditStateChange]);
+  }, [svgPathEdit.editingNodeId, svgPathEdit.selectedPoints, svgPathEdit.activeGroups, svgEditPathDataForPanel, onSvgEditStateChange]);
 
   const shapeApiRef = useRef<{ addShapeAtPosition: (x: number, y: number, w: number, h: number, kind?: string, extraMeta?: Record<string, unknown>) => void } | null>(null);
 
@@ -3378,6 +3379,8 @@ export function FreeformCanvas({
                   nodeWidth={node.width}
                   nodeHeight={node.height}
                   selectedPoints={svgPathEdit.selectedPoints}
+                  activeGroups={svgPathEdit.activeGroups}
+                  enteredGroup={svgPathEdit.enteredGroup}
                   zoom={zoom}
                   isDragging={svgPathEdit.isDragging}
                   editTool={svgPathEdit.editTool}
@@ -3386,7 +3389,11 @@ export function FreeformCanvas({
                   onToolChange={svgPathEdit.setEditTool}
                   onCutAction={svgPathEdit.handleCutSelected}
                   onJoinAction={svgPathEdit.handleJoinSelected}
+                  onSimplifyAction={svgPathEdit.handleSimplify}
                   onExit={svgPathEdit.exitEditMode}
+                  onSelectGroup={svgPathEdit.setActiveGroup}
+                  onGroupMovePointerDown={svgPathEdit.handleGroupMovePointerDown}
+                  onGroupScalePointerDown={svgPathEdit.handleGroupScalePointerDown}
                   onAnchorPointerDown={svgPathEdit.handleAnchorPointerDown}
                   onHandlePointerDown={svgPathEdit.handleHandlePointerDown}
                   onSegmentClick={svgPathEdit.handleSegmentClick}

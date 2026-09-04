@@ -118,7 +118,7 @@ export type FreeformCanvasProps = {
   pendingShapeKind?: string;
   onPendingShapeKindChange?: (kind: string) => void;
   onQuickRemoveBg?: (imageUrl: string) => void;
-  onSvgEditStateChange?: (state: { isEditing: boolean; selectedPoints: { subPathIdx: number; anchorIdx: number }[]; pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean }[] }[] } | null } | null) => void;
+  onSvgEditStateChange?: (state: { isEditing: boolean; selectedPoints: { subPathIdx: number; anchorIdx: number }[]; pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean }[] }[] } | null; activeGroups?: number[] } | null) => void;
   onSyncStatusChange?: (status: "synced" | "syncing" | "confirming" | "failed", failedSeconds: number, retry: () => void) => void;
   onOpenLibrary?: (view: string, folderId?: string, assetId?: string) => void;
   /** Cinema node's export button. Selection alone can't reach the export

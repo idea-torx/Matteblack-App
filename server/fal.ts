@@ -1496,7 +1496,7 @@ const MODEL_MAP: Record<string, ModelConfig> = {
     },
   },
   "recraft-v4-vector": {
-    falModelId: "fal-ai/recraft/v4/pro/text-to-vector",
+    falModelId: "fal-ai/recraft/v4.1/pro/text-to-vector",
     type: "svg",
     buildInput(params) {
       const input: Record<string, unknown> = {

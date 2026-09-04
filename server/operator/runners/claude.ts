@@ -141,7 +141,9 @@ export const claudeRunner: Runner = {
     // shadowed by ours, same name, so the tool namespace is unchanged.
     const grants = (ctx.connectors ?? []).map((c) => `mcp__${mcpKey(c.name)}`);
     const args = [
-      "-p", ctx.message,
+      // The prompt goes on stdin, not argv: a turn carrying a data: URL
+      // reference blew past ARG_MAX and spawn failed with E2BIG.
+      "-p",
       "--output-format", "stream-json",
       "--verbose", // required for stream-json to emit intermediate events
       "--mcp-config", ctx.mcpConfigPath,
@@ -159,5 +161,6 @@ export const claudeRunner: Runner = {
     if (ctx.effort) args.push("--effort", ctx.effort);
     return args;
   },
+  stdinText: (ctx: RunnerContext) => ctx.message,
   parseLine: parseStreamJsonLine,
 };

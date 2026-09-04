@@ -40,7 +40,7 @@ const MODEL_INFO: Record<string, ModelInfo> = {
   "pixelcut_remove_bg": { displayName: "Pixelcut", variation: "Background Removal" },
   "remove_bg": { displayName: "Background Removal", variation: "Background Removal" },
   "bria_expand": { displayName: "Bria Expand", variation: "Resize / Expand" },
-  "recraft-v4-vector": { displayName: "Recraft Vector", variation: "Text → Vector" },
+  "recraft-v4-vector": { displayName: "Recraft Vector 4.1", variation: "Text → Vector" },
   "recraft-vectorize": { displayName: "Recraft Vectorize", variation: "Image → Vector" },
   "minimax-tts": { displayName: "Minimax TTS", variation: "Text to Speech" },
   "minimax-music": { displayName: "Minimax Music", variation: "Music" },
