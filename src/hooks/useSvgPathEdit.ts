@@ -73,8 +73,7 @@ export function useSvgPathEdit({
   const [editTool, setEditTool] = useState<SvgEditTool>("move");
   const [isDragging, setIsDragging] = useState(false);
   const dragState = useRef<DragState>(null);
-  const beforeEditMetadata = useRef<Record<string, unknown> | null>(null);
-  const beforeEditBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const dragUndoSnap = useRef<{ x: number; y: number; width: number; height: number; metadata: Record<string, unknown> } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const snapRectsRef = useRef(snapRects);
@@ -219,9 +218,6 @@ export function useSvgPathEdit({
     if (!pathData) return;
 
     normalizePathBounds(nodeId);
-    const freshNode = nodesRef.current.find((n) => n.id === nodeId) || node;
-    beforeEditMetadata.current = { ...freshNode.metadata };
-    beforeEditBounds.current = { x: freshNode.x, y: freshNode.y, width: freshNode.width, height: freshNode.height };
     setEditingNodeId(nodeId);
     setSelectedPoints([]);
     setActiveGroupsState([]);
@@ -230,32 +226,21 @@ export function useSvgPathEdit({
   }, [nodesRef, ensurePathData, normalizePathBounds]);
 
   const exitEditMode = useCallback(() => {
-    if (editingNodeId && beforeEditMetadata.current && beforeEditBounds.current) {
+    // Each edit already went on the undo stack as it happened; leaving is just
+    // a save. It used to push one entry for the whole session on top of those,
+    // so a single Cmd+Z threw away everything you had just done.
+    if (editingNodeId) {
       const node = nodesRef.current.find((n) => n.id === editingNodeId);
-      if (node) {
-        const oldMeta = beforeEditMetadata.current;
-        const oldBounds = beforeEditBounds.current;
-        const newMeta = { ...node.metadata };
-        const newBounds = { x: node.x, y: node.y, width: node.width, height: node.height };
-        const nodeId = editingNodeId;
-        pushUndo({
-          type: "resize",
-          undo: () => setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...oldBounds, metadata: oldMeta } : n)),
-          redo: () => setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...newBounds, metadata: newMeta } : n)),
-        });
-        const cid = canvasIdRef.current;
-        if (cid) {
-          saveNodesBatchDebounced(cid, [{ id: nodeId, ...newBounds, metadata: newMeta }]);
-        }
+      const cid = canvasIdRef.current;
+      if (node && cid) {
+        saveNodesBatchDebounced(cid, [{ id: editingNodeId, x: node.x, y: node.y, width: node.width, height: node.height, metadata: { ...node.metadata } }]);
       }
     }
     setEditingNodeId(null);
     setSelectedPoints([]);
     setActiveGroupsState([]);
     setEnteredGroup(null);
-    beforeEditMetadata.current = null;
-    beforeEditBounds.current = null;
-  }, [editingNodeId, nodesRef, pushUndo, setNodes, saveNodesBatchDebounced]);
+  }, [editingNodeId, nodesRef, saveNodesBatchDebounced]);
 
   const setActiveGroup = useCallback((g: number | null, additive = false) => {
     setSelectedPoints([]);
@@ -283,7 +268,33 @@ export function useSvgPathEdit({
     }
   }, [nodesRef, saveNodesBatchDebounced]);
 
+  /** A node's geometry as it stands, for the undo stack. */
+  const snapOf = useCallback((nodeId: string) => {
+    const n = nodesRef.current.find((x) => x.id === nodeId);
+    return n ? { x: n.x, y: n.y, width: n.width, height: n.height, metadata: { ...n.metadata } } : null;
+  }, [nodesRef]);
+
+  type NodeSnap = NonNullable<ReturnType<typeof snapOf>>;
+
+  /**
+   * Every committed edit is its own undo step. Exiting the editor used to push
+   * one entry for the whole session, so Cmd+Z inside it either did nothing or
+   * threw away every change at once.
+   */
+  const pushPathUndo = useCallback((nodeId: string, before: NodeSnap | null) => {
+    const after = snapOf(nodeId);
+    if (!before || !after) return;
+    if (before.metadata.pathData === after.metadata.pathData) return;
+    const apply = (snap: NodeSnap) => {
+      setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...snap } : n));
+      const cid = canvasIdRef.current;
+      if (cid) saveNodesBatchDebounced(cid, [{ id: nodeId, ...snap }]);
+    };
+    pushUndo({ type: "resize", undo: () => apply(before), redo: () => apply(after) });
+  }, [snapOf, setNodes, pushUndo, saveNodesBatchDebounced]);
+
   const updatePathData = useCallback((nodeId: string, newPathData: PathData, persist = false) => {
+    const before = persist ? snapOf(nodeId) : null;
     setNodes((prev) =>
       prev.map((n) =>
         n.id === nodeId
@@ -291,8 +302,8 @@ export function useSvgPathEdit({
           : n
       )
     );
-    if (persist) setTimeout(() => persistChanges(nodeId), 0);
-  }, [setNodes, persistChanges]);
+    if (persist) setTimeout(() => { persistChanges(nodeId); pushPathUndo(nodeId, before); }, 0);
+  }, [setNodes, persistChanges, snapOf, pushPathUndo]);
 
   const handleAnchorPointerDown = useCallback((e: React.PointerEvent, subPathIdx: number, anchorIdx: number) => {
     e.stopPropagation();
@@ -474,6 +485,8 @@ export function useSvgPathEdit({
 
   const handleEditPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragState.current || !editingNodeId) return;
+    // Taken before this move writes anything: the state the drag started from.
+    if (!dragUndoSnap.current) dragUndoSnap.current = snapOf(editingNodeId);
     const ds = dragState.current;
     const z = zoomRef.current;
 
@@ -544,7 +557,7 @@ export function useSvgPathEdit({
       const moved = moveHandle(pathData, ds.subPathIdx, ds.anchorIdx, ht, ds.origX + dx, ds.origY + dy);
       updatePathData(editingNodeId, moved);
     }
-  }, [isDragging, editingNodeId, getPathData, updatePathData]);
+  }, [isDragging, editingNodeId, getPathData, updatePathData, snapOf]);
 
   const handleEditPointerUp = useCallback(() => {
     if (isDragging) {
@@ -552,16 +565,18 @@ export function useSvgPathEdit({
       setIsDragging(false);
       dragState.current = null;
       clearGuidesRef.current?.();
+      const dragSnap = dragUndoSnap.current;
+      dragUndoSnap.current = null;
       if (ds?.type === "translate" && !ds.moved) {
         setActiveGroup(ds.clickGroup!, ds.additive);
         return;
       }
       if (editingNodeId) {
         normalizePathBounds(editingNodeId);
-        setTimeout(() => persistChanges(editingNodeId), 0);
+        setTimeout(() => { persistChanges(editingNodeId); pushPathUndo(editingNodeId, dragSnap); }, 0);
       }
     }
-  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds, setActiveGroup]);
+  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds, setActiveGroup, pushPathUndo]);
 
   const handleSegmentClick = useCallback((_e: React.MouseEvent, subPathIdx: number, segmentIdx: number) => {
     if (!editingNodeId) return;
@@ -591,6 +606,28 @@ export function useSvgPathEdit({
     updatePathData(editingNodeId, pathData, true);
     setSelectedPoints([]);
   }, [editingNodeId, selectedPoints, getPathData, updatePathData]);
+
+  /** Delete the whole shapes that are picked, not the points inside one. */
+  const handleDeleteActiveGroups = useCallback(() => {
+    if (!editingNodeId || activeGroups.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const gs = new Set(activeGroups);
+    // Pin each survivor's group id: without it the ones falling back to their
+    // index get renumbered by the delete, and every selection after points at
+    // the wrong shape.
+    const subPaths = pathData.subPaths
+      .map((sp, i) => ({ ...sp, group: sp.group ?? i }))
+      .filter((sp) => !gs.has(sp.group));
+    // Deleting the last shape would leave an empty node behind; that is what
+    // deleting the node is for.
+    if (subPaths.length === 0) return;
+    updatePathData(editingNodeId, { ...pathData, subPaths }, true);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
+    setSelectedPoints([]);
+    normalizePathBounds(editingNodeId);
+  }, [editingNodeId, activeGroups, getPathData, updatePathData, normalizePathBounds]);
 
   const handleSimplify = useCallback(() => {
     if (!editingNodeId) return;
@@ -644,13 +681,15 @@ export function useSvgPathEdit({
       return;
     }
     if (e.key === "Delete" || e.key === "Backspace") {
-      handleDeleteSelected();
+      // Outside a shape the selection is shapes, inside it the selection is points.
+      if (enteredGroup === null && activeGroups.length > 0) handleDeleteActiveGroups();
+      else handleDeleteSelected();
     }
     if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleJoinSelected();
     }
-  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleJoinSelected]);
+  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected]);
 
   const isEditingPath = useCallback((nodeId: string) => editingNodeId === nodeId, [editingNodeId]);
 
