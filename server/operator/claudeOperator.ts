@@ -296,6 +296,13 @@ export interface RunOperatorOptions {
   botPersona?: { name: string; description: string };
 }
 
+/** Base64 payloads never belong in a prompt or a chat bubble: one canvas
+ *  reference is megabytes, which blew ARG_MAX (spawn E2BIG) and then the
+ *  context window. Head kept so the agent still knows an image was there. */
+export function stripBase64(text: string): string {
+  return text.replace(/data:[\w.+-]+\/[\w.+-]+;base64,[A-Za-z0-9+/=]{100,}/g, "[inline image omitted]");
+}
+
 /**
  * Run one operator turn: spawn the configured CLI, stream parsed events via
  * onEvent, resolve when the process exits. Rejects only on spawn failure — tool
@@ -348,7 +355,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
   const mcp = mcpServerSpec(opts.review === true, mcpTools, opts.botId);
 
   const ctx: RunnerContext = {
-    message: opts.message,
+    message: stripBase64(opts.message),
     sessionId: untagSession(runner.id, opts.sessionId),
     model: opts.model,
     effort: opts.effort,
@@ -436,6 +443,8 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
           const ev: OperatorEvent =
             raw.type === "session" ? { ...raw, sessionId: tagSession(runner.id, raw.sessionId) }
             : raw.type === "done" ? { ...raw, sessionId: raw.sessionId ? tagSession(runner.id, raw.sessionId) : lastSessionId }
+            : (raw.type === "text" || raw.type === "thinking") ? { ...raw, text: stripBase64(raw.text) }
+            : raw.type === "tool_result" ? { ...raw, text: stripBase64(raw.text) }
             : raw;
           if (ev.type === "session") lastSessionId = ev.sessionId;
           else if (ev.type === "done" && ev.sessionId) lastSessionId = ev.sessionId;

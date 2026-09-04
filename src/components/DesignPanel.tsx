@@ -192,6 +192,8 @@ type DesignPanelProps = {
     isEditing: boolean;
     selectedPoints: { subPathIdx: number; anchorIdx: number }[];
     pathData: { subPaths: { anchors: { x: number; y: number; smooth: boolean; cornerRadius?: number }[] }[] } | null;
+    /** Shapes opened in the SVG editor; paint lands on these alone. */
+    activeGroups?: number[];
   } | null;
   onSvgPointUpdate?: (nodeId: string, subPathIdx: number, anchorIdx: number, x: number, y: number) => void;
   onSvgToggleSmooth?: (nodeId: string, subPathIdx: number, anchorIdx: number) => void;
@@ -457,9 +459,15 @@ export function DesignPanel({
                 const meta = selectedNodeMeta?.get(nodeId);
                 const pathData = meta && (meta as Record<string, unknown>).pathData as { fill?: string; stroke?: string; strokeWidth?: number; opacity?: number; fillOpacity?: number; strokeOpacity?: number; cornerRadius?: number } | undefined;
                 if (!pathData && !meta) return null;
+                const paintGroupsPeek = svgEditState?.isEditing && svgEditState.activeGroups?.length
+                  ? new Set(svgEditState.activeGroups)
+                  : null;
                 const effectiveFill = (() => {
                   if (!pathData) return (meta?.fill as string) || "none";
                   const pd2 = pathData as { fill?: string; subPaths?: Array<{ fill?: string }> };
+                  const open = pd2.subPaths?.find((sp, i) =>
+                    paintGroupsPeek?.has(((sp as { group?: number }).group) ?? i) && sp.fill !== undefined);
+                  if (open) return open.fill || "none";
                   if (pd2.subPaths?.some((sp) => sp.fill !== undefined)) {
                     const firstSpFill = pd2.subPaths.find((sp) => sp.fill !== undefined)?.fill;
                     return firstSpFill || pd2.fill || "none";
@@ -474,6 +482,10 @@ export function DesignPanel({
                 const svgFillHex = svgFill === "none" ? "#5b5fc7" : svgFill;
                 const isFillNone = svgFill === "none";
 
+                const paintGroups = svgEditState?.isEditing && svgEditState.activeGroups?.length
+                  ? new Set(svgEditState.activeGroups)
+                  : null;
+
                 const updateSvgAppearanceProp = (prop: string, value: unknown) => {
                   if (!onUpdateNodeMetadata || !nodeId) return;
                   const existing = meta || {};
@@ -482,8 +494,10 @@ export function DesignPanel({
                   if (pd) {
                     const newPd = { ...pd, [prop]: value };
                     if ((prop === "fill" || prop === "stroke") && Array.isArray(newPd.subPaths)) {
-                      newPd.subPaths = (newPd.subPaths as Record<string, unknown>[]).map((sp) => {
-                        if (sp[prop] !== undefined) return { ...sp, [prop]: value };
+                      newPd.subPaths = (newPd.subPaths as Record<string, unknown>[]).map((sp, i) => {
+                        // Inside the editor, paint only the shapes that are open.
+                        if (paintGroups && !paintGroups.has((sp.group as number) ?? i)) return sp;
+                        if (sp[prop] !== undefined || paintGroups) return { ...sp, [prop]: value };
                         return sp;
                       });
                     }

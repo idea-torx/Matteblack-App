@@ -422,7 +422,11 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     // "now make another video from that image" arrives with no reference at
     // all and silently generates text-to-video — which is exactly the moment
     // continuity is lost. Holding the URLs means the agent can re-pass them.
-    note += ` Reference URL${n > 1 ? "s" : ""}: ${referenceUrls.join(", ")}. Keep ${n > 1 ? "these" : "this"} for the rest of the conversation: on ANY later generation that continues the same subject — a second video, a variation, another shot — pass ${it} yourself in referenceUrls, because the automatic attachment only applies to this message. Omitting ${it} does not error; it silently falls back to text-to-video and the subject will not match.`;
+    // Only real URLs. A data: reference is megabytes of base64 — inlining it
+    // here blew the prompt past ARG_MAX (spawn E2BIG) and, on stdin, the
+    // context window. The bytes still reach the tools via the context store.
+    const reusable = referenceUrls.filter((u) => !u.startsWith("data:"));
+    if (reusable.length > 0) note += ` Reference URL${reusable.length > 1 ? "s" : ""}: ${reusable.join(", ")}. Keep ${n > 1 ? "these" : "this"} for the rest of the conversation: on ANY later generation that continues the same subject — a second video, a variation, another shot — pass ${it} yourself in referenceUrls, because the automatic attachment only applies to this message. Omitting ${it} does not error; it silently falls back to text-to-video and the subject will not match.`;
     if (referenceAspectRatio) {
       note += ` The attached ${img} ${n > 1 ? "are" : "is"} ${referenceAspectRatio} — use aspectRatio "${referenceAspectRatio}" to keep the lineage consistent, unless the user asked for a different shape.`;
     }

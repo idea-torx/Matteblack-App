@@ -15,7 +15,7 @@ import { isGradientFill, parseGradientFill, gradientToCss } from "../../utils/gr
 import { getDefaultFrameFill } from "../../theme";
 import { enqueueDirty } from "../../services/CanvasStore";
 import { buildDWithRadius } from "../../utils/svgPathModel";
-import type { PathData } from "../../utils/svgPathModel";
+import type { PathData, SubPath } from "../../utils/svgPathModel";
 
 // html_urls the live frame already shows (our own saves): no reload for those.
 export const liveHtmlUrls = new Set<string>();
@@ -409,8 +409,14 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         (node.metadata?.pathData) ? (
           (() => {
             const pd = node.metadata.pathData as PathData;
-            let vbW = 0;
-            let vbH = 0;
+            // A stored viewBox is the truth. The max-anchor guess below only
+            // exists for pathData written before extraction recorded one, and
+            // it stretches any artwork whose ink stops short of its own edge.
+            const vbX = pd.viewBox?.x ?? 0;
+            const vbY = pd.viewBox?.y ?? 0;
+            let vbW = pd.viewBox?.width ?? 0;
+            let vbH = pd.viewBox?.height ?? 0;
+            if (!pd.viewBox) {
             for (const sp of pd.subPaths) {
               for (const a of sp.anchors) {
                 if (a.x > vbW) vbW = a.x;
@@ -425,6 +431,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
                 }
               }
             }
+            }
             vbW = vbW || node.width;
             vbH = vbH || node.height;
             return (
@@ -432,27 +439,41 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
                 className="freeform-canvas__node-svg"
                 width={node.width}
                 height={node.height}
-                viewBox={`0 0 ${vbW} ${vbH}`}
+                viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
                 preserveAspectRatio="none"
-                style={{ ...contentClipStyle, width: "100%", height: "100%", display: "block", overflow: "visible" }}
+                // Clipped unless you are editing: artwork spilling past the node
+                // box keeps hit-testing out there too, and swallows the click on
+                // bare canvas that was meant to deselect.
+                style={{ ...contentClipStyle, width: "100%", height: "100%", display: "block", overflow: isEditingPath ? "visible" : "hidden" }}
               >
                 {(() => {
                   const hasPerSubPathColors = pd.subPaths.some((sp) => sp.fill !== undefined || sp.stroke !== undefined);
                   if (hasPerSubPathColors) {
-                    return pd.subPaths.map((sp, i) => {
+                    // SubPaths that came from one source <path> render as one
+                    // <path>: split apart, an even-odd donut loses its hole and
+                    // fills in solid.
+                    const groups: { key: string; sps: SubPath[] }[] = [];
+                    pd.subPaths.forEach((sp, i) => {
+                      const key = sp.group !== undefined ? `g${sp.group}` : `i${i}`;
+                      const last = groups[groups.length - 1];
+                      if (last && last.key === key) last.sps.push(sp);
+                      else groups.push({ key, sps: [sp] });
+                    });
+                    return groups.map(({ key, sps }) => {
+                      const sp = sps[0];
                       const spFill = sp.fill !== undefined ? sp.fill : (pd.fill ?? "none");
                       const spStroke = sp.stroke !== undefined ? sp.stroke : (pd.stroke ?? "none");
                       const spStrokeWidth = sp.strokeWidth !== undefined ? sp.strokeWidth : (pd.strokeWidth ?? 0);
-                      const spD = buildDWithRadius({ ...pd, subPaths: [sp] });
+                      const spD = buildDWithRadius({ ...pd, subPaths: sps });
                       return (
                         <path
-                          key={i}
+                          key={key}
                           d={spD}
                           fill={spFill !== "none" ? spFill : "none"}
-                          fillOpacity={pd.fillOpacity ?? pd.opacity ?? 1}
-                          fillRule={pd.fillRule || undefined}
+                          fillOpacity={sp.fillOpacity ?? pd.fillOpacity ?? pd.opacity ?? 1}
+                          fillRule={sp.fillRule ?? pd.fillRule ?? undefined}
                           stroke={spStroke !== "none" ? spStroke : "none"}
-                          strokeOpacity={pd.strokeOpacity ?? 1}
+                          strokeOpacity={sp.strokeOpacity ?? pd.strokeOpacity ?? 1}
                           strokeWidth={spStrokeWidth}
                         />
                       );
@@ -518,7 +539,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         <div className="freeform-canvas__node-gradient" style={{ background: "rgba(255,255,255,0.05)", ...contentClipStyle }} />
       )}
       {showFloatingToolbar && nodeRef.current && createPortal(
-        <div className="freeform-canvas__floating-toolbar" style={{ position: "absolute", left: node.x + node.width / 2, top: node.y + node.height + 6 / zoom, bottom: "auto", zIndex: 999999, transform: `translateX(-50%) scale(${Math.min(1.55 * Math.pow(1 / zoom, 0.55), 3.5)})`, transformOrigin: "top center" }} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="freeform-canvas__floating-toolbar" style={{ position: "absolute", left: node.x + node.width / 2, top: node.y + node.height + 34 * Math.min(1.55 * Math.pow(1 / zoom, 0.55), 3.5), bottom: "auto", zIndex: 999999, transform: `translateX(-50%) scale(${Math.min(1.55 * Math.pow(1 / zoom, 0.55), 3.5)})`, transformOrigin: "top center" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="freeform-canvas__floating-toolbar__glass-shadow" aria-hidden="true" />
           <div className="freeform-canvas__floating-toolbar__glass-backdrop" aria-hidden="true" />
           <NodeActions

@@ -1,8 +1,9 @@
 import { useRef, useState, useCallback, type MutableRefObject } from "react";
 import type { CanvasNode, UndoCommand } from "../types/canvas";
-import type { PathData } from "../utils/svgPathModel";
+import type { PathData, SubPath } from "../utils/svgPathModel";
 import type { SvgEditTool } from "../components/canvas/SvgEditToolbar";
 import {
+  simplifyPathData,
   extractPathDataFromSvg,
   moveAnchor,
   moveHandle,
@@ -11,12 +12,15 @@ import {
   splitPathAtPoint,
   joinEndpoints,
   insertPointOnSegment,
+  appendGroups,
+  groupSubPaths,
+  mapGroups,
 } from "../utils/svgPathModel";
 
 type SelectedPoint = { subPathIdx: number; anchorIdx: number };
 
 type DragState = {
-  type: "anchor" | "handleIn" | "handleOut";
+  type: "anchor" | "handleIn" | "handleOut" | "scale" | "rotate" | "translate";
   subPathIdx: number;
   anchorIdx: number;
   startX: number;
@@ -25,6 +29,17 @@ type DragState = {
   origY: number;
   vbScaleX: number;
   vbScaleY: number;
+  /** Scale: the corner held still. Rotate: the centre turned about. */
+  fixedX?: number;
+  fixedY?: number;
+  snapshot?: PathData;
+  groups?: number[];
+  /** Translate only: the shape under the pointer, in case this is just a click. */
+  clickGroup?: number;
+  additive?: boolean;
+  moved?: boolean;
+  /** Every shape as a canvas-space rect, so the smart guides see them. */
+  rects?: CanvasNode[];
 } | null;
 
 type UseSvgPathEditParams = {
@@ -35,6 +50,9 @@ type UseSvgPathEditParams = {
   pushUndo: (cmd: UndoCommand) => void;
   canvasId: string | null;
   saveNodesBatchDebounced: (canvasId: string, updates: { id: string; [key: string]: unknown }[]) => void;
+  /** Canvas smart guides, so shapes inside an SVG snap like nodes do. */
+  snapRects?: (rects: CanvasNode[], ids: Set<string>, dx: number, dy: number) => { snapDx: number; snapDy: number };
+  clearGuides?: () => void;
 };
 
 export function useSvgPathEdit({
@@ -44,16 +62,27 @@ export function useSvgPathEdit({
   pushUndo,
   canvasId,
   saveNodesBatchDebounced,
+  snapRects,
+  clearGuides,
 }: UseSvgPathEditParams) {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [selectedPoints, setSelectedPoints] = useState<SelectedPoint[]>([]);
+  // Which shape is open for point editing. Null means the whole artwork is
+  // showing and a shape has to be clicked into first, as in Figma.
+  const [activeGroups, setActiveGroupsState] = useState<number[]>([]);
+  // Selecting a shape is not the same as being inside it: points only appear
+  // once you click a second time, so a multi-shape selection stays readable.
+  const [enteredGroup, setEnteredGroup] = useState<number | null>(null);
   const [editTool, setEditTool] = useState<SvgEditTool>("move");
   const [isDragging, setIsDragging] = useState(false);
   const dragState = useRef<DragState>(null);
-  const beforeEditMetadata = useRef<Record<string, unknown> | null>(null);
-  const beforeEditBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const dragUndoSnap = useRef<{ x: number; y: number; width: number; height: number; metadata: Record<string, unknown> } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  const snapRectsRef = useRef(snapRects);
+  snapRectsRef.current = snapRects;
+  const clearGuidesRef = useRef(clearGuides);
+  clearGuidesRef.current = clearGuides;
   const canvasIdRef = useRef(canvasId);
   canvasIdRef.current = canvasId;
 
@@ -67,6 +96,9 @@ export function useSvgPathEdit({
     const node = nodesRef.current.find((n) => n.id === nodeId);
     const pathData = getPathData(nodeId);
     if (!node || !pathData) return { vbScaleX: 1, vbScaleY: 1 };
+    if (pathData.viewBox) {
+      return { vbScaleX: pathData.viewBox.width / node.width, vbScaleY: pathData.viewBox.height / node.height };
+    }
     let vbW = 0;
     let vbH = 0;
     for (const sp of pathData.subPaths) {
@@ -115,7 +147,9 @@ export function useSvgPathEdit({
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (!node) return;
 
-    let minX = 0, minY = 0, maxX = node.width, maxY = node.height;
+    // Seeded from the artwork, not from the node: a node with whitespace around
+    // its shapes has to shrink onto them, not just grow to fit strays.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const sp of pathData.subPaths) {
       for (const a of sp.anchors) {
         minX = Math.min(minX, a.x);
@@ -137,7 +171,10 @@ export function useSvgPathEdit({
       }
     }
 
-    if (minX >= 0 && minY >= 0 && maxX <= node.width && maxY <= node.height) return;
+    if (!(maxX > minX) || !(maxY > minY)) return;
+    // Already wrapped tight; re-laying it out every time would jitter the node.
+    if (Math.abs(minX) < 0.5 && Math.abs(minY) < 0.5 &&
+        Math.abs(maxX - node.width) < 0.5 && Math.abs(maxY - node.height) < 0.5) return;
 
     const offsetX = -minX;
     const offsetY = -minY;
@@ -146,6 +183,8 @@ export function useSvgPathEdit({
 
     const shifted: PathData = {
       ...pathData,
+      // The node was resized; the viewBox the canvas renders through follows it.
+      viewBox: pathData.viewBox ? { x: 0, y: 0, width: newWidth, height: newHeight } : undefined,
       subPaths: pathData.subPaths.map((sp) => ({
         ...sp,
         anchors: sp.anchors.map((a) => ({
@@ -174,47 +213,77 @@ export function useSvgPathEdit({
     );
   }, [getPathData, nodesRef, setNodes]);
 
+  /** Nodes whose markup is being fetched, so a second double-click is a no-op. */
+  const fetchingSvg = useRef(new Set<string>());
+
   const enterEditMode = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (!node || node.node_type !== "svg") return;
 
     const pathData = ensurePathData(nodeId);
-    if (!pathData) return;
+    if (!pathData) {
+      // A generated vector can land with only its URL — the job's svg_content
+      // never reached the node. Pull the markup off src and come back in.
+      if (!node.src || fetchingSvg.current.has(nodeId)) return;
+      fetchingSvg.current.add(nodeId);
+      void fetch(node.src)
+        .then((r) => r.text())
+        .then((text) => {
+          const head = text.trimStart();
+          if (!head.startsWith("<svg") && !head.startsWith("<?xml")) return;
+          setNodes((prev) => prev.map((n) => (
+            n.id === nodeId ? { ...n, metadata: { ...n.metadata, svg_content: text } } : n
+          )));
+          setTimeout(() => enterEditModeRef.current(nodeId), 0);
+        })
+        .catch(() => {})
+        .finally(() => { fetchingSvg.current.delete(nodeId); });
+      return;
+    }
 
     normalizePathBounds(nodeId);
-    const freshNode = nodesRef.current.find((n) => n.id === nodeId) || node;
-    beforeEditMetadata.current = { ...freshNode.metadata };
-    beforeEditBounds.current = { x: freshNode.x, y: freshNode.y, width: freshNode.width, height: freshNode.height };
     setEditingNodeId(nodeId);
     setSelectedPoints([]);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
     setEditTool("move");
-  }, [nodesRef, ensurePathData, normalizePathBounds]);
+  }, [nodesRef, ensurePathData, normalizePathBounds, setNodes]);
+  const enterEditModeRef = useRef(enterEditMode);
+  enterEditModeRef.current = enterEditMode;
 
   const exitEditMode = useCallback(() => {
-    if (editingNodeId && beforeEditMetadata.current && beforeEditBounds.current) {
+    // Each edit already went on the undo stack as it happened; leaving is just
+    // a save. It used to push one entry for the whole session on top of those,
+    // so a single Cmd+Z threw away everything you had just done.
+    if (editingNodeId) {
       const node = nodesRef.current.find((n) => n.id === editingNodeId);
-      if (node) {
-        const oldMeta = beforeEditMetadata.current;
-        const oldBounds = beforeEditBounds.current;
-        const newMeta = { ...node.metadata };
-        const newBounds = { x: node.x, y: node.y, width: node.width, height: node.height };
-        const nodeId = editingNodeId;
-        pushUndo({
-          type: "resize",
-          undo: () => setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...oldBounds, metadata: oldMeta } : n)),
-          redo: () => setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...newBounds, metadata: newMeta } : n)),
-        });
-        const cid = canvasIdRef.current;
-        if (cid) {
-          saveNodesBatchDebounced(cid, [{ id: nodeId, ...newBounds, metadata: newMeta }]);
-        }
+      const cid = canvasIdRef.current;
+      if (node && cid) {
+        saveNodesBatchDebounced(cid, [{ id: editingNodeId, x: node.x, y: node.y, width: node.width, height: node.height, metadata: { ...node.metadata } }]);
       }
     }
     setEditingNodeId(null);
     setSelectedPoints([]);
-    beforeEditMetadata.current = null;
-    beforeEditBounds.current = null;
-  }, [editingNodeId, nodesRef, pushUndo, setNodes, saveNodesBatchDebounced]);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
+  }, [editingNodeId, nodesRef, saveNodesBatchDebounced]);
+
+  const setActiveGroup = useCallback((g: number | null, additive = false) => {
+    setSelectedPoints([]);
+    if (g === null) {
+      setActiveGroupsState([]);
+      setEnteredGroup(null);
+      return;
+    }
+    if (additive) {
+      setActiveGroupsState(activeGroups.includes(g) ? activeGroups.filter((x) => x !== g) : [...activeGroups, g]);
+      setEnteredGroup(null);
+      return;
+    }
+    // Clicking the one shape already picked is the click that goes into it.
+    setEnteredGroup(activeGroups.length === 1 && activeGroups[0] === g ? g : null);
+    setActiveGroupsState([g]);
+  }, [activeGroups]);
 
   const persistChanges = useCallback((nodeId: string) => {
     const cid = canvasIdRef.current;
@@ -225,7 +294,33 @@ export function useSvgPathEdit({
     }
   }, [nodesRef, saveNodesBatchDebounced]);
 
+  /** A node's geometry as it stands, for the undo stack. */
+  const snapOf = useCallback((nodeId: string) => {
+    const n = nodesRef.current.find((x) => x.id === nodeId);
+    return n ? { x: n.x, y: n.y, width: n.width, height: n.height, metadata: { ...n.metadata } } : null;
+  }, [nodesRef]);
+
+  type NodeSnap = NonNullable<ReturnType<typeof snapOf>>;
+
+  /**
+   * Every committed edit is its own undo step. Exiting the editor used to push
+   * one entry for the whole session, so Cmd+Z inside it either did nothing or
+   * threw away every change at once.
+   */
+  const pushPathUndo = useCallback((nodeId: string, before: NodeSnap | null) => {
+    const after = snapOf(nodeId);
+    if (!before || !after) return;
+    if (before.metadata.pathData === after.metadata.pathData) return;
+    const apply = (snap: NodeSnap) => {
+      setNodes((prev) => prev.map((n) => n.id === nodeId ? { ...n, ...snap } : n));
+      const cid = canvasIdRef.current;
+      if (cid) saveNodesBatchDebounced(cid, [{ id: nodeId, ...snap }]);
+    };
+    pushUndo({ type: "resize", undo: () => apply(before), redo: () => apply(after) });
+  }, [snapOf, setNodes, pushUndo, saveNodesBatchDebounced]);
+
   const updatePathData = useCallback((nodeId: string, newPathData: PathData, persist = false) => {
+    const before = persist ? snapOf(nodeId) : null;
     setNodes((prev) =>
       prev.map((n) =>
         n.id === nodeId
@@ -233,8 +328,8 @@ export function useSvgPathEdit({
           : n
       )
     );
-    if (persist) setTimeout(() => persistChanges(nodeId), 0);
-  }, [setNodes, persistChanges]);
+    if (persist) setTimeout(() => { persistChanges(nodeId); pushPathUndo(nodeId, before); }, 0);
+  }, [setNodes, persistChanges, snapOf, pushPathUndo]);
 
   const handleAnchorPointerDown = useCallback((e: React.PointerEvent, subPathIdx: number, anchorIdx: number) => {
     e.stopPropagation();
@@ -316,8 +411,134 @@ export function useSvgPathEdit({
     (e.target as SVGElement).setPointerCapture(e.pointerId);
   }, [editingNodeId, nodesRef, getViewBoxScale]);
 
+  /**
+   * Every shape in this SVG as a canvas-space rect, plus the node's own box,
+   * which is what the smart guides expect to be handed.
+   */
+  const groupRects = useCallback((nodeId: string, pathData: PathData): CanvasNode[] => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (!node) return [];
+    const { vbScaleX, vbScaleY } = getViewBoxScale(nodeId);
+    const vbX = pathData.viewBox?.x ?? 0;
+    const vbY = pathData.viewBox?.y ?? 0;
+    const box = new Map<number, { x0: number; y0: number; x1: number; y1: number }>();
+    pathData.subPaths.forEach((sp, i) => {
+      const g = sp.group ?? i;
+      let b = box.get(g);
+      if (!b) { b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }; box.set(g, b); }
+      for (const a of sp.anchors) {
+        for (const p of [a, a.handleIn, a.handleOut]) {
+          if (!p) continue;
+          b.x0 = Math.min(b.x0, p.x); b.y0 = Math.min(b.y0, p.y);
+          b.x1 = Math.max(b.x1, p.x); b.y1 = Math.max(b.y1, p.y);
+        }
+      }
+    });
+    const rects: CanvasNode[] = [
+      { id: "__node__", x: node.x, y: node.y, width: node.width, height: node.height } as CanvasNode,
+    ];
+    for (const [g, b] of box) {
+      if (!(b.x1 > b.x0) || !(b.y1 > b.y0)) continue;
+      rects.push({
+        id: String(g),
+        x: node.x + (b.x0 - vbX) / vbScaleX,
+        y: node.y + (b.y0 - vbY) / vbScaleY,
+        width: (b.x1 - b.x0) / vbScaleX,
+        height: (b.y1 - b.y0) / vbScaleY,
+      } as CanvasNode);
+    }
+    return rects;
+  }, [nodesRef, getViewBoxScale]);
+
+  /**
+   * Press on a shape that is already picked: a drag moves everything picked, a
+   * press that never moves is the click that goes into the shape.
+   */
+  const handleGroupMovePointerDown = useCallback((e: React.PointerEvent, group: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "translate",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: 0,
+      origY: 0,
+      vbScaleX,
+      vbScaleY,
+      snapshot: pathData,
+      groups: activeGroups,
+      clickGroup: group,
+      additive: e.shiftKey || e.metaKey || e.ctrlKey,
+      moved: false,
+      rects: groupRects(editingNodeId, pathData),
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups, groupRects]);
+
+  /** Drag a corner of the box around the open shapes to scale them together. */
+  const handleGroupScalePointerDown = useCallback((e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "scale",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: grabX,
+      origY: grabY,
+      vbScaleX,
+      vbScaleY,
+      fixedX,
+      fixedY,
+      snapshot: pathData,
+      groups: activeGroups,
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+
+  const handleGroupRotatePointerDown = useCallback((e: React.PointerEvent, grabX: number, grabY: number, cx: number, cy: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "rotate",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: grabX,
+      origY: grabY,
+      vbScaleX,
+      vbScaleY,
+      fixedX: cx,
+      fixedY: cy,
+      snapshot: pathData,
+      groups: activeGroups,
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+
   const handleEditPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragState.current || !editingNodeId) return;
+    // Taken before this move writes anything: the state the drag started from.
+    if (!dragUndoSnap.current) dragUndoSnap.current = snapOf(editingNodeId);
     const ds = dragState.current;
     const z = zoomRef.current;
 
@@ -327,7 +548,71 @@ export function useSvgPathEdit({
     const dx = (e.clientX - ds.startX) / z * ds.vbScaleX;
     const dy = (e.clientY - ds.startY) / z * ds.vbScaleY;
 
-    if (ds.type === "anchor") {
+    if (ds.type === "translate") {
+      if (Math.abs(e.clientX - ds.startX) + Math.abs(e.clientY - ds.startY) > 3) ds.moved = true;
+      if (!ds.moved) return;
+      const snap = ds.snapshot!;
+      const gs = new Set(ds.groups!);
+      // Same guides the canvas uses for nodes, fed the shapes of this SVG:
+      // the snap comes back in canvas pixels, so scale it into viewBox units.
+      let tx = dx, ty = dy;
+      if (snapRectsRef.current && ds.rects) {
+        const { snapDx, snapDy } = snapRectsRef.current(
+          ds.rects,
+          new Set(ds.groups!.map(String)),
+          (e.clientX - ds.startX) / z,
+          (e.clientY - ds.startY) / z,
+        );
+        tx = snapDx * ds.vbScaleX;
+        ty = snapDy * ds.vbScaleY;
+      }
+      const pt = (p: { x: number; y: number }) => ({ x: p.x + tx, y: p.y + ty });
+      updatePathData(editingNodeId, {
+        ...snap,
+        subPaths: snap.subPaths.map((sp, i) => !gs.has(sp.group ?? i) ? sp : {
+          ...sp,
+          anchors: sp.anchors.map((a) => ({
+            ...a,
+            ...pt(a),
+            handleIn: a.handleIn ? pt(a.handleIn) : undefined,
+            handleOut: a.handleOut ? pt(a.handleOut) : undefined,
+          })),
+        }),
+      });
+    } else if (ds.type === "scale") {
+      const snap = ds.snapshot!;
+      const fx = ds.fixedX!, fy = ds.fixedY!;
+      const spanX = ds.origX - fx, spanY = ds.origY - fy;
+      let sx = Math.abs(spanX) < 1e-6 ? 1 : (ds.origX + dx - fx) / spanX;
+      let sy = Math.abs(spanY) < 1e-6 ? 1 : (ds.origY + dy - fy) / spanY;
+      // Shift keeps the proportions, the way every other scale handle does.
+      if (e.shiftKey) { const u = Math.abs(sx) > Math.abs(sy) ? sx : sy; sx = u; sy = u; }
+      const pt = (p: { x: number; y: number }) => ({ x: fx + (p.x - fx) * sx, y: fy + (p.y - fy) * sy });
+      const gs = new Set(ds.groups!);
+      updatePathData(editingNodeId, {
+        ...snap,
+        subPaths: snap.subPaths.map((sp, i) => !gs.has(sp.group ?? i) ? sp : {
+          ...sp,
+          anchors: sp.anchors.map((a) => ({
+            ...a,
+            ...pt(a),
+            handleIn: a.handleIn ? pt(a.handleIn) : undefined,
+            handleOut: a.handleOut ? pt(a.handleOut) : undefined,
+          })),
+        }),
+      });
+    } else if (ds.type === "rotate") {
+      const snap = ds.snapshot!;
+      const cx = ds.fixedX!, cy = ds.fixedY!;
+      let ang = Math.atan2(ds.origY + dy - cy, ds.origX + dx - cx) - Math.atan2(ds.origY - cy, ds.origX - cx);
+      // Shift steps in 15s, the way every other rotate handle does.
+      if (e.shiftKey) ang = Math.round(ang / (Math.PI / 12)) * (Math.PI / 12);
+      const cos = Math.cos(ang), sin = Math.sin(ang);
+      updatePathData(editingNodeId, mapGroups(snap, ds.groups!, (p) => ({
+        x: cx + (p.x - cx) * cos - (p.y - cy) * sin,
+        y: cy + (p.x - cx) * sin + (p.y - cy) * cos,
+      })));
+    } else if (ds.type === "anchor") {
       const moved = moveAnchor(pathData, ds.subPathIdx, ds.anchorIdx, ds.origX + dx - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].x, ds.origY + dy - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].y);
       updatePathData(editingNodeId, moved);
     } else {
@@ -335,18 +620,26 @@ export function useSvgPathEdit({
       const moved = moveHandle(pathData, ds.subPathIdx, ds.anchorIdx, ht, ds.origX + dx, ds.origY + dy);
       updatePathData(editingNodeId, moved);
     }
-  }, [isDragging, editingNodeId, getPathData, updatePathData]);
+  }, [isDragging, editingNodeId, getPathData, updatePathData, snapOf]);
 
   const handleEditPointerUp = useCallback(() => {
     if (isDragging) {
+      const ds = dragState.current;
       setIsDragging(false);
       dragState.current = null;
+      clearGuidesRef.current?.();
+      const dragSnap = dragUndoSnap.current;
+      dragUndoSnap.current = null;
+      if (ds?.type === "translate" && !ds.moved) {
+        setActiveGroup(ds.clickGroup!, ds.additive);
+        return;
+      }
       if (editingNodeId) {
         normalizePathBounds(editingNodeId);
-        setTimeout(() => persistChanges(editingNodeId), 0);
+        setTimeout(() => { persistChanges(editingNodeId); pushPathUndo(editingNodeId, dragSnap); }, 0);
       }
     }
-  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds]);
+  }, [isDragging, editingNodeId, persistChanges, normalizePathBounds, setActiveGroup, pushPathUndo]);
 
   const handleSegmentClick = useCallback((_e: React.MouseEvent, subPathIdx: number, segmentIdx: number) => {
     if (!editingNodeId) return;
@@ -376,6 +669,61 @@ export function useSvgPathEdit({
     updatePathData(editingNodeId, pathData, true);
     setSelectedPoints([]);
   }, [editingNodeId, selectedPoints, getPathData, updatePathData]);
+
+  /** Delete the whole shapes that are picked, not the points inside one. */
+  const handleDeleteActiveGroups = useCallback(() => {
+    if (!editingNodeId || activeGroups.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const gs = new Set(activeGroups);
+    // Pin each survivor's group id: without it the ones falling back to their
+    // index get renumbered by the delete, and every selection after points at
+    // the wrong shape.
+    const subPaths = pathData.subPaths
+      .map((sp, i) => ({ ...sp, group: sp.group ?? i }))
+      .filter((sp) => !gs.has(sp.group));
+    // Deleting the last shape would leave an empty node behind; that is what
+    // deleting the node is for.
+    if (subPaths.length === 0) return;
+    updatePathData(editingNodeId, { ...pathData, subPaths }, true);
+    setActiveGroupsState([]);
+    setEnteredGroup(null);
+    setSelectedPoints([]);
+    normalizePathBounds(editingNodeId);
+  }, [editingNodeId, activeGroups, getPathData, updatePathData, normalizePathBounds]);
+
+  /** One blob at a time: the shapes you have picked, ready to paste back. */
+  const blobClipboard = useRef<SubPath[]>([]);
+
+  const handleCopyActiveGroups = useCallback(() => {
+    if (!editingNodeId || activeGroups.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    blobClipboard.current = groupSubPaths(pathData, activeGroups);
+  }, [editingNodeId, activeGroups, getPathData]);
+
+  const handlePasteBlobs = useCallback(() => {
+    const clip = blobClipboard.current;
+    if (!editingNodeId || clip.length === 0) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    // Offset in node pixels, not viewBox units: on a 2048-wide viewBox inside a
+    // 600px node, a dozen viewBox units is 3px and reads as nothing happening.
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    const { pathData: next, groups } = appendGroups(pathData, clip, 16 * vbScaleX, 16 * vbScaleY);
+    updatePathData(editingNodeId, next, true);
+    setActiveGroupsState(groups);
+    setEnteredGroup(null);
+    setSelectedPoints([]);
+  }, [editingNodeId, getPathData, getViewBoxScale, updatePathData]);
+
+  const handleSimplify = useCallback(() => {
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    updatePathData(editingNodeId, simplifyPathData(pathData), true);
+    setSelectedPoints([]);
+  }, [editingNodeId, getPathData, updatePathData]);
 
   const handleCutSelected = useCallback(() => {
     if (!editingNodeId || selectedPoints.length !== 1) return;
@@ -414,17 +762,34 @@ export function useSvgPathEdit({
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!editingNodeId) return;
     if (e.key === "Escape") {
-      exitEditMode();
+      // Step out one level at a time: out of the shape, then out of edit mode.
+      if (enteredGroup !== null) setEnteredGroup(null);
+      else if (activeGroups.length > 0) setActiveGroup(null);
+      else exitEditMode();
       return;
     }
     if (e.key === "Delete" || e.key === "Backspace") {
-      handleDeleteSelected();
+      // Outside a shape the selection is shapes, inside it the selection is points.
+      if (enteredGroup === null && activeGroups.length > 0) handleDeleteActiveGroups();
+      else handleDeleteSelected();
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
+      if (activeGroups.length === 0) return;
+      e.preventDefault();
+      handleCopyActiveGroups();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "v" || e.key === "V")) {
+      if (blobClipboard.current.length === 0) return;
+      e.preventDefault();
+      handlePasteBlobs();
+      return;
     }
     if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleJoinSelected();
     }
-  }, [editingNodeId, exitEditMode, handleDeleteSelected, handleJoinSelected]);
+  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected, handleCopyActiveGroups, handlePasteBlobs]);
 
   const isEditingPath = useCallback((nodeId: string) => editingNodeId === nodeId, [editingNodeId]);
 
@@ -525,6 +890,9 @@ export function useSvgPathEdit({
     editingNodeId,
     isEditingPath,
     selectedPoints,
+    activeGroups,
+    enteredGroup,
+    setActiveGroup,
     editTool,
     setEditTool,
     isDragging,
@@ -532,12 +900,18 @@ export function useSvgPathEdit({
     exitEditMode,
     getPathData,
     ensurePathData,
+    handleGroupMovePointerDown,
+    handleGroupScalePointerDown,
+    handleGroupRotatePointerDown,
     handleAnchorPointerDown,
     handleHandlePointerDown,
     handleEditPointerMove,
     handleEditPointerUp,
     handleSegmentClick,
     handleDeleteSelected,
+    handleCopyActiveGroups,
+    handlePasteBlobs,
+    handleSimplify,
     handleCutSelected,
     handleJoinSelected,
     handleKeyDown,

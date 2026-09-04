@@ -8,6 +8,7 @@ import { rehostExternalUrlToR2, isR2HostedUrl, getFileStream, parseFileUrl, toLo
 import { readCustomModel, listCustomModels, buildInputFromSchema } from "./models/customModels.js";
 import { getFalKey } from "./config/userConfig.js";
 import { LOCAL_MODE } from "./config/runtime.js";
+import { reconcileJob } from "./services/falBilling.js";
 
 /**
  * Rehost a fal.ai result URL onto our own R2 bucket so the URL is durable
@@ -1495,7 +1496,7 @@ const MODEL_MAP: Record<string, ModelConfig> = {
     },
   },
   "recraft-v4-vector": {
-    falModelId: "fal-ai/recraft/v4/pro/text-to-vector",
+    falModelId: "fal-ai/recraft/v4.1/pro/text-to-vector",
     type: "svg",
     buildInput(params) {
       const input: Record<string, unknown> = {
@@ -1928,6 +1929,7 @@ export async function handleFalResult(
       [jobId, resultUrl, JSON.stringify(jobMetadata)]
     );
 
+    void reconcileJob(jobId).catch(() => {});
     console.log(`[fal.ai] Recovery: Job ${jobId} completed with result_url=${resultUrl ? 'yes' : 'no'}`);
     return "completed";
   } catch (err) {
@@ -1993,6 +1995,7 @@ export async function resumeFalPolling(
        WHERE id = $1 AND status NOT IN ('complete', 'failed', 'cancelled')`,
       [jobId, resultUrl, JSON.stringify(jobMetadata)]
     );
+    void reconcileJob(jobId).catch(() => {});
     console.log(`[fal.ai] Resumed polling: Job ${jobId} completed`);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -2164,6 +2167,7 @@ export async function dispatchToFal(
         [jobId, resultUrl, JSON.stringify(jobMetadata)]
       );
       console.log(`[fal.ai] Job ${jobId} marked complete, result_url=${resultUrl ? 'set' : 'MISSING'} (rows=${updated.rowCount})`);
+      void reconcileJob(jobId).catch(() => {});
       // Safety-net notification so the user always learns the job finished
       // even if the inline polling in the chat / canvas card silently misses
       // the transition (page reload, network blip, message removed from

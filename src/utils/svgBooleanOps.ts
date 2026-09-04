@@ -1,5 +1,5 @@
 import paper from "paper";
-import type { PathData, SubPath, AnchorPoint } from "./svgPathModel";
+import { ensurePaper, type PathData, type SubPath, type AnchorPoint } from "./svgPathModel";
 
 export type BooleanOpType = "union" | "subtract" | "intersect" | "exclude" | "flatten";
 
@@ -19,17 +19,6 @@ type BooleanOpResult = {
   width: number;
   height: number;
 };
-
-let paperSetup = false;
-function ensurePaper() {
-  if (!paperSetup) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    paper.setup(canvas);
-    paperSetup = true;
-  }
-}
 
 function subPathToPaperPath(sp: SubPath, offsetX: number, offsetY: number): paper.Path {
   const segments: paper.Segment[] = [];

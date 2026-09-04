@@ -554,6 +554,29 @@
   color: #fff;
 }
 
+/* SVG editor pill: the active tool wears the theme's accent, so the same
+ * toolbar reads right on every scheme instead of a hardcoded blue. */
+.freeform-canvas__toolbar-btn--accent,
+.freeform-canvas__toolbar-btn--accent:hover {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.5), 0 0 10px rgba(var(--accent-rgb), 0.45);
+}
+
+.freeform-canvas__toolbar-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  align-self: center;
+  position: relative;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+[data-scheme="light"] .freeform-canvas__toolbar-divider {
+  background: rgba(0, 0, 0, 0.14);
+}
+
 .freeform-canvas__toolbar-btn--saved {
   color: var(--success);
 }

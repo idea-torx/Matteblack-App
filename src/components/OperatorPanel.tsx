@@ -465,9 +465,9 @@ export function OperatorPanel({
   // the active session — reopening the agent deleted the thread it should have
   // restored.
   const initialChats = useRef<ChatStore>(loadChats()).current;
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    () => initialChats.sessions.find((s) => s.id === initialChats.activeId)?.messages ?? []
-  );
+  // Empty: the scope effect below opens a fresh thread on mount. Restoring the
+  // stored one here only flashed it before it was replaced.
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [model, setModel] = useState<string>(OPERATOR_MODELS[0].id);
@@ -531,9 +531,7 @@ export function OperatorPanel({
     () => chats.sessions.filter((s) => s.projectId === pid && !s.archived),
     [chats.sessions, pid],
   );
-  const sessionIdRef = useRef<string | undefined>(
-    chats.sessions.find((s) => s.id === chats.activeId)?.sessionId,
-  );
+  const sessionIdRef = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1000,11 +998,15 @@ export function OperatorPanel({
     if (prevPidRef.current === pid) return;
     prevPidRef.current = pid;
     abortRef.current?.abort();
-    const mine = store.sessions.filter((s) => s.projectId === pid).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    chatIdRef.current = mine?.id ?? newChatId();
+    // Opening a scope starts a NEW thread. It used to reopen that scope's most
+    // recent one, which meant every window resumed the same claude session —
+    // and a --resume transcript only ever grows, so a bot the user came back to
+    // for a week eventually died on "Prompt is too long". The old threads are
+    // one click away in History, where openChat resumes them deliberately.
+    chatIdRef.current = newChatId();
     chatPidRef.current = pid;
-    sessionIdRef.current = mine?.sessionId;
-    setMessages(mine?.messages ?? []);
+    sessionIdRef.current = undefined;
+    setMessages([]);
     setHistoryOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid]);

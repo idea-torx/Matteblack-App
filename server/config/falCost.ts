@@ -492,7 +492,7 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     cost: flatPerUnit("generation"),
   },
   "recraft-v4-vector": {
-    endpoint: "fal-ai/recraft/v4/pro/text-to-vector",
+    endpoint: "fal-ai/recraft/v4.1/pro/text-to-vector",
     unitPrice: 0.3,
     unit: "images",
     cost: flatPerUnit("image"),

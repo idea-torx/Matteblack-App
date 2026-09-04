@@ -548,6 +548,8 @@ export function FreeformCanvas({
     setUndoRedoVersion((v) => v + 1);
   }, []);
 
+  const { guides: smartGuides, distanceLabels: smartDistanceLabels, computeSnap: computeSmartSnap, computeResizeSnap: computeSmartResizeSnap, clearGuides: clearSmartGuides } = useSmartGuides();
+
   const svgPathEdit = useSvgPathEdit({
     nodes,
     nodesRef,
@@ -556,6 +558,14 @@ export function FreeformCanvas({
     pushUndo,
     canvasId,
     saveNodesBatchDebounced,
+    // Shapes inside an SVG snap against each other and the node box, the same
+    // way whole nodes snap against each other on the canvas.
+    snapRects: (rects, ids, dx, dy) => computeSmartSnap(
+      rects, ids, dx, dy, zoomRef.current, panXRef.current, panYRef.current,
+      viewportRef.current?.clientWidth || window.innerWidth,
+      viewportRef.current?.clientHeight || window.innerHeight,
+    ),
+    clearGuides: clearSmartGuides,
   });
 
   const penDrawHandlers = usePenDraw({
@@ -588,11 +598,12 @@ export function FreeformCanvas({
         isEditing: true,
         selectedPoints: svgPathEdit.selectedPoints,
         pathData: svgEditPathDataForPanel,
+        activeGroups: svgPathEdit.activeGroups,
       });
     } else {
       onSvgEditStateChange(null);
     }
-  }, [svgPathEdit.editingNodeId, svgPathEdit.selectedPoints, svgEditPathDataForPanel, onSvgEditStateChange]);
+  }, [svgPathEdit.editingNodeId, svgPathEdit.selectedPoints, svgPathEdit.activeGroups, svgEditPathDataForPanel, onSvgEditStateChange]);
 
   const shapeApiRef = useRef<{ addShapeAtPosition: (x: number, y: number, w: number, h: number, kind?: string, extraMeta?: Record<string, unknown>) => void } | null>(null);
 
@@ -625,7 +636,6 @@ export function FreeformCanvas({
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, nodePositions: new Map<string, { x: number; y: number }>() });
   const didDragRef = useRef(false);
-  const { guides: smartGuides, distanceLabels: smartDistanceLabels, computeSnap: computeSmartSnap, computeResizeSnap: computeSmartResizeSnap, clearGuides: clearSmartGuides } = useSmartGuides();
 
   const [editingFrameLabel, setEditingFrameLabel] = useState<string | null>(null);
 
@@ -920,13 +930,10 @@ export function FreeformCanvas({
         svgPathEdit.exitEditMode();
       } else if (e.button === 1 || (e.button === 0 && spaceDown.current)) {
       } else if (e.button === 0 && (e.target === viewportRef.current || (e.target as HTMLElement).classList.contains("freeform-canvas__grid"))) {
-        const rect = viewportRef.current!.getBoundingClientRect();
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
-        setMarquee({ startX: sx, startY: sy, currentX: sx, currentY: sy });
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        svgPathEdit.selectPointsInRect(0, 0, 0, 0);
-        return;
+        // A press on bare canvas is the way out of the editor, the same as it
+        // is the way out of a selection. Staying in was what made SVG nodes
+        // feel impossible to let go of.
+        svgPathEdit.exitEditMode();
       } else {
         return;
       }
@@ -1341,6 +1348,8 @@ export function FreeformCanvas({
     if (svgPathEdit.editingNodeId === nodeId) {
       return;
     }
+    // Pressing any other node leaves the editor behind with it.
+    if (svgPathEdit.editingNodeId) svgPathEdit.exitEditMode();
 
     if (e.button === 0 && activeToolRef.current === "design") {
       const subTool = designSubToolRef.current;
@@ -1974,9 +1983,12 @@ export function FreeformCanvas({
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (svgPathEdit.editingNodeId) return;
+        // Inside an SVG the editor owns Delete only while something in it is
+        // picked; with nothing picked the key still deletes the node itself.
+        if (svgPathEdit.editingNodeId && (svgPathEdit.activeGroups.length > 0 || svgPathEdit.selectedPoints.length > 0)) return;
         if (selectedIdsRef.current.size > 0 || activeGroupId) {
           e.preventDefault();
+          if (svgPathEdit.editingNodeId) svgPathEdit.exitEditMode();
           deleteSelectedNodes();
         }
       }
@@ -2084,7 +2096,7 @@ export function FreeformCanvas({
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [deleteSelectedNodes, undo, redo, layerMoveUp, layerMoveDown, layerBringToTop, layerSendToBottom, activeGroupId, insideGroupId]);
+  }, [deleteSelectedNodes, undo, redo, layerMoveUp, layerMoveDown, layerBringToTop, layerSendToBottom, activeGroupId, insideGroupId, svgPathEdit.editingNodeId, svgPathEdit.activeGroups, svgPathEdit.selectedPoints, svgPathEdit.exitEditMode]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -3378,6 +3390,8 @@ export function FreeformCanvas({
                   nodeWidth={node.width}
                   nodeHeight={node.height}
                   selectedPoints={svgPathEdit.selectedPoints}
+                  activeGroups={svgPathEdit.activeGroups}
+                  enteredGroup={svgPathEdit.enteredGroup}
                   zoom={zoom}
                   isDragging={svgPathEdit.isDragging}
                   editTool={svgPathEdit.editTool}
@@ -3386,7 +3400,12 @@ export function FreeformCanvas({
                   onToolChange={svgPathEdit.setEditTool}
                   onCutAction={svgPathEdit.handleCutSelected}
                   onJoinAction={svgPathEdit.handleJoinSelected}
+                  onSimplifyAction={svgPathEdit.handleSimplify}
                   onExit={svgPathEdit.exitEditMode}
+                  onSelectGroup={svgPathEdit.setActiveGroup}
+                  onGroupMovePointerDown={svgPathEdit.handleGroupMovePointerDown}
+                  onGroupScalePointerDown={svgPathEdit.handleGroupScalePointerDown}
+                  onGroupRotatePointerDown={svgPathEdit.handleGroupRotatePointerDown}
                   onAnchorPointerDown={svgPathEdit.handleAnchorPointerDown}
                   onHandlePointerDown={svgPathEdit.handleHandlePointerDown}
                   onSegmentClick={svgPathEdit.handleSegmentClick}

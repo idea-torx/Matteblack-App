@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { parseClaudeMcpList, parseCodexMcpList } from "./connectors.ts";
 import { claudeRunner, mcpKey } from "./runners/claude.ts";
 import { codexRunner } from "./runners/codex.ts";
-import type { RunnerContext } from "./claudeOperator.ts";
+import { stripBase64, type RunnerContext } from "./claudeOperator.ts";
 
 // Captured verbatim from `claude mcp list` (there is no --json).
 const CLAUDE_OUT = [
@@ -73,4 +73,20 @@ test("codex: connectors are re-declared as -c overrides, since --ignore-user-con
   assert.match(a, /mcp_servers\.notion\.url="https:\/\/mcp\.notion\.com\/mcp"/);
   assert.match(a, /mcp_servers\.notion\.default_tools_approval_mode="approve"/);
   assert.match(a, /mcp_servers\.local\.command="\/bin\/x" -c mcp_servers\.local\.args=\["--y"\] -c mcp_servers\.local\.env=\{K="v"\}/);
+});
+
+test("claude: the prompt rides stdin, not argv — a data: reference used to E2BIG", () => {
+  const big = `data:image/png;base64,${"A".repeat(2_000_000)}`;
+  const c = ctx({ message: `make it pop\n\n[System note: ${big}]` });
+  const a = claudeRunner.spawnArgs(c);
+  assert.equal(a.join(" ").length < 100_000, true);
+  assert.equal(a[a.indexOf("-p") + 1], "--output-format");
+  assert.equal(claudeRunner.stdinText!(c), c.message);
+});
+
+test("base64 payloads never reach the prompt or a chat bubble", () => {
+  const uri = `data:image/png;base64,${"A".repeat(500)}`;
+  assert.equal(stripBase64(`look at ${uri} please`), "look at [inline image omitted] please");
+  // Short data: values (an inline svg icon, a tiny gif) are left alone.
+  assert.match(stripBase64("data:image/gif;base64,R0lGODlh"), /R0lGODlh$/);
 });
