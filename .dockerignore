@@ -1,0 +1,10 @@
+node_modules
+release
+dist
+dist-server
+dist-mcp
+.git
+.env*
+!.env.example
+*.log
+skills
