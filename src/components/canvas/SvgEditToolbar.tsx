@@ -61,7 +61,7 @@ function Icon({ name }: { name: keyof typeof ICON }) {
   );
 }
 
-const DIVIDER = <div style={{ width: 1, height: 14, background: "rgba(255,255,255,0.18)", margin: "0 3px", alignSelf: "center", position: "relative", zIndex: 1 }} />;
+const DIVIDER = <div className="freeform-canvas__toolbar-divider" />;
 
 export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAction, onSimplifyAction, onExit, zoom, canJoin, canCut }: SvgEditToolbarProps) {
   // Same pill and the same zoom-resistant scale as the node mini-menu, just
@@ -78,12 +78,11 @@ export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAc
     <button
       key={key}
       type="button"
-      className={`freeform-canvas__toolbar-btn ${opts?.active ? "freeform-canvas__toolbar-btn--active" : ""}`}
+      className={`freeform-canvas__toolbar-btn ${opts?.active ? "freeform-canvas__toolbar-btn--accent" : ""}`}
       title={label}
       aria-label={label}
       disabled={opts?.disabled}
       onClick={onClick}
-      style={opts?.active ? { background: "rgba(33, 150, 243, 0.35)", color: "#fff" } : undefined}
     >
       <Icon name={name} />
     </button>
