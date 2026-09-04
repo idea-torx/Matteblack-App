@@ -211,3 +211,24 @@ test("scaling carries the viewBox, so stretched art stays inside its node", () =
   const xs = wide.subPaths[0].anchors.map((a) => a.x);
   assert.ok(Math.max(...xs) <= wide.viewBox!.width, "anchors must stay within the frame they draw through");
 });
+
+test("duplicateGroups copies only the picked group", async () => {
+  const { duplicateGroups, rotateGroups } = await import("./svgPathModel.ts");
+  const pd = extractPathDataFromSvg(
+    `<svg viewBox="0 0 10 10"><path d="M0 0 L2 0 L2 2 Z"/><path d="M4 4 L6 4 L6 6 Z"/><path d="M8 8 L9 8 L9 9 Z"/></svg>`,
+    10, 10);
+  assert.ok(pd);
+  assert.equal(pd.subPaths.length, 3);
+  const { pathData: dup, groups } = duplicateGroups(pd, [1], 3, 0);
+  assert.equal(dup.subPaths.length, 4);
+  assert.deepEqual(groups, [3]);
+  assert.deepEqual(dup.subPaths[3].anchors.map((a) => [a.x, a.y]), [[7, 4], [9, 4], [9, 6]]);
+  // The originals are untouched.
+  assert.deepEqual(dup.subPaths.slice(0, 3), pd.subPaths.map((sp, i) => ({ ...sp, group: sp.group ?? i })));
+
+  // A quarter turn about (5,5) sends (4,4) to (6,4).
+  const rot = rotateGroups(pd, [1], Math.PI / 2, 5, 5);
+  const [x, y] = [rot.subPaths[1].anchors[0].x, rot.subPaths[1].anchors[0].y];
+  assert.ok(Math.abs(x - 6) < 1e-9 && Math.abs(y - 4) < 1e-9, `got ${x},${y}`);
+  assert.deepEqual(rot.subPaths[0], pd.subPaths[0]);
+});

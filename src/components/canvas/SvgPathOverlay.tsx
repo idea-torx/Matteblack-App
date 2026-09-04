@@ -19,6 +19,7 @@ type SvgPathOverlayProps = {
   onSelectGroup: (group: number | null, additive: boolean) => void;
   onGroupMovePointerDown: (e: React.PointerEvent, group: number) => void;
   onGroupScalePointerDown: (e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => void;
+  onGroupRotatePointerDown: (e: React.PointerEvent, grabX: number, grabY: number, cx: number, cy: number) => void;
   onAnchorPointerDown: (e: React.PointerEvent, subPathIdx: number, anchorIdx: number) => void;
   onHandlePointerDown: (e: React.PointerEvent, subPathIdx: number, anchorIdx: number, handleType: "in" | "out") => void;
   onSegmentClick?: (e: React.MouseEvent, subPathIdx: number, segmentIdx: number) => void;
@@ -49,6 +50,7 @@ export function SvgPathOverlay({
   onSelectGroup,
   onGroupMovePointerDown,
   onGroupScalePointerDown,
+  onGroupRotatePointerDown,
   onAnchorPointerDown,
   onHandlePointerDown,
   onSegmentClick,
@@ -249,6 +251,21 @@ export function SvgPathOverlay({
               fill="none" stroke={STROKE_COLOR} strokeWidth={1 * invZoomAvg}
               strokeDasharray={`${4 * invZoomAvg} ${3 * invZoomAvg}`}
               style={{ pointerEvents: "none" }} />
+            {/* Rotate: a grip on a stalk above the box, turning about its centre. */}
+            {(() => {
+              const mx = (x0 + x1) / 2, cy2 = (y0 + y1) / 2;
+              const stalk = 22 * invZoomY;
+              const ry = y0 - stalk;
+              return (
+                <>
+                  <line x1={mx} y1={y0} x2={mx} y2={ry} stroke={STROKE_COLOR} strokeWidth={1 * invZoomAvg} style={{ pointerEvents: "none" }} />
+                  <circle cx={mx} cy={ry} r={(GRIP_SIZE / 2) * invZoomAvg}
+                    fill="white" stroke={STROKE_COLOR} strokeWidth={1 * invZoomAvg}
+                    style={{ pointerEvents: "auto", cursor: "grab" }}
+                    onPointerDown={(e) => onGroupRotatePointerDown(e, mx, ry, mx, cy2)} />
+                </>
+              );
+            })()}
             {corners.map(([cx, cy], i) => (
               <rect key={`grip-${i}`}
                 x={cx - gx / 2} y={cy - gy / 2} width={gx} height={gy}

@@ -23,6 +23,7 @@ type SvgNodeEditHandlesProps = {
   onSelectGroup: (group: number | null, additive: boolean) => void;
   onGroupMovePointerDown: (e: React.PointerEvent, group: number) => void;
   onGroupScalePointerDown: (e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => void;
+  onGroupRotatePointerDown: (e: React.PointerEvent, grabX: number, grabY: number, cx: number, cy: number) => void;
   onAnchorPointerDown: (e: React.PointerEvent, subPathIdx: number, anchorIdx: number) => void;
   onHandlePointerDown: (e: React.PointerEvent, subPathIdx: number, anchorIdx: number, handleType: "in" | "out") => void;
   onSegmentClick: (e: React.MouseEvent, subPathIdx: number, segmentIdx: number) => void;
@@ -48,6 +49,7 @@ export function SvgNodeEditHandles({
   onSelectGroup,
   onGroupMovePointerDown,
   onGroupScalePointerDown,
+  onGroupRotatePointerDown,
   onAnchorPointerDown,
   onHandlePointerDown,
   onSegmentClick,
@@ -65,6 +67,7 @@ export function SvgNodeEditHandles({
         onSelectGroup={onSelectGroup}
         onGroupMovePointerDown={onGroupMovePointerDown}
         onGroupScalePointerDown={onGroupScalePointerDown}
+        onGroupRotatePointerDown={onGroupRotatePointerDown}
         onAnchorPointerDown={onAnchorPointerDown}
         onHandlePointerDown={onHandlePointerDown}
         onSegmentClick={onSegmentClick}

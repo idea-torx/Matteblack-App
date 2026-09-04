@@ -3405,6 +3405,7 @@ export function FreeformCanvas({
                   onSelectGroup={svgPathEdit.setActiveGroup}
                   onGroupMovePointerDown={svgPathEdit.handleGroupMovePointerDown}
                   onGroupScalePointerDown={svgPathEdit.handleGroupScalePointerDown}
+                  onGroupRotatePointerDown={svgPathEdit.handleGroupRotatePointerDown}
                   onAnchorPointerDown={svgPathEdit.handleAnchorPointerDown}
                   onHandlePointerDown={svgPathEdit.handleHandlePointerDown}
                   onSegmentClick={svgPathEdit.handleSegmentClick}

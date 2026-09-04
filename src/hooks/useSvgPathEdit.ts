@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, type MutableRefObject } from "react";
 import type { CanvasNode, UndoCommand } from "../types/canvas";
-import type { PathData } from "../utils/svgPathModel";
+import type { PathData, SubPath } from "../utils/svgPathModel";
 import type { SvgEditTool } from "../components/canvas/SvgEditToolbar";
 import {
   simplifyPathData,
@@ -12,12 +12,15 @@ import {
   splitPathAtPoint,
   joinEndpoints,
   insertPointOnSegment,
+  appendGroups,
+  groupSubPaths,
+  mapGroups,
 } from "../utils/svgPathModel";
 
 type SelectedPoint = { subPathIdx: number; anchorIdx: number };
 
 type DragState = {
-  type: "anchor" | "handleIn" | "handleOut" | "scale" | "translate";
+  type: "anchor" | "handleIn" | "handleOut" | "scale" | "rotate" | "translate";
   subPathIdx: number;
   anchorIdx: number;
   startX: number;
@@ -26,7 +29,7 @@ type DragState = {
   origY: number;
   vbScaleX: number;
   vbScaleY: number;
-  /** Scale only: the corner held still, and the shapes being scaled. */
+  /** Scale: the corner held still. Rotate: the centre turned about. */
   fixedX?: number;
   fixedY?: number;
   snapshot?: PathData;
@@ -506,6 +509,32 @@ export function useSvgPathEdit({
     (e.target as SVGElement).setPointerCapture(e.pointerId);
   }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
 
+  const handleGroupRotatePointerDown = useCallback((e: React.PointerEvent, grabX: number, grabY: number, cx: number, cy: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!editingNodeId) return;
+    const pathData = getPathData(editingNodeId);
+    if (!pathData) return;
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    setIsDragging(true);
+    dragState.current = {
+      type: "rotate",
+      subPathIdx: 0,
+      anchorIdx: 0,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: grabX,
+      origY: grabY,
+      vbScaleX,
+      vbScaleY,
+      fixedX: cx,
+      fixedY: cy,
+      snapshot: pathData,
+      groups: activeGroups,
+    };
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  }, [editingNodeId, getPathData, getViewBoxScale, activeGroups]);
+
   const handleEditPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragState.current || !editingNodeId) return;
     // Taken before this move writes anything: the state the drag started from.
@@ -572,6 +601,17 @@ export function useSvgPathEdit({
           })),
         }),
       });
+    } else if (ds.type === "rotate") {
+      const snap = ds.snapshot!;
+      const cx = ds.fixedX!, cy = ds.fixedY!;
+      let ang = Math.atan2(ds.origY + dy - cy, ds.origX + dx - cx) - Math.atan2(ds.origY - cy, ds.origX - cx);
+      // Shift steps in 15s, the way every other rotate handle does.
+      if (e.shiftKey) ang = Math.round(ang / (Math.PI / 12)) * (Math.PI / 12);
+      const cos = Math.cos(ang), sin = Math.sin(ang);
+      updatePathData(editingNodeId, mapGroups(snap, ds.groups!, (p) => ({
+        x: cx + (p.x - cx) * cos - (p.y - cy) * sin,
+        y: cy + (p.x - cx) * sin + (p.y - cy) * cos,
+      })));
     } else if (ds.type === "anchor") {
       const moved = moveAnchor(pathData, ds.subPathIdx, ds.anchorIdx, ds.origX + dx - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].x, ds.origY + dy - pathData.subPaths[ds.subPathIdx].anchors[ds.anchorIdx].y);
       updatePathData(editingNodeId, moved);
@@ -653,16 +693,13 @@ export function useSvgPathEdit({
   }, [editingNodeId, activeGroups, getPathData, updatePathData, normalizePathBounds]);
 
   /** One blob at a time: the shapes you have picked, ready to paste back. */
-  const blobClipboard = useRef<PathData["subPaths"]>([]);
+  const blobClipboard = useRef<SubPath[]>([]);
 
   const handleCopyActiveGroups = useCallback(() => {
     if (!editingNodeId || activeGroups.length === 0) return;
     const pathData = getPathData(editingNodeId);
     if (!pathData) return;
-    const gs = new Set(activeGroups);
-    blobClipboard.current = pathData.subPaths
-      .map((sp, i) => ({ ...sp, group: sp.group ?? i }))
-      .filter((sp) => gs.has(sp.group as number));
+    blobClipboard.current = groupSubPaths(pathData, activeGroups);
   }, [editingNodeId, activeGroups, getPathData]);
 
   const handlePasteBlobs = useCallback(() => {
@@ -670,33 +707,15 @@ export function useSvgPathEdit({
     if (!editingNodeId || clip.length === 0) return;
     const pathData = getPathData(editingNodeId);
     if (!pathData) return;
-    // Pin every existing group id first, then hand the copies fresh ones, so
-    // nothing renumbers under the selection.
-    const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: sp.group ?? i }));
-    let next = Math.max(-1, ...pinned.map((sp) => sp.group as number)) + 1;
-    const remap = new Map<number, number>();
-    const O = 12;
-    const added = clip.map((sp) => {
-      const g = sp.group as number;
-      if (!remap.has(g)) remap.set(g, next++);
-      return {
-        ...sp,
-        group: remap.get(g)!,
-        anchors: sp.anchors.map((a) => ({
-          ...a,
-          x: a.x + O,
-          y: a.y + O,
-          handleIn: a.handleIn ? { x: a.handleIn.x + O, y: a.handleIn.y + O } : undefined,
-          handleOut: a.handleOut ? { x: a.handleOut.x + O, y: a.handleOut.y + O } : undefined,
-        })),
-      };
-    });
-    updatePathData(editingNodeId, { ...pathData, subPaths: [...pinned, ...added] }, true);
-    setActiveGroupsState([...remap.values()]);
+    // Offset in node pixels, not viewBox units: on a 2048-wide viewBox inside a
+    // 600px node, a dozen viewBox units is 3px and reads as nothing happening.
+    const { vbScaleX, vbScaleY } = getViewBoxScale(editingNodeId);
+    const { pathData: next, groups } = appendGroups(pathData, clip, 16 * vbScaleX, 16 * vbScaleY);
+    updatePathData(editingNodeId, next, true);
+    setActiveGroupsState(groups);
     setEnteredGroup(null);
     setSelectedPoints([]);
-    normalizePathBounds(editingNodeId);
-  }, [editingNodeId, getPathData, updatePathData, normalizePathBounds]);
+  }, [editingNodeId, getPathData, getViewBoxScale, updatePathData]);
 
   const handleSimplify = useCallback(() => {
     if (!editingNodeId) return;
@@ -883,6 +902,7 @@ export function useSvgPathEdit({
     ensurePathData,
     handleGroupMovePointerDown,
     handleGroupScalePointerDown,
+    handleGroupRotatePointerDown,
     handleAnchorPointerDown,
     handleHandlePointerDown,
     handleEditPointerMove,

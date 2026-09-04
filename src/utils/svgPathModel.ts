@@ -1366,6 +1366,88 @@ function simplifySubPath(sp: SubPath, tolerance: number): SubPath {
  * Refit every subPath onto the fewest cubic segments that stay within
  * `tolerance` node-pixels of the original outline.
  */
+/** Which group a subPath belongs to; an unnumbered one stands alone at its index. */
+export const groupIdOf = (sp: SubPath, i: number): number => sp.group ?? i;
+
+/** Map every anchor and handle of the picked groups through `f`. */
+export function mapGroups(
+  pathData: PathData,
+  groups: Iterable<number>,
+  f: (p: { x: number; y: number }) => { x: number; y: number },
+): PathData {
+  const gs = new Set(groups);
+  return {
+    ...pathData,
+    subPaths: pathData.subPaths.map((sp, i) => !gs.has(groupIdOf(sp, i)) ? sp : {
+      ...sp,
+      anchors: sp.anchors.map((a) => ({
+        ...a,
+        ...f(a),
+        handleIn: a.handleIn ? f(a.handleIn) : undefined,
+        handleOut: a.handleOut ? f(a.handleOut) : undefined,
+      })),
+    }),
+  };
+}
+
+/** Append subPaths under fresh group ids, offset by (dx, dy).
+ *  Returns the new pathData and the ids the additions landed on. */
+export function appendGroups(
+  pathData: PathData,
+  incoming: SubPath[],
+  dx: number,
+  dy: number,
+): { pathData: PathData; groups: number[] } {
+  // Pin every existing id first: subPaths falling back to their index would
+  // renumber as soon as the additions are appended.
+  const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) }));
+  let next = pinned.reduce((m, sp) => Math.max(m, sp.group!), -1) + 1;
+  const remap = new Map<number, number>();
+  const shift = (p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy });
+  const added = incoming.map((sp, i) => {
+    const from = groupIdOf(sp, i);
+    if (!remap.has(from)) remap.set(from, next++);
+    return {
+      ...sp,
+      group: remap.get(from)!,
+      anchors: sp.anchors.map((a) => ({
+        ...a,
+        ...shift(a),
+        handleIn: a.handleIn ? shift(a.handleIn) : undefined,
+        handleOut: a.handleOut ? shift(a.handleOut) : undefined,
+      })),
+    };
+  });
+  return { pathData: { ...pathData, subPaths: [...pinned, ...added] }, groups: [...remap.values()] };
+}
+
+/** The subPaths belonging to the picked groups, with their ids pinned. */
+export function groupSubPaths(pathData: PathData, groups: Iterable<number>): SubPath[] {
+  const gs = new Set(groups);
+  return pathData.subPaths
+    .map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) }))
+    .filter((sp) => gs.has(sp.group!));
+}
+
+/** Copy just the picked groups back in, offset, under fresh group ids. */
+export function duplicateGroups(
+  pathData: PathData,
+  groups: Iterable<number>,
+  dx: number,
+  dy: number,
+): { pathData: PathData; groups: number[] } {
+  return appendGroups(pathData, groupSubPaths(pathData, groups), dx, dy);
+}
+
+/** Rotate the picked groups by `angle` radians about (cx, cy). */
+export function rotateGroups(pathData: PathData, groups: Iterable<number>, angle: number, cx: number, cy: number): PathData {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return mapGroups(pathData, groups, (p) => ({
+    x: cx + (p.x - cx) * cos - (p.y - cy) * sin,
+    y: cy + (p.x - cx) * sin + (p.y - cy) * cos,
+  }));
+}
+
 export function simplifyPathData(pathData: PathData, tolerance = DEFAULT_SIMPLIFY_TOLERANCE): PathData {
   ensurePaper();
   return { ...pathData, subPaths: pathData.subPaths.map((sp) => simplifySubPath(sp, tolerance)) };
