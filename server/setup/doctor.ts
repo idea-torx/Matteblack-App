@@ -13,7 +13,7 @@ import { resolveClaudeBinary } from "../operator/runners/claude.js";
 import { resolveCodexBinary } from "../operator/runners/codex.js";
 import { resolveOpencodeBinary } from "../operator/runners/opencode.js";
 
-export const COMPONENT_IDS = ["brew", "git", "ffmpeg", "claude", "codex", "opencode"] as const;
+export const COMPONENT_IDS = ["brew", "git", "ffmpeg", "blender", "claude", "codex", "opencode"] as const;
 export type ComponentId = (typeof COMPONENT_IDS)[number];
 
 export type DoctorRow = {
@@ -34,6 +34,7 @@ const CANDIDATES: Record<string, string[]> = {
   git: ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"],
   ffmpeg: ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"],
   ffprobe: ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/bin/ffprobe"],
+  blender: ["/Applications/Blender.app/Contents/MacOS/Blender", "/opt/homebrew/bin/blender", "/usr/local/bin/blender"],
   npm: ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", path.join(HOME, ".npm-global", "bin", "npm")],
 };
 
@@ -75,6 +76,7 @@ export function doctor(resolve: (id: string) => { path: string; found: boolean }
     row("brew", "Homebrew", BREW_INSTALL, "Package manager used to install the rest"),
     row("git", "Git", "xcode-select --install", "Comes with Xcode Command Line Tools"),
     row("ffmpeg", "FFmpeg", brew ? "brew install ffmpeg" : null, brew ? "Needed for video tails and export" : BREW_FIRST),
+    row("blender", "Blender", brew ? "brew install --cask blender" : null, brew ? "Grey-box 3D scenes and playblasts for the agent" : BREW_FIRST),
     row("claude", "Claude Code CLI", "curl -fsSL https://claude.ai/install.sh | bash"),
     row(
       "codex",

@@ -48,10 +48,8 @@ function userCodexModel(): string | undefined {
 }
 
 /** Falforge's five effort levels onto Codex's four (max → xhigh). */
-function codexEffort(effort: string | undefined): string | undefined {
-  if (!effort) return undefined;
-  return effort === "max" ? "xhigh" : effort;
-}
+// Codex 0.153+ takes every level natively (low … xhigh, ultra, max).
+const codexEffort = (effort: string | undefined) => effort || undefined;
 
 /** A TOML basic string. JSON's escaping is a subset of TOML's, so this is exact
  *  for the paths and identifiers we put through it. */
@@ -62,6 +60,7 @@ export const codexRunner: Runner = {
   label: "OpenAI Codex",
   // ponytail: static list; read `codex` model catalog when it grows one.
   models: [
+    { id: "gpt-6-astra", label: "Astra" },
     { id: "gpt-5.6-luna", label: "Luna" },
     { id: "gpt-5.6-terra", label: "Terra" },
     { id: "gpt-5.6-sol", label: "Sol" },

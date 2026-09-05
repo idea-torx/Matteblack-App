@@ -19,8 +19,9 @@ import { placeNext, placeholderSize, fallbackViewport, type Rect } from "../util
 import { saveFile, getFileStream, parseFileUrl } from "../storage.js";
 import { canRenderHtml, renderHtmlToPng } from "../utils/htmlRender.js";
 import { resolveLocalPath } from "../utils/localPath.js";
+import { underBlenderDir } from "../utils/blenderPath.js";
 import { resolveUploadPath } from "../utils/uploadPath.js";
-import { UPLOADS_DIR } from "../config/runtime.js";
+import { UPLOADS_DIR, DATA_DIR } from "../config/runtime.js";
 import fs from "node:fs";
 import probe from "probe-image-size";
 import path from "node:path";
@@ -30,7 +31,7 @@ const router = Router();
 /** 256KB of markup. A CSS art page is a few KB; past this it isn't art. */
 const MAX_HTML_BYTES = 256_000;
 
-function requireMcpToken(req: AuthRequest, res: Response, next: NextFunction): void {
+export function requireMcpToken(req: AuthRequest, res: Response, next: NextFunction): void {
   if (process.env.MB_MCP_NO_TOKEN === "1") { next(); return; }
   const expected = getMcpToken();
   if (!expected) { res.status(503).json({ error: "MCP bridge not ready." }); return; }
@@ -357,6 +358,13 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
   try {
     const stored = await loadNodeHtml(canvasId, req.params.nodeId);
     if ("error" in stored) { res.status(404).json(stored); return; }
+    // `?inline=1` swaps the `asset:` placeholders for the real bytes, so the
+    // markup stands on its own as a file the user can open in a browser.
+    if (req.query.inline) {
+      const { html } = await inlineAssets(stored.html, stored.images);
+      res.json({ ...stored, html });
+      return;
+    }
     res.json(stored);
   } catch (err) {
     console.error("[agent/html] read failed:", err);
@@ -368,37 +376,76 @@ router.get("/api/agent/html/:nodeId", requireMcpToken, requireAuth, async (req: 
  *  on the open canvas as an ordinary image/video node. Downloaded here so the
  *  node outlives the source link. */
 const MAX_IMPORT_BYTES = 200_000_000;
+
+const kindForExt = (ext: string, ct = ""): "image" | "video" | null =>
+  /^(mp4|webm|mov)$/.test(ext) || ct.startsWith("video/") ? "video"
+    : /^(png|jpe?g|webp|gif)$/.test(ext) || ct.startsWith("image/") ? "image" : null;
+
+/** The one way bytes become a canvas node: used by import-url and by the
+ *  Blender bridge, which has a local file rather than a URL. */
+export async function placeMediaNode(opts: {
+  userId: string; canvasId: string; buf: Buffer; ext: string;
+  kind: "image" | "video"; label?: string; metadata: Record<string, unknown>;
+}): Promise<{ nodeId: string; src: string; kind: "image" | "video" }> {
+  const { userId, canvasId, buf, ext, kind } = opts;
+  const src = await saveFile(`users/${userId}/imports`, `${uuidv4()}.${ext}`, buf);
+  // ponytail: videos land 16:9 and let the player fit; images take their real ratio.
+  let aspect = kind === "video" ? "16:9" : "1:1";
+  if (kind === "image") { try { const d = probe.sync(buf); if (d) aspect = `${d.width}:${d.height}`; } catch { /* unknown format: square */ } }
+  const size = placeholderSize("quality", aspect, kind);
+  const { rect, z } = await placeNewNode(canvasId, userId, size);
+  const id = uuidv4();
+  await pool.query(
+    `INSERT INTO canvas_nodes (id, canvas_id, node_type, x, y, width, height, rotation, z_index, locked, visible, label, src, gradient, metadata, asset_id, job_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, false, true, $9, $10, '', $11, NULL, NULL)`,
+    [id, canvasId, kind, rect.x, rect.y, size.w, size.h, z, opts.label ?? "", src, JSON.stringify(opts.metadata)],
+  );
+  broadcastCanvasUpdate(canvasId, "");
+  return { nodeId: id, src, kind };
+}
+
+/** Only files the Blender bridge wrote may be imported by path — resolved
+ *  through symlinks first, so `../` and a link out both land outside and fail. */
+const BLENDER_DIR = path.join(DATA_DIR, "blender");
+export async function importLocalMedia(opts: {
+  userId: string; canvasId: string; file: string; label?: string; metadata: Record<string, unknown>;
+}): Promise<{ nodeId: string; src: string; kind: "image" | "video" } | { error: string }> {
+  const guard = underBlenderDir(opts.file, BLENDER_DIR);
+  if ("error" in guard) return guard;
+  const real = guard.path;
+  const ext = path.extname(real).slice(1).toLowerCase();
+  const kind = kindForExt(ext);
+  if (!kind) return { error: `Not an image or video: ${real}` };
+  const buf = fs.readFileSync(real);
+  if (buf.byteLength > MAX_IMPORT_BYTES) return { error: "File over 200MB." };
+  return placeMediaNode({ ...opts, buf, ext, kind });
+}
 router.post("/api/agent/import-url", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
   const canvasId = activeCanvas(req);
   if (!canvasId) { res.status(400).json({ error: "No canvas is open." }); return; }
   const userId = req.userId!;
   const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
-  if (!/^https:\/\//i.test(url)) { res.status(400).json({ error: "url must be https." }); return; }
   const label = typeof req.body?.label === "string" ? req.body.label.slice(0, 200) : "";
+  // The Blender add-on's "send to canvas" hands over a local file under <dataDir>/blender/.
+  const file = typeof req.body?.path === "string" ? req.body.path.trim() : "";
+  if (file) {
+    const r = await importLocalMedia({ userId, canvasId, file, label, metadata: { source: "blender", kind: "manual" } });
+    if ("error" in r) res.status(400).json(r); else res.json(r);
+    return;
+  }
+  if (!/^https:\/\//i.test(url)) { res.status(400).json({ error: "url must be https." }); return; }
   try {
     const r = await fetch(url);
     if (!r.ok) { res.status(502).json({ error: `HTTP ${r.status} fetching ${url}` }); return; }
     const ct = (r.headers.get("content-type") || "").split(";")[0];
     const ext = /\.([a-z0-9]{2,4})(\?|$)/i.exec(url)?.[1]?.toLowerCase() || ct.split("/")[1] || "bin";
-    const kind = /^(mp4|webm|mov)$/.test(ext) || ct.startsWith("video/") ? "video"
-      : /^(png|jpe?g|webp|gif)$/.test(ext) || ct.startsWith("image/") ? "image" : null;
+    const kind = kindForExt(ext, ct);
     if (!kind) { res.json({ skipped: `not an image or video (${ct || ext})` }); return; }
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.byteLength > MAX_IMPORT_BYTES) { res.status(413).json({ error: "File over 200MB." }); return; }
-    const src = await saveFile(`users/${userId}/imports`, `${uuidv4()}.${ext}`, buf);
-    // ponytail: videos land 16:9 and let the player fit; images take their real ratio.
-    let aspect = kind === "video" ? "16:9" : "1:1";
-    if (kind === "image") { try { const d = probe.sync(buf); if (d) aspect = `${d.width}:${d.height}`; } catch { /* unknown format: square */ } }
-    const size = placeholderSize("quality", aspect, kind);
-    const { rect, z } = await placeNewNode(canvasId, userId, size);
-    const id = uuidv4();
-    await pool.query(
-      `INSERT INTO canvas_nodes (id, canvas_id, node_type, x, y, width, height, rotation, z_index, locked, visible, label, src, gradient, metadata, asset_id, job_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, false, true, $9, $10, '', $11, NULL, NULL)`,
-      [id, canvasId, kind, rect.x, rect.y, size.w, size.h, z, label, src, JSON.stringify({ source: "import", origin: url })],
-    );
-    broadcastCanvasUpdate(canvasId, "");
-    res.json({ nodeId: id, src, kind });
+    res.json(await placeMediaNode({
+      userId, canvasId, buf, ext, kind, label, metadata: { source: "import", origin: url },
+    }));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Import failed." });
   }

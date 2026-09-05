@@ -19,11 +19,12 @@ import { ShareModal } from "./components/ShareModal";
 import { invalidate as invalidateAssetCache } from "./services/AssetCache";
 import { findEmptySlots, placeholderSize } from "./utils/canvasPlacement";
 import { SelectionContextPanel } from "./components/SelectionContextPanel";
+import { directionDuration } from "./utils/blenderDirection";
 import { LibraryPanel } from "./components/LibraryPanel";
 import { UpscalePanel } from "./components/UpscalePanel";
 import { ResizePanel } from "./components/ResizePanel";
 import { RemovePanel } from "./components/RemovePanel";
-import { MakePanel, type GenerationParams } from "./components/MakePanel";
+import { MakePanel, type GenerationParams, type DirectionPrefill } from "./components/MakePanel";
 import { DirectorPanel } from "./components/DirectorPanel";
 import { AudioPanel, type TTSParams } from "./components/AudioPanel";
 import { MusicPanel, type MusicGenerationParams } from "./components/MusicPanel";
@@ -51,6 +52,8 @@ import { AgentPanel, type AgentHandoff } from "./components/AgentPanel";
 import { OperatorPanel } from "./components/OperatorPanel";
 import { SkillsPanel } from "./components/SkillsPanel";
 import { GitHubPanel } from "./components/GitHubPanel";
+import { BlenderPanel } from "./components/BlenderPanel";
+import { addCanvasSseListener } from "./hooks/canvas/useCanvasSSE";
 // Phase K: the Matte panel is now the in-app operator (drives Claude Code). The
 // legacy BYOK AgentPanel is retained behind this flag for a clean revert; flip
 // to true to restore it. It stays referenced so its prop wiring doesn't rot.
@@ -111,10 +114,17 @@ function App() {
   const [railView, setRailView] = useState<RailView>(null);
   // Text handed to the agent composer from another panel (Skills). The nonce
   // makes a repeat hand-off of the same skill re-seed rather than no-op.
-  const [agentSeed, setAgentSeed] = useState<{ text: string; nonce: number } | null>(null);
+  const [agentSeed, setAgentSeed] = useState<{ text: string; nonce: number; send?: boolean } | null>(null);
   // Agent panel is tracked independently of railView so it can stay open
   // alongside any left-side panel (e.g. Library + Agent simultaneously).
   const [agentOpen, setAgentOpen] = useState<boolean>(true);
+  // Blender's "Tell the agent" arrives on the canvas stream; it opens the Operator and sends itself.
+  useEffect(() => addCanvasSseListener((_cid, data) => {
+    const d = data as { type?: string; text?: string };
+    if (d.type !== "blender:tell" || !d.text) return;
+    setAgentOpen(true);
+    setAgentSeed({ text: d.text, nonce: Date.now(), send: true });
+  }), []);
   // Lifted from AgentPanel so the canvas-area can paint the busy edge glow.
   // Defaults false — AgentPanel reports the real busy state on mount.
   const [agentBusy, setAgentBusy] = useState<boolean>(false);
@@ -1595,6 +1605,26 @@ function App() {
     return null;
   }, [selectedImageIds, selectedNodeMeta]);
 
+  const [directionPrefill, setDirectionPrefill] = useState<DirectionPrefill | null>(null);
+
+  // A Blender blockout playblast selected on its own — the node the
+  // "Use as direction" action hands to Make. See the `blender-blockout` skill.
+  const blenderDirection = useMemo<DirectionPrefill | null>(() => {
+    if (selectedImageIds.length !== 1) return null;
+    const node = canvasNodes.find((n) => n.id === selectedImageIds[0]);
+    if (!node || node.node_type !== "video") return null;
+    const meta = (node.metadata || {}) as Record<string, unknown>;
+    if (meta.source !== "blender") return null;
+    let url = node.src || node.gradient || "";
+    if (url.startsWith("/")) url = `${window.location.origin}${url}`;
+    if (!url) return null;
+    const stills = (Array.isArray(meta.stills) ? meta.stills : [])
+      .filter((u): u is string => typeof u === "string" && u.length > 0)
+      .slice(0, 3)
+      .map((u) => (u.startsWith("/") ? `${window.location.origin}${u}` : u));
+    return { videoUrl: url, stills, duration: directionDuration(meta.frameRange, meta.fps) };
+  }, [selectedImageIds, canvasNodes]);
+
   const handleClearReference = useCallback(() => {
     setSelectedImageIds([]);
     setDroppedImage(null);
@@ -2176,6 +2206,7 @@ function App() {
           onActivateDesign={() => { setGifMakerOpen(false); setSvgMakerOpen(false); setSelectedTool("design"); }}
           isDesignActive={selectedTool === "design"}
           agentOpen={agentOpen}
+          agentBusy={agentBusy}
           onToggleAgent={() => {
             setAgentOpen((v) => {
               const willOpen = !v;
@@ -2206,6 +2237,12 @@ function App() {
           />
         )}
         {railView === "github" && <GitHubPanel onClose={() => setRailView(null)} />}
+        {railView === "blender" && (
+          <BlenderPanel
+            onClose={() => setRailView(null)}
+            onOperator={(text) => { setAgentOpen(true); setAgentSeed({ text, nonce: Date.now() }); }}
+          />
+        )}
         {showLeftToolbar && (
           <LeftToolbar
             mode={leftToolbarMode}
@@ -2229,8 +2266,12 @@ function App() {
             onClose={() => setRailView(null)}
           />
         )}
-        {showAgentPanel && (
-          <OperatorPanel
+        {/* Always mounted, hidden when closed: a run in flight belongs to this
+            component, and unmounting it orphaned the stream — the agent kept
+            working on the server while the reopened panel started a fresh
+            thread, so the user re-asked and two builds ran. */}
+        <OperatorPanel
+            hidden={!showAgentPanel}
             onClose={() => setAgentOpen(false)}
             onBusyChange={setAgentBusy}
             projectId={activeProjectId || undefined}
@@ -2250,7 +2291,6 @@ function App() {
             canvasReferenceImages={canvasReferenceImages}
             seedPrompt={agentSeed}
           />
-        )}
         {SHOW_LEGACY_AGENT && showAgentPanel && (
           <AgentPanel
             workspaceId={activeWorkspace?.id || null}
@@ -2355,7 +2395,7 @@ function App() {
                 : "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))") :
               railView === "quick-settings" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--qs-panel-width) + var(--canvas-inset-pad))" :
               railView === "skills" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--skills-panel-width) + var(--canvas-inset-pad))" :
-              railView === "toolkit" || railView === "layers" || railView === "github" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))" :
+              railView === "toolkit" || railView === "layers" || railView === "github" || railView === "blender" ? "calc(var(--panel-float-gap) + var(--icon-rail-width) + 300px + var(--canvas-inset-pad))" :
               "calc(var(--panel-float-gap) + var(--icon-rail-width) + var(--canvas-inset-pad))",
             // Right inset: when the agent is open the right reserved
             // area is 360px — that's a 16px breathing gap + 320px
@@ -2733,6 +2773,8 @@ function App() {
             onClearExternalPrompt={() => setExternalPrompt(null)}
             onFrameChange={handleFrameChange}
             onOpenDirector={() => setDirectorOpen(true)}
+            directionPrefill={directionPrefill}
+            onClearDirectionPrefill={() => setDirectionPrefill(null)}
           />
         ) : selectedTool === "upscale" ? (
           <UpscalePanel onUpscaleImage={startGeneration} userBalance={balance} unlimited={unlimited} referenceImage={referenceImage} referenceVideo={referenceVideo} videoDuration={selectedVideoInfo?.duration} onClearReference={handleClearReference} />
@@ -2841,6 +2883,7 @@ function App() {
               };
             })()}
             onSelectionAction={(action, ar, jobType) => {
+              if (action === "download") { canvasApiRef.current?.downloadSelected?.(); return; }
               if (action === "video_to_gif") {
                 setSvgMakerOpen(false);
                 setGifMakerOpen(true);
@@ -2880,6 +2923,7 @@ function App() {
             selectionType={selectionContext.type}
             count={selectionContext.count}
             onAction={(action, ar, jobType) => {
+              if (action === "download") { canvasApiRef.current?.downloadSelected?.(); return; }
               if (action === "video_to_gif") {
                 setSvgMakerOpen(false);
                 setGifMakerOpen(true);
@@ -2889,6 +2933,15 @@ function App() {
                 // Open the Upscale tool with the current video selection so
                 // the panel branches into its video-aware (Topaz) UI.
                 setSelectedTool("upscale");
+                return;
+              }
+              if (action === "use_as_direction") {
+                if (!blenderDirection) return;
+                setGifMakerOpen(false);
+                setSvgMakerOpen(false);
+                setMakeVideoMode(true);
+                setSelectedTool("make");
+                setDirectionPrefill(blenderDirection);
                 return;
               }
               if (action === "cleanup_vector") {
@@ -2919,6 +2972,7 @@ function App() {
             }}
             userBalance={balance}
             onClearSelection={handleClearReference}
+            canUseAsDirection={!!blenderDirection}
           />
         ) : null}
         {gifMakerOpen && (

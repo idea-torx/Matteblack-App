@@ -1,0 +1,15 @@
+/* Blender panel — rpanel cards inside the sidebar shell. Only the layout that
+   the shared classes don't carry lives here; colours all come from tokens. */
+.blender-cards { display: flex; flex-direction: column; gap: 10px; }
+.blender-status { font-size: 11px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.blender-desc { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: -4px 0 10px; }
+.blender-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.blender-field { display: flex; flex-direction: column; gap: 4px; }
+.blender-field .rpanel-setting-label { margin: 0; }
+.blender-fields .rpanel-select { border: 1px solid rgba(var(--tint-rgb), 0.06); }
+.blender-fields .rpanel-url-input { height: 28px; padding: 0 10px; font-size: 11px; font-weight: 500; }
+.blender-actions { display: flex; gap: 6px; margin-top: 10px; }
+.blender-actions .rpanel-action-btn { flex: 1; width: auto; }
+.blender-meta { font-size: 11px; color: var(--text-muted); margin-top: -4px; }
+.blender-renders { margin-top: 8px; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-secondary); word-break: break-word; }
+.blender-inline-code { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-primary); }

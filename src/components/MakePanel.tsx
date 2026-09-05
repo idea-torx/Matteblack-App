@@ -47,6 +47,14 @@ export type GenerationParams = {
   params?: Record<string, unknown>;
 };
 
+/** A Blender blockout handed to Make as motion direction (see the
+ *  `blender-blockout` skill): the playblast, its stills and its length. */
+export type DirectionPrefill = {
+  videoUrl: string;
+  stills: string[];
+  duration: string;
+};
+
 type MakePanelProps = {
   videoMode: boolean;
   onVideoModeChange: (v: boolean) => void;
@@ -62,6 +70,8 @@ type MakePanelProps = {
   onClearExternalPrompt?: () => void;
   onFrameChange?: (firstFrameId: string | null, lastFrameId: string | null) => void;
   onOpenDirector?: () => void;
+  directionPrefill?: DirectionPrefill | null;
+  onClearDirectionPrefill?: () => void;
 };
 
 export function MakePanel({
@@ -79,6 +89,8 @@ export function MakePanel({
   onClearExternalPrompt,
   onFrameChange,
   onOpenDirector,
+  directionPrefill = null,
+  onClearDirectionPrefill,
 }: MakePanelProps) {
   const [currentImageNumber, setCurrentImageNumber] = useState(1);
   const [pricingModel, setPricingModel] = useState<string | undefined>();
@@ -141,6 +153,8 @@ export function MakePanel({
               canvasReferenceImages={canvasReferenceImages}
               onFrameChange={onFrameChange}
               onOpenDirector={onOpenDirector}
+              directionPrefill={directionPrefill}
+              onClearDirectionPrefill={onClearDirectionPrefill}
               onPricingChange={(model, duration, resolution) => { setPricingModel(model); setPricingDuration(duration); setPricingResolution(resolution); }}
               onAudioChange={setPricingAudio}
               onGenerate={(params) => {
@@ -780,6 +794,8 @@ function VideoCards({
   canvasReferenceImages,
   onFrameChange,
   onOpenDirector,
+  directionPrefill,
+  onClearDirectionPrefill,
   onGenerate,
   onPricingChange,
   onAudioChange,
@@ -792,6 +808,8 @@ function VideoCards({
   canvasReferenceImages: ReferenceImage[];
   onFrameChange?: (firstFrameId: string | null, lastFrameId: string | null) => void;
   onOpenDirector?: () => void;
+  directionPrefill?: DirectionPrefill | null;
+  onClearDirectionPrefill?: () => void;
   onGenerate: (params: GenerationParams) => void;
   onPricingChange?: (model: string, duration: string, resolution?: string) => void;
   onAudioChange?: (audio: boolean) => void;
@@ -925,6 +943,20 @@ function VideoCards({
       }
     }
   }, [imageRefs, videoModel]);
+
+  // "Use as direction" on a blockout node: drop straight into Seedance r2v with
+  // the playblast as the reference video and its stills as the references.
+  useEffect(() => {
+    if (!directionPrefill) return;
+    setCustomKey(null);
+    setVideoModel("seedance-2.5");
+    setVideoMode("reference-to-video");
+    setReferenceVideo({ id: "blockout", url: directionPrefill.videoUrl, name: "Blockout" });
+    setR2vImages(directionPrefill.stills.slice(0, 3).map((url, i) => ({ id: `blockout-still-${i}`, url, name: `Still ${i + 1}` })));
+    setDuration(directionPrefill.duration);
+    onClearDirectionPrefill?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directionPrefill]);
 
   useEffect(() => {
     if (videoMode !== "reference-to-video") return;

@@ -70,10 +70,10 @@ test("spawnArgs: read-only sandbox, our MCP server, prompt on stdin", () => {
   assert.equal(codexRunner.stdinText?.(ctx()), "hi");
 });
 
-test("spawnArgs: resume comes before the flags; max effort becomes xhigh", () => {
-  const a = codexRunner.spawnArgs(ctx({ sessionId: "sess", effort: "max" }));
+test("spawnArgs: resume comes before the flags; effort passes through untouched", () => {
+  const a = codexRunner.spawnArgs(ctx({ sessionId: "sess", effort: "ultra" }));
   assert.deepEqual(a.slice(0, 3), ["exec", "resume", "sess"]);
-  assert.ok(a.includes('model_reasoning_effort="xhigh"'));
+  assert.ok(a.includes('model_reasoning_effort="ultra"'));
 });
 
 test("reasoning item → thinking, only on completion", () => {

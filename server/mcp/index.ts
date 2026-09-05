@@ -22,6 +22,7 @@
  * to stderr via `logErr`.
  */
 import os from "node:os";
+import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -113,25 +114,29 @@ async function httpJson(
   body?: unknown,
   timeoutMs = 15000,
 ): Promise<unknown> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let res: Response;
+  // node:http, not fetch: undici's fetch gives up on headers after 5 minutes with a bare
+  // "fetch failed", and a lit 240-frame blender_run legitimately takes longer than that.
+  let res: { ok: boolean; status: number; text: string };
   try {
-    res = await fetch(`${ep.baseUrl}${route}`, {
-      method,
-      headers: authHeaders(ep),
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: ctrl.signal,
+    res = await new Promise((resolve, reject) => {
+      const req = http.request(`${ep.baseUrl}${route}`, { method, headers: authHeaders(ep) }, (r) => {
+        let text = "";
+        r.setEncoding("utf8");
+        r.on("data", (c) => { text += c; });
+        r.on("end", () => resolve({ ok: (r.statusCode ?? 0) >= 200 && (r.statusCode ?? 0) < 300, status: r.statusCode ?? 0, text }));
+        r.on("error", reject);
+      });
+      req.setTimeout(timeoutMs, () => req.destroy(new Error(`no reply after ${Math.round(timeoutMs / 1000)}s`)));
+      req.on("error", reject);
+      req.end(body === undefined ? undefined : JSON.stringify(body));
     });
   } catch (err) {
-    // Connection refused / DNS / abort → the app is down.
+    // Connection refused / reset / our own timeout → the app is down or stuck.
     throw new AppUnavailableError(
       `Could not reach the Fal Forge app at ${ep.baseUrl} (${err instanceof Error ? err.message : String(err)}).`,
     );
-  } finally {
-    clearTimeout(timer);
   }
-  const text = await res.text();
+  const text = res.text;
   let data: unknown = undefined;
   try {
     data = text ? JSON.parse(text) : undefined;
@@ -323,12 +328,13 @@ const READ_TOOLS: Tool[] = [
   {
     name: "save_asset",
     description:
-      "Save one generation to the user's disk — \"export the last video to Downloads\", \"put that on my Desktop\". Get the id from list_canvas (most recent first; pick by type), then pass a folder or a filename. Bare folder names (Downloads, Desktop) mean ~/Downloads, ~/Desktop. Defaults to ~/Downloads. Returns the written path and reveals it in Finder. Only writes inside the user's home folder.",
+      "Save one generation to the user's disk — \"export the last video to Downloads\", \"put that on my Desktop\". Get the id from list_canvas (most recent first; pick by type), then pass a folder or a filename. Bare folder names (Downloads, Desktop) mean ~/Downloads, ~/Desktop. Defaults to ~/Downloads. Returns the written path and reveals it in Finder. Only writes inside the user's home folder. For a `render_html` piece, `format: \"html\"` writes the live document — markup with its images inlined — instead of the flat PNG.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The asset/job id from list_canvas." },
         path: { type: "string", description: "Destination folder or file path (absolute, ~/…, or a bare folder name like Downloads)." },
+        format: { type: "string", enum: ["html"], description: "Only for an HTML-rendered node: write the source document as .html rather than its PNG." },
       },
       required: ["id"],
     },
@@ -666,6 +672,36 @@ const READ_TOOLS: Tool[] = [
         label: { type: "string", description: "Short caption for the canvas node(s). Defaults to the --prompt value." },
       },
       required: ["args"],
+    },
+  },
+  {
+    name: "blender_run",
+    description:
+      "Run a Python `step` in headless Blender against a persistent per-session .blend (grey-box previs: primitives, one camera, one move, playblast + stills onto the canvas). Before the first call, get_skill(\"blender-blockout\") — it is the `mb` helper API (greybox/camera/camera_move/keyframe/set_range/look/summary, plus mb.bpy for raw Blender) and the workflow. The scene persists between calls; the reply carries a compact scene summary and the step's own print() output. Check cheaply (no `render`, or one still) until the pose is right, then render once with playblast + first/middle/last stills. On a Python error the reply is the exception plus the step line that raised it: fix the step, call again.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session: {
+          type: "string",
+          description: "Slug naming this scene, e.g. \"kitchen-spot\" (^[a-z0-9-]{1,40}$). Reuse the SAME slug for every step of one scene — that is what keeps the .blend.",
+        },
+        step: { type: "string", description: "Python source to run inside Blender. Starts with `import mb`." },
+        render: {
+          type: "object",
+          description: "What to render after the step. Omit while checking a pose (the summary is free); finish the scene once with a playblast plus first/middle/last stills.",
+          properties: {
+            playblast: { type: "boolean", description: "Render the frame range to an H264 MP4." },
+            stills: { type: "array", items: { type: "number" }, description: "Frame numbers to render as PNGs." },
+            peek: { type: "boolean", description: "Return the stills to you inline only; nothing lands on the canvas. Use while checking framing." },
+            sheet: { type: "boolean", description: "With `playblast`, also return one contact-sheet PNG inline: 8 evenly spaced frames of the move, 4 across and 2 down. Nothing lands on the canvas. Read it before calling a move done." },
+            views: { type: "array", items: {}, description: "Extra vantages for your eyes only, never the canvas: \"top\" | \"front\" | \"back\" | \"left\" | \"right\" | \"iso\" (orthographic, framed on every mesh) or {\"from\": [x,y,z], \"at\": [x,y,z], \"lens\": 35, \"frame\": N, \"label\": \"...\"}. Use them to check geometry the shot camera hides: a roof from the side, the layout from above." },
+          },
+        },
+        revert: { type: "number", description: "Roll the scene back to the snapshot saved after step N before running this step (the step may be empty)." },
+        runner: { type: "string", description: "Optional: which CLI is driving, stamped into the .blend." },
+        model: { type: "string", description: "Optional: which model is driving, stamped into the .blend." },
+      },
+      required: ["session", "step"],
     },
   },
   {
@@ -1162,6 +1198,23 @@ async function runSaveAsset(args: Record<string, unknown>): Promise<CallToolResu
   const r = resolveLocalPath(dest, home);
   if ("error" in r) return fail(r.error);
   if (r.path !== home && !r.path.startsWith(home + path.sep)) return fail(`Refusing to write outside your home folder: ${r.path}`);
+  const asDir = (p: string, name: string) => {
+    const isDir = (() => { try { return fs.statSync(p).isDirectory(); } catch { return !path.extname(p); } })();
+    return isDir ? path.join(p, name) : p;
+  };
+  if (args.format === "html") {
+    try {
+      const { html } = (await httpJson(ep, "GET", `/api/agent/html/${encodeURIComponent(id)}?inline=1`)) as { html: string };
+      const file = asDir(r.path, `html-${id.slice(0, 8)}.html`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, html, "utf8");
+      if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+      return ok(`Saved the HTML source of ${id} → ${file} (${fs.statSync(file).size} bytes)`);
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) return fail(`${id} is not an HTML-rendered node — drop \`format\` to save its file instead.`);
+      return errToFail(err);
+    }
+  }
   try {
     const a = (await httpJson(ep, "GET", `/api/agent/asset/${encodeURIComponent(id)}`)) as AssetRow & { status?: string };
     if (!a.url) return fail(`Asset ${id} has no result yet${a.status ? ` (status: ${a.status})` : ""}.`);
@@ -1172,10 +1225,7 @@ async function runSaveAsset(args: Record<string, unknown>): Promise<CallToolResu
     const urlExt = /\.([a-z0-9]{2,4})(\?|$)/i.exec(a.url)?.[1]?.toLowerCase();
     const ext = EXT_BY_MIME[mime] || urlExt || "bin";
     // A directory (existing, or a path with no extension) gets an auto filename.
-    const isDir = (() => { try { return fs.statSync(r.path).isDirectory(); } catch { return !path.extname(r.path); } })();
-    const file = isDir
-      ? path.join(r.path, `${(a.model || a.type || "asset").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${id.slice(0, 8)}.${ext}`)
-      : r.path;
+    const file = asDir(r.path, `${(a.model || a.type || "asset").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${id.slice(0, 8)}.${ext}`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), fs.createWriteStream(file));
     if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
@@ -1780,6 +1830,33 @@ async function runHiggsfield(args: Record<string, unknown>): Promise<CallToolRes
   return output.code === 0 ? ok(text) : fail(`higgsfield exited ${output.code}:\n${text}`);
 }
 
+async function runBlenderRun(args: Record<string, unknown>, onProgress?: ProgressFn): Promise<CallToolResult> {
+  const ep = readEndpoint();
+  if (!ep) return fail("The Fal Forge app isn't running.");
+  // A lit 240-frame playblast runs minutes; progress pings keep the client's ~60 s request timeout from firing (opencode did, twice).
+  const t0 = Date.now();
+  const tick = setInterval(() => onProgress?.(Math.round((Date.now() - t0) / 1000), "Blender is running the step"), 15_000);
+  const r = (await httpJson(ep, "POST", "/api/agent/blender/run", {
+    session: args.session, step: args.step, render: args.render, revert: args.revert, runner: args.runner, model: args.model,
+  }, 16 * 60_000).finally(() => clearInterval(tick))) as { ok?: boolean; log?: string; summary?: unknown; nodes?: Array<{ id: string; kind: string; url: string }>; peeks?: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }>; warnings?: string[]; sheet?: { data: string; first: number; last: number } };
+  // `log` is already digested server-side: the error block, or the step's own prints.
+  if (!r.ok) return fail(`Blender step failed:\n${(r.log || "").slice(-3000)}`);
+  const placed = (r.nodes ?? []).map((n) => `${n.kind} -> node ${n.id} (${n.url})`).join("\n");
+  const stills = (r.peeks ?? []).filter((p) => !p.label), views = (r.peeks ?? []).filter((p) => p.label);
+  const content: CallToolResult["content"] = [{ type: "text", text: [
+    `Scene: ${JSON.stringify(r.summary)}`,
+    r.log?.trim() ? `Step output:\n${r.log.trim()}` : "",
+    `On the canvas:\n${placed || "(nothing rendered — pass `render` when the pose is right)"}`,
+    stills.length ? `${(args.render as { peek?: boolean } | undefined)?.peek ? "Peeked (inline below, not on the canvas)" : "Stills inline below"}: frames ${stills.map((p) => p.frame).join(", ")}` : "",
+    views.length ? `Views inline below (after the stills, not on the canvas): ${views.map((v) => `${v.label} from ${JSON.stringify(v.from)} rot ${JSON.stringify(v.rot)}°`).join("; ")}` : "",
+    r.sheet ? `Contact sheet of the playblast: 8 frames left-to-right, top-to-bottom, frames ${r.sheet.first}…${r.sheet.last}` : "",
+    ...(r.warnings ?? []).map((w) => `Warning: ${w}`),
+  ].filter(Boolean).join("\n\n") }];
+  if (r.sheet) content.push({ type: "image", data: r.sheet.data, mimeType: "image/png" });
+  for (const p of [...stills.slice(0, 3), ...views.slice(0, 3)]) content.push({ type: "image", data: p.data, mimeType: "image/png" });
+  return { content };
+}
+
 function runListLocalDir(args: Record<string, unknown>): CallToolResult {
   const r = resolveLocalPath(args.path);
   if ("error" in r) return fail(r.error);
@@ -1814,7 +1891,7 @@ const INSTRUCTIONS = [
   "HISTORY: finished sequences are kept as one markdown manifest per cut in a local git repo per project. Call `list_cuts` before work that continues or resembles something the user has made before — a follow-up should match the original, and the manifest holds the exact prompts and settings that produced it. Call `save_cut` right after `set_timeline` whenever a multi-shot piece is done, reusing the same `project` slug across related cuts. Saving is cheap and local; not saving is how a good run becomes unrepeatable.",
   "MEMORY (private, yours): call `recall` at the start of any substantive piece of work — before you choose models, prompts, aspect ratios or structure — and follow what it says. Call `remember` whenever the user corrects you, states a preference, rejects an option, or a workflow lands well; write it as a directive to your future self, one fact per slug, reusing a slug to replace a stale note. This memory is not shown anywhere in the app and is not the user's document: apply it silently, don't read it back or announce that you're saving to it. Skills are the user's recipes; memory is what you've learned about working with them. It is how you get better across sessions instead of restarting from zero every time.",
   "LOCAL FILES: `list_local_dir` and `read_local_file` read this machine directly by absolute path (or ~/...). When the user points at a brief, script, brand guide, copy deck or repo, open it and use what it actually says rather than asking them to paste it. Credentials files are refused by design — don't try to route around that.",
-  "SKILLS: the user keeps reusable recipes — video scripts, house styles, prompt formulas — as markdown in their skill library. Check `list_skills` when they name a skill, ask for 'the usual', or want something you've built before, and follow the skill's prompts verbatim rather than improvising a fresh one. When a run turns out well or the user says to remember it, call `save_skill` with the ACTUAL prompts and settings you used so it reproduces exactly. The library is your own runbook too: when the user corrects how you did something, fix the skill that governed it with `patch_skill` (one exact edit) instead of only remembering it. Every write is versioned and restorable, so a small correction is cheap. Never rewrite a pinned skill or one the user edited by hand without asking.",
+  "SKILLS: the user keeps reusable recipes — video scripts, house styles, prompt formulas — as markdown in their skill library. Check `list_skills` when they name a skill, ask for 'the usual', or want something you've built before, and follow the skill's prompts verbatim rather than improvising a fresh one. When a run turns out well or the user says to remember it, call `save_skill` with the ACTUAL prompts and settings you used so it reproduces exactly. The library is your own runbook too: when the user corrects how you did something, fix the skill that governed it with `patch_skill` (one exact edit) instead of only remembering it — after the task is delivered, one patch per skill, never between steps of a run. Every write is versioned and restorable, so a small correction is cheap. Never rewrite a pinned skill or one the user edited by hand without asking.",
   "",
   "COST: the user pays fal.ai directly with their own key, so prices are real money, at cost, and vary hugely — a sound effect is under a cent, a 5s 1080p Seedance clip is over three dollars. Check `estimate_cost` before anything expensive (any video, or a large batch), state the figure, and get a yes before spending. Quote the number plainly ('about $3.40'); don't editorialise about it. For a multi-shot piece, price and approve the WHOLE sequence once, up front — then generate every shot without asking again. Re-asking between shots strands a half-finished sequence, which is worse than the spend.",
   "",
@@ -1847,7 +1924,19 @@ async function main(): Promise<void> {
     if (TOOL_ALLOWLIST && !TOOL_ALLOWLIST.has(name)) {
       return fail(`Tool "${name}" is not enabled for this run.`);
     }
-    // Read tools first (no job dispatch / progress).
+    // If the client passed a progress token, stream progress during long calls
+    // (generations, blender_run). Emitting progress resets the client's per-request timeout, so long
+    // (video / high-res) generations don't get cut off at the client default.
+    const progressToken = req.params._meta?.progressToken;
+    const onProgress: ProgressFn | undefined =
+      progressToken === undefined
+        ? undefined
+        : (progress, message) => {
+            extra.sendNotification({
+              method: "notifications/progress",
+              params: { progressToken, progress, message },
+            }).catch((e) => logErr("progress notification failed:", e));
+          };
     if (name === "check_setup") return runCheckSetup();
     if (name === "list_models") return runListModels();
     if (name === "search_fal_models") return runSearchFalModels(args);
@@ -1866,6 +1955,7 @@ async function main(): Promise<void> {
     if (name === "remember") return runRemember(args);
     if (name === "forget") return runForget(args);
     if (name === "higgsfield") return runHiggsfield(args);
+    if (name === "blender_run") return runBlenderRun(args, onProgress);
     if (name === "read_local_file") return runReadLocalFile(args);
     if (name === "list_local_dir") return runListLocalDir(args);
     if (name === "list_skills") return runListSkills();
@@ -1885,19 +1975,6 @@ async function main(): Promise<void> {
         && name !== "transform_media" && name !== "continue_video") {
       return fail(`Unknown tool: ${name}`);
     }
-    // If the client passed a progress token, stream progress during the block-and-
-    // poll. Emitting progress resets the client's per-request timeout, so long
-    // (video / high-res) generations don't get cut off at the client default.
-    const progressToken = req.params._meta?.progressToken;
-    const onProgress: ProgressFn | undefined =
-      progressToken === undefined
-        ? undefined
-        : (progress, message) => {
-            extra.sendNotification({
-              method: "notifications/progress",
-              params: { progressToken, progress, message },
-            }).catch((e) => logErr("progress notification failed:", e));
-          };
     return runTool(name, args, onProgress);
   });
 

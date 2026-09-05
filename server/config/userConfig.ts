@@ -29,7 +29,19 @@ export interface UserConfig {
   connectors?: { claude?: string[]; codex?: string[]; opencode?: string[] };
   /** Model ids the panel dropdown shows, per runner. Unset/empty = the whole catalog. */
   operatorModels?: { claude?: string[]; codex?: string[]; opencode?: string[] };
+  /** Defaults the Blender harness starts a step with. A step's own mb.look /
+   *  mb.set_range calls still win. */
+  blender?: BlenderConfig;
 }
+
+export interface BlenderConfig {
+  look: "grey" | "lit";
+  width: number;
+  height: number;
+  fps: number;
+}
+
+export const BLENDER_DEFAULTS: BlenderConfig = { look: "grey", width: 1280, height: 720, fps: 24 };
 
 type ConfigKey = keyof UserConfig;
 
@@ -124,6 +136,26 @@ export function maskKey(key: string | undefined): string | null {
 
 export function getOperatorModels(runner: OperatorRunner): string[] {
   return load().operatorModels?.[runner] ?? [];
+}
+
+/** Blender harness defaults, hand-edited config included — a bad value falls
+ *  back to the default rather than reaching Python. */
+export function getBlenderConfig(): BlenderConfig {
+  const c = (load().blender ?? {}) as Partial<BlenderConfig>;
+  const num = (v: unknown, d: number) => (typeof v === "number" && v > 0 && v <= 8192 ? Math.round(v) : d);
+  return {
+    look: c.look === "lit" ? "lit" : "grey",
+    width: num(c.width, BLENDER_DEFAULTS.width),
+    height: num(c.height, BLENDER_DEFAULTS.height),
+    fps: num(c.fps, BLENDER_DEFAULTS.fps),
+  };
+}
+
+export function setBlenderConfig(patch: Partial<BlenderConfig>): BlenderConfig {
+  const clean = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  const next = { ...getBlenderConfig(), ...clean };
+  persist({ ...load(), blender: next });
+  return getBlenderConfig();
 }
 
 export function setOperatorModels(runner: OperatorRunner, ids: string[]): void {

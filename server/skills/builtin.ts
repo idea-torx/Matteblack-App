@@ -76,6 +76,8 @@ canvas, and do not regenerate unprompted. Report in one short line and end the t
 sequence you were asked for — there, keep going through the remaining shots without stopping to check in,
 then assemble. Silence is the finished state; the user can see the canvas.
 
+Long tool loops (a Blender blockout, a sequence of shots) are narrated, not silent: before each blender_run or generation, one plain line to the user saying what this step does; after each peek, one line saying what you saw and what you'll fix. The user can only see the chat, so a quiet ten-step build looks like a hang.
+
 ## Fetch before you act
 The rest of your standing instructions live in the skill library so this prompt stays small. Call get_skill
 BEFORE starting the task, not after: \`sequences\` for anything longer than one shot (an ad, a trailer, a scene);
@@ -1589,11 +1591,396 @@ If a generation later fails with a balance or credit error, point them to
 https://fal.ai/dashboard/billing rather than retrying.
 `;
 
+const BLENDER_BLOCKOUT = `---
+name: Blender blockout — previs a shot before you generate it
+description: The blender_run API and workflow. Grey primitives, one camera, one move, cheap checks, one final render, then the playblast becomes Seedance 2.5 motion direction. Get this before any blender_run call.
+---
+
+# Blender blockout
+
+A blockout is staging, not a render: stand-ins for the set, one camera, one move, one timing. Its only job is
+to tell Seedance where the camera goes and how fast. Use it when the shot is about movement; for a static
+frame, prompt directly.
+
+Get the sibling skills when they apply: \`blender-blocking-rules\` (scale, naming, gotchas — read it once per
+session), \`blender-shots\` (shot vocabulary → camera numbers), \`blender-turntable\` (product/hero orbit),
+\`blender-lit-look\` (only when light direction has to read).
+
+## The tool
+
+\`blender_run(session, step, render?)\`. \`step\` is Python run inside headless Blender against
+\`<data>/blender/<session>/scene.blend\`; the scene persists between calls, the step is a diff on it.
+\`session\` is \`^[a-z0-9-]{1,40}$\` — one shot = one session, \`<project>-<shot>\` (\`alley-chase-s03\`). Reuse the
+slug to keep building, change it to start clean.
+
+The reply is \`{ok, summary, nodes, log}\`. \`log\` holds your step's own \`print()\` output. \`summary\` is always
+there: \`objects[{name, type, loc:[x,y,z] (2 dp), lens (cameras), light (lights), scale (only when not 1)}]\`
+(plus \`rot\` in degrees when set) with \`objects_total\`, \`camera\`, \`camera_keyframes\` (first and last key only) plus
+\`camera_key_count\`, \`frame_range\`, \`fps\`, \`look\`. \`objects\` lists only what this step added or changed (plus
+\`objects_unchanged\` and \`objects_removed\`), at most 30 of them with \`objects_more\` counting the rest; the rest of the scene is as you last saw it. On a Python error \`ok:false\` with one short block naming the
+step line; an AttributeError on \`mb\` lists the helpers that do exist. The scene stays as the last good step
+saved it. Rendered stills come back inline in the reply as images (up to three, plus up to three \`views\`), so look at them there;
+do not fetch them with get_asset or off disk.
+
+\`render\` decides what reaches the canvas: \`{"stills": [frames], "playblast": bool, "peek": bool, "sheet": bool}\` — ALWAYS pass it
+as a JSON object, never a string. Omit it and nothing renders — that step costs seconds. \`"peek": true\` renders the stills for your eyes only: they come back
+inline and nothing lands on the canvas, so check framing with peek as often as you need and drop \`peek\` only on
+the final render. Calling \`mb.still()\` / \`mb.playblast()\` yourself writes files that never reach the canvas; use
+\`render\`. \`mb.stamp()\` is appended for you. \`"sheet": true\` (with \`"playblast": true\`) also returns one contact-sheet
+PNG inline — 8 evenly spaced frames of the move, 4 across and 2 down, in time order — and puts nothing on the canvas.
+
+\`"views": [...]\` renders extra vantages for your eyes only, never the canvas: a preset \`"top"\`, \`"front"\`, \`"back"\`, \`"left"\`,
+\`"right"\` or \`"iso"\` (orthographic, framed on every mesh at the current frame) or \`{"from": [x,y,z], "at": [x,y,z], "lens": 35,
+"frame": N, "label": "…"}\`. The reply names each view with the pose it was taken from. Use them for what the shot camera hides:
+a roof pitch from the side, the layout from above, a prop from the front. Up to three views come back inline after the stills.
+
+\`revert: N\` rolls the scene back to the snapshot saved after step N before this step runs; the step itself may be
+empty. Every successful step leaves \`scene.step-N.blend\` beside \`scene.blend\`.
+
+The reply may carry \`warnings\`. \`stills X and Y are identical\` means the two frames rendered the same pixels: the
+hold or the animation did nothing, so fix the keys rather than shipping it.
+
+## \`mb\` — exact signatures
+
+\`\`\`python
+import mb                      # every step starts with this
+mb.greybox(kind, name, location=(0,0,0), scale=(1,1,1), rotation=(0,0,0))  # kind: cube|sphere|cylinder|plane|cone
+        # primitives are 2 m across at scale 1 (sphere/cylinder/cone radius 1). rotation in DEGREES. returns the object
+mb.camera(name="Camera", location=(7,-7,5), look_at=(0,0,0), lens=50)     # mm, 36 mm sensor. becomes scene.camera
+        # same name = re-pose it (keys cleared). moves aim at this look_at, not at rotation_euler you set by hand:
+        # to change where an orbit/crane looks, call mb.camera again with the new look_at
+mb.camera_move(kind, frames, distance=3.0, degrees=30.0, height=3.0)      # frames=(start,end) or an int (=1..n)
+        # dolly|push_in|pull_out: distance m along the lens axis (toward look_at)
+        # orbit: degrees around look_at, +ve = counter-clockwise seen from above; keyed every frame so 360 works
+        # crane: height m straight up (negative = down), re-aimed at look_at.  truck: distance m sideways.  pan/tilt: degrees, no re-aim
+        # starts from the camera's CURRENT pose: chain moves by giving the next call start == previous end
+        # easing="linear"|"ease_in"|"ease_out"|"smooth" on any move. Two-key moves default to bezier (soft), orbit to
+        # linear. Use "smooth" on an orbit or crane that starts and stops on screen, "ease_out" when a move settles on a subject
+mb.keyframe(obj_name, frame, location=None, rotation=None, scale=None, easing=None)  # rotation in degrees; keys only what you pass
+        # easing: "linear" | "ease_in" | "ease_out" | "smooth" — how THIS key runs to the next one. Default is Blender's
+        # bezier (soft in and out). A car pulling away = ease_in on its start key; a walk arriving = ease_out
+        # GOTCHA: a scale key mid-routine (e.g. shrinking a person to 0.01 at the get-in) bleeds back to frame 1 unless you
+        # key the hold at the start too — a person who should walk in full-size walks in as a dot. Key scale=(1,1,1) at frame 1.
+mb.group(name, members, location=(0,0,0))   # parent the named objects under one empty; keyframe(name, ...) then moves them as one.
+        # members keep their world position. Build a character from primitives, group it, animate the group.
+        # summary shows children with "in": "<group>". Re-calling with the same name adds members
+mb.set_range(start, end, fps=None)          # fps None = the app's setting (24). Fresh scenes default to 1-250: always set it
+mb.look("grey" | "lit")                     # reset from the panel config on EVERY run: call it in every step that renders lit
+mb.summary()                                # the digest that is in every reply anyway (see below); no need to print it
+mb.bpy                                      # raw bpy for anything else (lights, materials, deleting: see blender-lit-look / blocking-rules)
+mb.out_dir, mb.session_dir                  # paths, rarely needed
+\`\`\`
+
+Persisted in the .blend between steps: objects, materials, lights, world, camera + keyframes, frame range,
+fps, Workbench display flags. Not persisted: \`mb.look()\`, Python variables. Re-running \`greybox("cube","hero")\`
+makes \`hero.001\` — check \`summary\` before adding, edit existing objects through \`mb.bpy.data.objects["hero"]\`.
+
+Renders: 1280x720 (peeks come back at 640x360), \`grey\` = flat Workbench (default), \`lit\` = Eevee 16 samples. A Workbench still is ~1 s, a
+grey 240-frame playblast well under a minute; Eevee costs ~1 s/frame. Hard stop at 15 min per step.
+
+## The loop: check cheaply, render once
+
+1. **Set + camera, one peek.** Ground plane at z=0, stand-ins in metres, \`mb.camera(...)\`, \`mb.set_range\`,
+   \`render={"stills":[1], "peek": true}\`. Look at the still: framing, scale, nothing hidden. Fix in the next
+   step, not by rebuilding. Peek the middle frame of a move the same way before you ship it.
+2. **Move, no render.** \`camera_move\` / \`keyframe\`, \`render\` omitted (free). Read \`summary.camera_keyframes\`: first and
+   last key at the frames you meant, last \`location\` where you meant, \`camera_key_count\` > 1. A wrong move: \`mb.bpy.context.scene.camera.animation_data_clear()\`
+   then re-key.
+3. **Ship, once.** \`render={"playblast": true, "stills": [first, middle, last]}\` on the final step. Only then.
+4. **Read the thing before you move it.** Before wiring a move around a character or a prop, peek a close-up of it
+   from camera-front and check it reads as what it is — a stack of boxes that is meant to be a person has to look
+   like a person from the lens, not just from above.
+5. **Read the whole motion, not the ends.** For any keyed motion, peek a spread of frames across the move (not just
+   first and last), or ship with \`"sheet": true\` and actually read the sheet before calling it done. Identical-still
+   warnings mean the hold or the animation did nothing.
+6. **A gap list is a to-do list, not a verdict.** When the brief grants unlimited budget or asks for "as close as
+   possible", every gap you can name ("boat is a plain box", "foliage too sparse") gets fixed, peeked and re-judged
+   before you ship. Stop only when the list is empty or an item is beyond primitives, and say which.
+
+Frame ranges that snap cleanly to Seedance at 24 fps: 96 (4 s), 144 (6 s), 192 (8 s), 240 (10 s).
+
+\`\`\`python
+import mb
+mb.greybox("plane", "ground", scale=(15, 15, 1))
+mb.greybox("cube", "wall", location=(0, 6, 1.5), scale=(4, 0.2, 1.5))
+mb.greybox("cylinder", "person", location=(0, 3, 0.9), scale=(0.25, 0.25, 0.9))
+mb.camera("cam", location=(0, -4, 1.5), look_at=(0, 3, 1.2), lens=35)
+mb.set_range(1, 192)
+\`\`\`
+→ \`render={"stills":[1], "peek": true}\`. Then, once the still reads:
+\`\`\`python
+import mb
+mb.camera_move("push_in", (1, 96), distance=3.0)
+mb.camera_move("orbit", (96, 192), degrees=45)   # chained: starts where the push ended
+\`\`\`
+→ no render, read the summary. Then a no-op step with \`render={"playblast": true, "stills": [1, 96, 192]}\`.
+
+## Hand off to Seedance
+
+The playblast node carries \`stills\` (that run's stills) and \`frameRange\`/\`fps\`. The canvas button **Use as
+direction** on it opens Make in \`seedance-2.5\` reference-to-video with the video, the stills and the duration
+already set — duration is frames/fps rounded then snapped to 4/6/8/10/15/20/25/30 s. Point the user there when
+they want to write the prompt themselves. Doing it yourself: \`generate_media\` with \`model: "seedance-2.5-r2v"\`,
+the playblast URL as the reference video, the stills as reference images in first/middle/last order,
+\`durationSeconds\` snapped the same way, and a prompt that describes the real subject, light and environment —
+never the grey boxes; the video carries the motion. If r2v refuses the video, fall back to \`seedance-2.5-i2v\`
+with the first and last stills and say in one line that the timing is approximate.
+
+The user can also **Open in Blender** (the Matteblack add-on shows the session, and Send still / Send playblast
+put Workbench renders on the canvas by hand) and press **Continue** on a session, which hands you
+\`Continue Blender session "<slug>": …\` — read \`summary\` first, then edit.
+`;
+
+const BLENDER_BLOCKING_RULES = `---
+name: Blender blocking rules — scale, naming, gotchas
+description: Conventions and bpy gotchas that make blender_run steps work first time: metres, ground at z=0, primitive sizes, viewport tints so grey renders read, delete/edit through bpy.data, Blender 5 API traps.
+---
+
+# Blender blocking rules
+
+Read once per session, alongside \`blender-blockout\`.
+
+## Scale — metres, ground at z=0
+
+Primitives are 2 m at scale 1, so \`scale\` is half the size you want and \`location.z\` is half the height.
+
+| Stand-in | greybox |
+| --- | --- |
+| ground | \`("plane", "ground", scale=(15, 15, 1))\` — 30 m; bigger than the widest shot |
+| person 1.8 m | \`("cylinder", "person", location=(x, y, 0.9), scale=(0.25, 0.25, 0.9))\` |
+| 1 m prop / product | \`("cube", "hero", location=(x, y, 0.5), scale=(0.5, 0.5, 0.5))\` |
+| wall 8 m × 3 m | \`("cube", "wall", location=(x, y, 1.5), scale=(4, 0.1, 1.5))\` |
+| car | \`("cube", "car", location=(x, y, 0.75), scale=(2.2, 0.9, 0.75))\` |
+| tree | cylinder trunk + sphere at z=4, scale 2 |
+
++Y is "away" from a camera placed at −Y; +Z is up; a camera at eye height is z=1.5–1.7.
+
+## Make grey renders readable
+
+Flat Workbench draws every object the same grey: a person against a wall vanishes. Once per session:
+
+\`\`\`python
+import mb
+sh = mb.bpy.context.scene.display.shading     # persisted in the .blend
+sh.show_object_outline = True
+sh.show_shadows = True
+sh.show_cavity = True
+sh.background_type = "VIEWPORT"                # dark background instead of white sky
+def tint(name, rgb):                           # viewport colour, no nodes; shows in grey AND lit
+    o = mb.bpy.data.objects[name]
+    m = mb.bpy.data.materials.new(name + "_col"); m.diffuse_color = (*rgb, 1)
+    o.data.materials.clear(); o.data.materials.append(m)
+tint("ground", (0.45, 0.45, 0.45)); tint("wall", (0.6, 0.6, 0.62)); tint("person", (0.2, 0.45, 0.9))
+\`\`\`
+Hero warm, set neutral, people blue. Do this in the same step as the set, before the first still.
+
+## Naming and editing
+
+- Names are exact and unique: a second \`greybox(..., "hero")\` becomes \`hero.001\`. Read \`summary\` before adding.
+- Edit, don't re-add: \`o = mb.bpy.data.objects["hero"]; o.location = (0, 0, 0.5); o.scale = (0.5,)*3\`.
+- Delete: \`mb.bpy.data.objects.remove(mb.bpy.data.objects["hero.001"], do_unlink=True)\` — never
+  \`bpy.ops.object.delete\`, it needs a selection that background mode does not have.
+- Drop bad keys: \`mb.bpy.context.scene.camera.animation_data_clear()\` (or any object's).
+- Move a camera by hand? Also set \`cam["mb_target"] = [x, y, z]\` — \`camera_move\` orbits and re-aims on it.
+- Lens later: \`mb.bpy.context.scene.camera.data.lens = 40\`.
+
+## Gotchas
+
+- Fresh scene = frames 1–250 and no camera. \`set_range\` before any render; \`camera\` before \`camera_move\`.
+- \`mb.look("lit")\` is per step. Lights/materials persist, the switch does not.
+- Rotation: \`mb.*\` take degrees; raw \`obj.rotation_euler\` is radians.
+- Interpolation defaults to ease-in/out. Constant speed: put
+  \`mb.bpy.context.preferences.edit.keyframe_new_interpolation_type = "LINEAR"\` BEFORE keying. Blender 5 has no
+  \`action.fcurves\` — don't post-process curves.
+- Walk a grouped character by keying ABSOLUTE world positions and leaving the person group at (0,0,0): a non-zero group
+  location plus absolute keys double-offsets the root (the blocks-car-4 walker only moved right after clearing and restarting
+  the root at origin). To ride a character inside a car, parent the person group to the car group with
+  \`person.matrix_parent_inverse.identity()\` after the get-in — local walk/scale keys then move with the car for the drive.
+- Prefer \`bpy.data.*\` to \`bpy.ops.*\`; ops that need a view, selection or mode fail headless.
+- Only \`render={...}\` reaches the canvas; \`mb.still()\` in the step does not.
+`;
+
+const BLENDER_SHOTS = `---
+name: Blender shots — vocabulary to camera numbers
+description: Cinematographer terms mapped to mb.camera / mb.camera_move parameters that read well at 720p: framing distance by lens, push-in, reveal, orbit, crane, two-shot, product hero.
+---
+
+# Blender shots
+
+Plan in \`cinematographer\` vocabulary, then look the numbers up here. One move per shot; chain at most two.
+
+## Framing by lens
+
+The frame is ~\`distance × 20 / lens\` metres tall (16:9, 36 mm sensor). Invert for distance:
+\`distance = lens × frame_height / 20\`.
+
+| Shot size | frame height | 35 mm | 50 mm | 85 mm |
+| --- | --- | --- | --- | --- |
+| close-up (head) | 0.5 m | 0.9 m | 1.25 m | 2.1 m |
+| medium (waist up) | 1.2 m | 2.1 m | 3 m | 5.1 m |
+| full body (1.8 m + air) | 2.5 m | 4.4 m | 6.2 m | 10.6 m |
+| wide (room) | 4 m | 7 m | 10 m | — |
+| establishing | 10 m+ | 18 m | 25 m | — |
+
+Lens: 24 wide/urgent, 35 documentary, 50 neutral, 85 portrait/product. Camera height: eye 1.6, low 0.5,
+high 3+, top-down look_at straight below. \`look_at\` at the subject's chest (z≈1.2) for people, its centre
+for objects.
+
+## Moves
+
+| Ask | Call | Notes |
+| --- | --- | --- |
+| push in / lands on detail | \`camera_move("push_in", (1, N), distance=d)\` | d = ⅓–½ of start distance; ends slower (ease) |
+| reveal / pull out | \`camera_move("pull_out", (1, N), distance=d)\` | start tight (CU numbers), d = 2–4 m |
+| orbit / arc | \`camera_move("orbit", (1, N), degrees=g)\` | 30–60° for a beat, 90° for a reveal, 360 turntable |
+| crane up (reveal the space) | \`camera_move("crane", (1, N), height=h)\` | h = 2–4 m; start at eye height |
+| crane down (into the street) | start high, \`height=-h\` | |
+| tracking / follow | \`camera_move("truck", (1, N), distance=d)\` | sideways; +ve = camera's right |
+| pan / tilt | \`camera_move("pan", (1, N), degrees=g)\` | ±20–40°; whip = same degrees in 12 frames |
+| static + subject moves | no camera_move; \`mb.keyframe("person", f, location=...)\` | |
+
+Duration → frames at 24 fps: 4 s 96, 6 s 144, 8 s 192, 10 s 240. Speed rule: a move that crosses less than
+a tenth of the frame reads as static; more than the whole frame per second reads as a whip.
+
+## Recipes
+
+Two-shot, 35 mm, medium: people at \`(-0.6, 3, 0.9)\` and \`(0.6, 3, 0.9)\`, camera \`(0, 0, 1.5)\`,
+\`look_at=(0, 3, 1.2)\`. Over-shoulder: camera \`(-0.9, 2.2, 1.6)\` looking at the other person.
+
+Product hero, 85 mm: 1 m object at origin, camera \`(0, -5, 1.6)\`, \`look_at=(0, 0, 0.5)\`, slow
+\`orbit degrees=40\` over 144 frames. Full turntable: \`blender-turntable\`.
+
+Reveal down a street: walls as cubes along ±X at y 0..30, camera \`(0, -2, 6)\` looking at \`(0, 12, 1)\`,
+\`crane height=-4.5\` over 192 frames.
+
+Push that lands on a detail (verified): subject at y=3, camera \`(0, -4, 1.5)\`, 35 mm, \`push_in distance=3\`
+over 96 frames ends 4 m out = medium; chain \`orbit degrees=45\` for frames 96–192 to walk round it.
+`;
+
+const BLENDER_LIT_LOOK = `---
+name: Blender lit look — lights and materials that read in Eevee
+description: Raw bpy recipes for mb.look("lit"): sun key + area fill + world colour, principled materials, checker/noise textures, aiming lights. When to stay grey.
+---
+
+# Blender lit look
+
+Stay \`grey\` unless the shot is ABOUT light: a shadow that crosses the frame, a silhouette, a spotlit product.
+\`lit\` = Eevee at 16 samples, ~1 s/frame; \`mb.look("lit")\` must be in every step that renders lit (it is
+not saved; the lights and materials below are).
+
+## Lights and world (verified)
+
+\`\`\`python
+import mb, math
+from mathutils import Vector
+bpy = mb.bpy; sc = bpy.context.scene
+mb.look("lit")
+
+def aim(loc, target):   # lights and cameras both point down their -Z
+    return (Vector(loc) - Vector(target)).to_track_quat("Z", "Y").to_euler()
+
+def light(name, kind, loc, energy, target=(0, 0, 0), **kw):   # kind: SUN | AREA | POINT | SPOT
+    old = bpy.data.objects.get(name)
+    if old: bpy.data.objects.remove(old, do_unlink=True)        # re-runnable
+    ld = bpy.data.lights.new(name, type=kind); ld.energy = energy
+    for k, v in kw.items(): setattr(ld, k, v)
+    o = bpy.data.objects.new(name, ld); sc.collection.objects.link(o)
+    o.location = loc; o.rotation_euler = aim(loc, target)
+    return o
+
+w = sc.world or bpy.data.worlds.new("World"); sc.world = w; w.use_nodes = True
+bg = w.node_tree.nodes["Background"]
+bg.inputs["Color"].default_value = (0.15, 0.17, 0.2, 1)   # cool dim sky; the lights do the work
+bg.inputs["Strength"].default_value = 1.0
+
+T = (0, 0, 0.5)                                            # what the lights aim at
+light("key", "SUN", (4, -3, 6), 3.0, T, angle=math.radians(3))   # SUN: energy 2-5, angle = shadow softness
+light("fill", "AREA", (-4, -3, 3), 300.0, T, size=4.0)          # AREA: energy in W, 200-600 at 4-5 m
+# Energy scales with distance squared: the same fill 40 m away needs ~20000 W; a SPOT rim at 40 m ~25000 W.
+\`\`\`
+Rim: \`light("rim", "SPOT", (0, 5, 3), 800.0, T, spot_size=math.radians(40))\`. Night: world 0.02, key a
+SPOT. Golden hour: sun at z=1.5, colour \`ld.color = (1, 0.7, 0.4)\`.
+
+## Materials (verified)
+
+\`\`\`python
+def material(name, color, roughness=0.5, checker=None, noise=None):
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    m.use_nodes = True
+    bsdf = m.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*color, 1)
+    bsdf.inputs["Roughness"].default_value = roughness
+    if checker or noise:                                   # a texture REPLACES the base colour
+        t = m.node_tree.nodes.new("ShaderNodeTexChecker" if checker else "ShaderNodeTexNoise")
+        t.inputs["Scale"].default_value = checker or noise
+        if checker:
+            m.node_tree.links.new(t.outputs["Color"], bsdf.inputs["Base Color"])
+        else:                                              # noise Color is RGB confetti; use Fac through a ramp
+            ramp = m.node_tree.nodes.new("ShaderNodeValToRGB")
+            ramp.color_ramp.elements[0].color = (*[c * 0.7 for c in color], 1)
+            ramp.color_ramp.elements[1].color = (*color, 1)
+            m.node_tree.links.new(t.outputs["Fac"], ramp.inputs["Fac"])
+            m.node_tree.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    m.diffuse_color = (*color, 1)                          # grey look shows the same tint
+    return m
+
+def assign(obj_name, m):
+    o = bpy.data.objects[obj_name]; o.data.materials.clear(); o.data.materials.append(m)
+
+assign("hero", material("hero_mat", (0.9, 0.25, 0.1), checker=4))
+assign("ground", material("ground_mat", (0.4, 0.4, 0.42), roughness=0.9))
+assign("person", material("person_mat", (0.2, 0.4, 0.8)))
+\`\`\`
+Checker is black/white by default — tint with \`t.inputs["Color1"].default_value = (r, g, b, 1)\` and
+\`Color2\`. Metal: \`bsdf.inputs["Metallic"].default_value = 1.0\`, roughness 0.3. Emissive screen / bulb:
+\`bsdf.inputs["Emission Color"]\` + \`["Emission Strength"] = 5\`. Emission only makes the object read bright;
+in Eevee at 16 samples it casts no light. For a pool on the ground put a POINT light inside the bulb.
+
+Check with one still (\`render={"stills":[1]}\`) before the playblast: a 240-frame lit playblast is ~4 min.
+`;
+
+const BLENDER_TURNTABLE = `---
+name: Blender turntable — hero object, full orbit
+description: A product or hero object small in the centre of a ground plane, camera orbiting a full 360 at constant speed over N seconds, sized to snap to a Seedance duration.
+---
+
+# Blender turntable
+
+One step builds it, one still checks it, one step ships it. Session \`<product>-turntable\`.
+
+\`\`\`python
+import mb
+bpy = mb.bpy
+mb.greybox("plane", "ground", scale=(10, 10, 1))
+hero = mb.greybox("cube", "hero", location=(0, 0, 0.4), scale=(0.4, 0.4, 0.4))   # 0.8 m, resting on z=0
+m = bpy.data.materials.new("hero_col"); m.diffuse_color = (0.9, 0.3, 0.1, 1); hero.data.materials.append(m)
+sh = bpy.context.scene.display.shading; sh.show_object_outline = sh.show_shadows = True; sh.background_type = "VIEWPORT"
+mb.camera("cam", location=(0, -3.5, 1.8), look_at=(0, 0, 0.4), lens=40)   # object ~⅓ of frame height
+mb.set_range(1, 144)                                                       # 6 s at 24 fps -> Seedance 6
+bpy.context.preferences.edit.keyframe_new_interpolation_type = "LINEAR"    # constant speed; BEFORE keying
+mb.camera_move("orbit", (1, 144), degrees=360)
+\`\`\`
+→ \`render={"stills":[1, 72]}\`; frame 72 is the far side — check the object is still centred and the ground
+edge is not in frame. Then a step of just \`import mb\` with \`render={"playblast": true, "stills": [1, 72, 144]}\`.
+
+Tuning: the frame is \`distance × 20 / lens\` m tall, so a 0.8 m object at 3.5 m / 40 mm fills ~45 %.
+Bigger object → scale the location too (\`location.z\` = half height). Lower camera (z 0.9) for a heroic
+look-up, higher (z 3) for a top-ish product view. Half a turn: \`degrees=180\`, or \`-360\` to go clockwise.
+Loop-safe: frame 144 lands exactly on frame 1's pose. Swap the cube for a sphere/cylinder/cone, or for a
+real mesh the user opened in Blender — \`summary\` gives its name; keep it at the origin, on the ground.
+Lit version: \`blender-lit-look\` on top, key sun at \`(3, -3, 5)\`.
+`;
+
 export const BUILTIN_SKILLS: Record<string, string> = {
   [OPERATOR_SKILL_SLUG]: OPERATOR_SYSTEM,
   bridge: BRIDGE,
   storyboard: STORYBOARD,
   cinematographer: CINEMATOGRAPHER,
+  "blender-blockout": BLENDER_BLOCKOUT,
+  "blender-blocking-rules": BLENDER_BLOCKING_RULES,
+  "blender-shots": BLENDER_SHOTS,
+  "blender-lit-look": BLENDER_LIT_LOOK,
+  "blender-turntable": BLENDER_TURNTABLE,
   realism: REALISM,
   action: ACTION,
   "action-bridge": ACTION_BRIDGE,
