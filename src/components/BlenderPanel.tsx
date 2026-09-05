@@ -137,7 +137,7 @@ export function BlenderPanel({ onClose, onOperator }: {
         <div className="blender-cards">
           <div className="rpanel-card">
             <div className="rpanel-card-title">Defaults</div>
-            <div className="blender-desc">Look is reset every step (grey is Workbench, lit is Eevee); size and FPS only seed a new session — the model changes them in the scene.</div>
+            <div className="blender-desc">New-session defaults. The artist’s scene settings are preserved; previews can request a temporary grey or lit look.</div>
             <div className="blender-fields">
               <label className="blender-field">
                 <span className="rpanel-setting-label">Look</span>
@@ -161,25 +161,25 @@ export function BlenderPanel({ onClose, onOperator }: {
             <input
               className="rpanel-url-input"
               value={name}
-              placeholder="kitchen-blockout"
+              placeholder="product-model"
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onOperator(`Start a Blender blockout session "${name.trim()}": `); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onOperator(`Start a visible Blender modeling session "${name.trim()}": `); }}
             />
             <div className="blender-actions">
               <button
                 type="button"
                 className="rpanel-action-btn"
                 disabled={!name.trim()}
-                onClick={() => onOperator(`Start a Blender blockout session "${name.trim()}": `)}
+                onClick={() => onOperator(`Start a visible Blender modeling session "${name.trim()}": `)}
               >
-                Block out with the Operator
+                Model with the Operator
               </button>
             </div>
           </div>
 
           {sessions.length === 0 ? (
             <div className="rpanel-empty-state">
-              <span className="rpanel-empty-state-text">No sessions yet.<br />Name one above and the Operator will grey-box it, step by step.</span>
+              <span className="rpanel-empty-state-text">No sessions yet.<br />Name one above and the Operator will open Blender and model with you, step by step.</span>
             </div>
           ) : sessions.map((s) => (
             <div key={s.id} className="rpanel-card">

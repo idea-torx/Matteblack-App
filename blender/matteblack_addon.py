@@ -9,7 +9,7 @@ gets a 1s timeout, so a panel redraw costs at most one short blocking call.
 bl_info = {
     "name": "Matteblack",
     "author": "Matteblack",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar (N) > Matteblack",
     "description": "Matteblack connection, skills and send-to-canvas inside Blender.",
@@ -36,6 +36,8 @@ _CANDIDATES = (
 
 
 def _data_dir():
+    if os.environ.get("MATTEBLACK_DATA_DIR"):
+        return os.environ["MATTEBLACK_DATA_DIR"]
     live = [d for d in _CANDIDATES if os.path.exists(os.path.join(d, "mcp-endpoint.json"))]
     return max(live, key=lambda d: os.path.getmtime(os.path.join(d, "mcp-endpoint.json"))) if live else _CANDIDATES[1]
 
@@ -227,46 +229,20 @@ class MATTEBLACK_OT_send_playblast(bpy.types.Operator):
 
 # ---- Live session: the agent's steps land in this window, the user's notes go back ----
 
-_seen_mtime = {"path": None, "mtime": 0.0}
-_pending = {"newer": False}
-POLL_S = 2.0
-
-
 def _session_blend():
-    """This file, when it is a Matteblack session's scene.blend."""
     fp = bpy.data.filepath
     root = os.path.join(_data_dir(), "blender") + os.sep
     return fp if fp and fp.startswith(root) and os.path.basename(fp) == "scene.blend" else None
 
 
-def _reload():
-    fp = _session_blend()
-    if not fp:
-        return
-    bpy.ops.wm.open_mainfile(filepath=fp)
-    _seen_mtime.update(path=fp, mtime=os.path.getmtime(fp))
-    _pending["newer"] = False
+class MATTEBLACK_OT_pause(bpy.types.Operator):
+    bl_idname = "matteblack.pause"
+    bl_label = "Pause / resume agent edits"
+    bl_description = "Hold queued steps while you inspect or edit the scene"
 
-
-def _watch():
-    """Agent step saved a newer scene.blend → reload it, unless the user has unsaved edits (then a button)."""
-    fp = _session_blend()
-    if fp and os.path.exists(fp):
-        m = os.path.getmtime(fp)
-        if _seen_mtime["path"] != fp:
-            _seen_mtime.update(path=fp, mtime=m)
-        elif m > _seen_mtime["mtime"] + 0.5:
-            if bpy.data.is_dirty:
-                _pending["newer"] = True
-            else:
-                _reload()
-    return POLL_S
-
-
-def _on_save(*_):
-    fp = _session_blend()
-    if fp:
-        _seen_mtime.update(path=fp, mtime=os.path.getmtime(fp))
+    def execute(self, context):
+        context.scene["matteblack_paused"] = not context.scene.get("matteblack_paused", False)
+        return {"FINISHED"}
 
 
 def _viewport(context):
@@ -277,16 +253,6 @@ def _viewport(context):
             eye = r3d.view_matrix.inverted().translation
             return {"from": [round(v, 2) for v in eye], "at": [round(v, 2) for v in r3d.view_location]}
     return None
-
-
-class MATTEBLACK_OT_reload(bpy.types.Operator):
-    bl_idname = "matteblack.reload"
-    bl_label = "Load the agent's scene"
-    bl_description = "Discard unsaved edits and load the scene the agent just saved"
-
-    def execute(self, context):
-        _reload()
-        return {"FINISHED"}
 
 
 class MATTEBLACK_OT_tell(bpy.types.Operator):
@@ -305,8 +271,6 @@ class MATTEBLACK_OT_tell(bpy.types.Operator):
         if not session:
             self.report({"ERROR"}, "This file is not a Matteblack session.")
             return {"CANCELLED"}
-        if _session_blend() and bpy.data.is_dirty:
-            bpy.ops.wm.save_mainfile()  # the agent's next step reads scene.blend, so your edits must be on disk
         selected = [{
             "name": o.name,
             "loc": [round(v, 2) for v in o.matrix_world.translation],
@@ -314,7 +278,7 @@ class MATTEBLACK_OT_tell(bpy.types.Operator):
             "scale": [round(v, 2) for v in o.scale],
         } for o in context.selected_objects]
         _, err = _post("/api/agent/blender/tell", {
-            "session": session, "selected": selected, "viewport": _viewport(context), "note": self.note,
+            "session": session, "canvasId": scene.get("matteblack_canvas_id"), "selected": selected, "viewport": _viewport(context), "note": self.note,
         }, timeout=5.0)
         if err:
             self.report({"ERROR"}, "Tell failed: %s" % err)
@@ -348,7 +312,7 @@ class MATTEBLACK_PT_panel(bpy.types.Panel):
         scene = context.scene
         box = layout.box()
         box.label(text="Session")
-        fields = [("Session", "matteblack_session"), ("Canvas", "matteblack_canvas"),
+        fields = [("Session", "matteblack_session"), ("Canvas", "matteblack_canvas_id"),
                   ("Runner", "matteblack_runner"), ("Model", "matteblack_model"),
                   ("Step", "matteblack_step")]
         shown = [(name, scene.get(key)) for name, key in fields if scene.get(key)]
@@ -363,11 +327,10 @@ class MATTEBLACK_PT_panel(bpy.types.Panel):
         if scene.get("matteblack_session"):
             box = layout.box()
             box.label(text="Live with the agent")
-            if _pending["newer"]:
-                box.label(text="Agent saved a newer scene", icon="ERROR")
-                box.operator("matteblack.reload", icon="FILE_REFRESH")
-            else:
-                box.label(text="Agent steps reload here" if _session_blend() else "Open scene.blend to go live", icon="LINKED")
+            paused = scene.get("matteblack_paused", False)
+            box.label(text="Agent edits paused" if paused else "Agent edits this visible scene", icon="PAUSE" if paused else "LINKED")
+            box.operator("matteblack.pause", text="Resume agent edits" if paused else "Pause agent edits")
+            box.label(text="Cmd/Ctrl Z: undo the last step")
             box.operator("matteblack.tell", icon="OUTLINER_OB_SPEAKER")
 
         box = layout.box()
@@ -378,7 +341,7 @@ class MATTEBLACK_PT_panel(bpy.types.Panel):
 
 CLASSES = (
     MATTEBLACK_OT_reconnect,
-    MATTEBLACK_OT_reload,
+    MATTEBLACK_OT_pause,
     MATTEBLACK_OT_tell,
     MATTEBLACK_OT_skill,
     MATTEBLACK_OT_send_still,
@@ -390,14 +353,8 @@ CLASSES = (
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
-    bpy.app.timers.register(_watch, first_interval=POLL_S, persistent=True)
-    bpy.app.handlers.save_post.append(_on_save)
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_watch):
-        bpy.app.timers.unregister(_watch)
-    if _on_save in bpy.app.handlers.save_post:
-        bpy.app.handlers.save_post.remove(_on_save)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
