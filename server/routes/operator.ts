@@ -10,7 +10,7 @@ import { requireAuth, type AuthRequest } from "../sessions.js";
 import { refreshOpencodeModels } from "../operator/runners/opencode.js";
 import { runOperator, operatorStatus, operatorAuth, operatorLogin, OperatorNotConfiguredError, EFFORT_LEVELS, REVIEW_MCP_TOOLS, RUNNERS, type OperatorEvent, type EffortLevel, type RunnerId } from "../operator/claudeOperator.js";
 import { setUserConfig, setOperatorModels } from "../config/userConfig.js";
-import { getOperatorContext, setOperatorContext, takeOperatorJobs, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
+import { getOperatorContext, setOperatorContext, noteOperatorInterrupted, takeOperatorInterrupted } from "../services/operatorCanvasContext.js";
 import { memoryDir } from "../skills/agentMemory.js";
 import { pool } from "../db.js";
 import type { Viewport } from "../utils/canvasPlacement.js";
@@ -19,6 +19,7 @@ import path from "node:path";
 import { UPLOADS_DIR } from "../config/runtime.js";
 import { REPOS_DIR } from "../github/ghCli.js";
 import { stageAttachments } from "../utils/referenceFiles.js";
+import { claimSessionTurn } from "../operator/sessionTurns.js";
 
 const router = Router();
 
@@ -74,28 +75,16 @@ const REVIEW_PROMPT = [
   "Do not generate media, do not address the user, produce no prose beyond tool calls; if nothing stands out say 'Nothing to save.'",
 ].join(" ");
 
-/** At most one review in flight per session. The user taking another turn on the
- *  same session cancels it — a live turn owns the transcript, and a review
- *  writing skills underneath it is exactly the race Hermes cancels for. */
-const reviews = new Map<string, { ac: AbortController; done: Promise<void> }>();
-// Abort whatever is running on this thread (review or turn) and wait for its process to exit: codex holds a
-// per-thread writer lock, so a resume spawned too early fails with
-// "thread-store conflict". ponytail: 5s cap, then spawn anyway.
-async function stopReview(sessionId: string): Promise<void> {
-  const r = reviews.get(sessionId);
-  if (!r) return;
-  r.ac.abort();
-  await Promise.race([r.done, new Promise((res) => setTimeout(res, 5000))]);
-}
 const lastReviewAt = new Map<string, number>();
 const REVIEW_MIN_GAP_MS = 10 * 60_000;
 
 function startReview(sessionId: string, botId?: string): void {
-  reviews.get(sessionId)?.ac.abort();
-  const ac = new AbortController();
+  const turn = claimSessionTurn(sessionId, true);
+  if (!turn) return;
+  const { ac } = turn;
   // Fire and forget: never streamed to the client, never awaited, so `event:
   // end` has already gone out by the time this runs.
-  const done = runOperator({
+  void runOperator({
     message: REVIEW_PROMPT,
     sessionId,
     // High effort: the pass re-reads whole skills and rewrites them, not bookkeeping.
@@ -107,9 +96,8 @@ function startReview(sessionId: string, botId?: string): void {
     signal: ac.signal,
     onEvent: (e) => { if (e.type === "error") console.error("[operator] review:", e.message); },
   })
-    .catch((err) => console.error("[operator] review failed:", err))
-    .finally(() => { if (reviews.get(sessionId)?.ac === ac) reviews.delete(sessionId); });
-  reviews.set(sessionId, { ac, done });
+    .catch((err) => { if (!ac.signal.aborted) console.error("[operator] review failed:", err); })
+    .finally(() => turn.finish());
 }
 
 router.get("/api/operator/status", requireAuth, async (_req: AuthRequest, res) => {
@@ -252,149 +240,11 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     botPersona = { name: rows[0].name as string, description: (rows[0].description as string | null) ?? "", icon: (rows[0].icon as string | null) ?? "" };
   }
   const sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : undefined;
-  // The user has the floor again: stop any review still chewing on this session.
-  if (sessionId) await stopReview(sessionId);
-  const model = typeof body.model === "string" && body.model ? body.model : undefined;
-  // Anything not on the allowlist is dropped rather than passed through — an
-  // unrecognised --effort makes the CLI exit before the stream starts.
-  const effort = EFFORT_LEVELS.includes(body.effort as EffortLevel)
-    ? (body.effort as EffortLevel)
-    : undefined;
-
-  // Attached reference images (canvas selection + uploads). These are merged
-  // into the generation's referenceUrls server-side at /api/agent/tool.
-  const referenceUrls: string[] = Array.isArray(body.referenceUrls)
-    ? body.referenceUrls.filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 16)
-    : [];
-  const referenceAspectRatio = typeof body.referenceAspectRatio === "string" && body.referenceAspectRatio
-    ? body.referenceAspectRatio
-    : undefined;
-
-  // Capture where the user is looking, so operator generations land on the
-  // canvas they have open, at their viewport. Read back in /api/agent/tool.
-  const canvasId = typeof body.canvasId === "string" && body.canvasId ? body.canvasId : undefined;
-  const viewport = parseViewport(body.viewport);
-  if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio, botName: botPersona?.name, botIcon: botPersona?.icon });
-
-  // Ground truth about recent generations, injected every turn. The operator's
-  // own history is lossy in exactly the moment it matters: interrupting a turn
-  // kills the claude process mid-tool-call, so the generate_media that was in
-  // flight leaves no tool_result in the transcript — the job still completes
-  // and lands on the canvas, but on resume the agent truthfully "remembers"
-  // generating nothing and denies it. Compaction loses the same records. The
-  // jobs table doesn't forget, so it outranks the transcript.
-  // Told-to-abort path: the previous turn was interrupted (Stop), its jobs
-  // were cancelled, but the resumed transcript ends in dangling tool calls
-  // that read as unfinished work. Without this note the agent helpfully picks
-  // the task back up — the opposite of what Stop meant.
-  if (req.userId && takeOperatorInterrupted(req.userId)) {
-    message +=
-      "\n\n[System note: your previous turn was interrupted by the user pressing Stop, and its queued generations were cancelled. Treat that task as aborted — do not resume, retry, or re-dispatch any of it unless THIS message explicitly asks you to continue.]";
-  }
-
-  let generationsNote = "";
-  if (req.userId) {
-    try {
-      const jobs = await pool.query(
-        `SELECT type, model, status, result_url, params->>'prompt' AS prompt, created_at
-           FROM jobs
-          WHERE user_id = $1 AND params->>'source' = 'agent'
-            AND created_at > NOW() - INTERVAL '30 minutes'
-          ORDER BY created_at DESC LIMIT 6`,
-        [req.userId],
-      );
-      generationsNote = formatGenerationsNote(jobs.rows as GenerationRow[], Date.now());
-    } catch { /* the note is a nicety; never fail the turn over it */ }
-  }
-  message += generationsNote;
-
-  let selectionNote = "";
-  // The canvas selection, by node id. Selecting a rendered piece is how the user
-  // says "this one" — without the id the agent can only guess from list_canvas,
-  // and for an HTML render it can't revise in place at all.
-  const selectedNodeIds: string[] = Array.isArray(body.selectedNodeIds)
-    // uuid-shaped only: the selection can also hold synthetic ids (axiom slices,
-    // in-flight generations), and one of those makes the whole query throw.
-    ? body.selectedNodeIds.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)).slice(0, 16)
-    : [];
-  if (canvasId && selectedNodeIds.length > 0) {
-    try {
-      const sel = await pool.query(
-        `SELECT id, label, node_type, metadata->>'kind' AS kind FROM canvas_nodes
-          WHERE id = ANY($1::uuid[]) AND canvas_id = $2`,
-        [selectedNodeIds, canvasId],
-      );
-      const rows = sel.rows as { id: string; label: string | null; node_type: string; kind: string | null }[];
-      if (rows.length > 0) {
-        const lines = rows.map((r) => `- ${r.id} — ${r.node_type}${r.label ? ` "${String(r.label).slice(0, 60)}"` : ""}${r.kind === "html" ? " (rendered from HTML)" : ""}`);
-        let note = `\n\n[System note: the user has ${rows.length === 1 ? "this canvas node" : "these canvas nodes"} selected right now — when they say "this", "it", or "the ad", they mean ${rows.length === 1 ? "this one" : "these"}:\n${lines.join("\n")}`;
-        if (rows.some((r) => r.kind === "html")) {
-          note += `\nFor an HTML-rendered node: call get_html with that nodeId to read its markup, edit the markup, then call render_html with the SAME nodeId to replace it in place. Do not re-render it as a new node, and do not regenerate it with generate_media. To export one as a web page rather than a picture, call save_asset with that nodeId and format "html".`;
-        }
-        note += `]`;
-        selectionNote = note;
-      }
-    } catch { /* selection is a hint; a bad id must not fail the turn */ }
-  }
-  // Pieces picked inside a rendered-HTML node. Text is the handle the agent
-  // edits by (render_html `edits` find/replace), position disambiguates.
-  const picked = Array.isArray(body.selectedElements)
-    ? (body.selectedElements as unknown[]).filter((e): e is { nodeId: string; tag: string; text: string; bbox: number[] } =>
-        !!e && typeof e === "object" && typeof (e as { nodeId?: unknown }).nodeId === "string" && typeof (e as { tag?: unknown }).tag === "string").slice(0, 8)
-    : [];
-  if (picked.length > 0 && selectionNote) {
-    const lines = picked.map((e) => {
-      const [x, y, w, h] = Array.isArray(e.bbox) ? e.bbox.map(Number) : [0, 0, 0, 0];
-      const text = String(e.text || "").slice(0, 80);
-      return `- <${e.tag.replace(/[^a-z0-9-]/gi, "")}>${text ? ` "${text}"` : ""} at ${x},${y} (${w}×${h}px) in node ${e.nodeId}`;
-    });
-    selectionNote = selectionNote.slice(0, -1) + `\nThe user picked ${picked.length === 1 ? "this element" : "these elements"} inside the render — "this", "that text", "this bit" means exactly ${picked.length === 1 ? "it" : "them"}, nothing else on the page:\n${lines.join("\n")}\nChange only what was picked: get_html, then render_html with the same nodeId and \`edits\` whose find strings are that element's exact markup or text.]`;
-  }
-
-  // Tell Claude an image is attached AND that it's supplied to the tools
-  // automatically — otherwise Claude assumes it can only reference images that
-  // are already on the canvas (it has no URL of its own to pass) and asks the
-  // user to add it. The actual URLs are injected server-side at /api/agent/tool.
-  if (referenceUrls.length > 0) {
-    const n = referenceUrls.length;
-    const it = n > 1 ? "them" : "it";
-    const img = n > 1 ? "images" : "image";
-    // Keep labels attached to their image even when one download fails.
-    const staged: string[] = [], labels: string[] = [];
-    for (const [i, url] of referenceUrls.entries()) {
-      const files = await stageAttachments([url], ATTACH_DIR, UPLOADS_DIR);
-      const label = Array.isArray(body.referenceLabels) && typeof body.referenceLabels[i] === "string" ? body.referenceLabels[i].trim().slice(0, 80) : "";
-      for (const file of files) { staged.push(file); labels.push(label); }
-    }
-    const context = getOperatorContext(req.userId!);
-    if (context) { context.referenceFiles = staged; context.referenceLabels = labels; }
-    let note = `\n\n[System note: the user attached ${n} reference ${img} for this request.`;
-    if (staged.length > 0) {
-      note += ` To SEE ${it}, use your image-reading tool on ${staged.length > 1 ? "these files" : "this file"}: ${staged.join(", ")}. Read ${it} before answering anything about what the ${img} look${n > 1 ? "" : "s"} like.`;
-    }
-    note += ` Artist's reference labels (an empty label means unspecified): ${JSON.stringify(staged.map((file, i) => ({ file, label: labels[i] })))}. Respect the indicated purpose: material/style references do not by themselves specify geometry.`;
-    note += ` Use the references for the task the user requested. For Blender, call blender_run: it retains these files with the scene and exposes mb.references. Inspect all views, distinguish geometry from style, and ask about conflicting evidence. Image/video tools receive up to four URLs automatically; attaching images does not mean the user wants image generation.`;
-    // The URLs, verbatim. The auto-injection above only covers THIS turn: the
-    // context store is re-set (to []) on every message, so a follow-up like
-    // "now make another video from that image" arrives with no reference at
-    // all and silently generates text-to-video — which is exactly the moment
-    // continuity is lost. Holding the URLs means the agent can re-pass them.
-    // Only real URLs. A data: reference is megabytes of base64 — inlining it
-    // here blew the prompt past ARG_MAX (spawn E2BIG) and, on stdin, the
-    // context window. The bytes still reach the tools via the context store.
-    const reusable = referenceUrls.filter((u) => !u.startsWith("data:"));
-    if (reusable.length > 0) note += ` Reference URL${reusable.length > 1 ? "s" : ""}: ${reusable.join(", ")}. Keep ${n > 1 ? "these" : "this"} for the rest of the conversation: on ANY later generation that continues the same subject — a second video, a variation, another shot — pass ${it} yourself in referenceUrls, because the automatic attachment only applies to this message. Omitting ${it} does not error; it silently falls back to text-to-video and the subject will not match.`;
-    if (referenceAspectRatio) {
-      note += ` The attached ${img} ${n > 1 ? "are" : "is"} ${referenceAspectRatio} — use aspectRatio "${referenceAspectRatio}" to keep the lineage consistent, unless the user asked for a different shape.`;
-    }
-    note += `]`;
-    message += note;
-  }
-  // Last, so it outranks the attachment note above: that note pushes toward
-  // generate_media, which is the wrong move for a piece the user selected to
-  // revise.
-  message += selectionNote;
-
+  if (res.destroyed) return;
+  const turn = claimSessionTurn(sessionId)!;
+  const { ac } = turn;
+  let finalSession: string | undefined;
+  let turnContext: ReturnType<typeof getOperatorContext>;
   // SSE headers.
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream");
@@ -417,18 +267,18 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
   // quitting the app. Cancel this turn's jobs too: same status flip as
   // /api/job/:id/cancel, which the fal.ts polling loop watches for and turns
   // into a fal.queue.cancel.
-  const ac = new AbortController();
   // 'close' also fires on a normal res.end(), and cancelling a completed turn's
   // jobs would be a worse bug than the one being fixed. The finally block below
   // runs first, so this flag is already true by then.
   let finished = false;
   let sawToolUse = false;
-  req.on("close", () => {
+  res.on("close", () => {
+    if (finished || res.writableEnded) return;
     ac.abort();
-    if (finished) return;
     if (req.userId) noteOperatorInterrupted(req.userId);
     const sweep = () => {
-      const ids = req.userId ? takeOperatorJobs(req.userId) : [];
+      const ids = [...(turnContext?.jobIds ?? [])];
+      turnContext?.jobIds.clear();
       if (ids.length === 0) return;
       pool
         .query(
@@ -447,10 +297,155 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     setTimeout(sweep, 5000);
   });
 
-  // ponytail: one count per turn; cheap on a jobs table with an index on user_id.
-  const firstSession = (await pool.query("SELECT 1 FROM jobs WHERE user_id = $1 AND status = 'complete' LIMIT 1", [req.userId])).rows.length === 0;
   try {
-    const run = runOperator({
+    await turn.ready;
+    ac.signal.throwIfAborted();
+    const model = typeof body.model === "string" && body.model ? body.model : undefined;
+    // Anything not on the allowlist is dropped rather than passed through — an
+    // unrecognised --effort makes the CLI exit before the stream starts.
+    const effort = EFFORT_LEVELS.includes(body.effort as EffortLevel)
+      ? (body.effort as EffortLevel)
+      : undefined;
+
+    // Attached reference images (canvas selection + uploads). These are merged
+    // into the generation's referenceUrls server-side at /api/agent/tool.
+    const referenceUrls: string[] = Array.isArray(body.referenceUrls)
+      ? body.referenceUrls.filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 16)
+      : [];
+    const referenceAspectRatio = typeof body.referenceAspectRatio === "string" && body.referenceAspectRatio
+      ? body.referenceAspectRatio
+      : undefined;
+
+    // Capture where the user is looking, so operator generations land on the
+    // canvas they have open, at their viewport. Read back in /api/agent/tool.
+    const canvasId = typeof body.canvasId === "string" && body.canvasId ? body.canvasId : undefined;
+    const viewport = parseViewport(body.viewport);
+    if (req.userId) setOperatorContext(req.userId, { canvasId, viewport, referenceUrls, referenceAspectRatio, botName: botPersona?.name, botIcon: botPersona?.icon });
+    turnContext = req.userId ? getOperatorContext(req.userId) : undefined;
+
+    // Ground truth about recent generations, injected every turn. The operator's
+    // own history is lossy in exactly the moment it matters: interrupting a turn
+    // kills the claude process mid-tool-call, so the generate_media that was in
+    // flight leaves no tool_result in the transcript — the job still completes
+    // and lands on the canvas, but on resume the agent truthfully "remembers"
+    // generating nothing and denies it. Compaction loses the same records. The
+    // jobs table doesn't forget, so it outranks the transcript.
+    // Told-to-abort path: the previous turn was interrupted (Stop), its jobs
+    // were cancelled, but the resumed transcript ends in dangling tool calls
+    // that read as unfinished work. Without this note the agent helpfully picks
+    // the task back up — the opposite of what Stop meant.
+    if (req.userId && takeOperatorInterrupted(req.userId)) {
+      message +=
+        "\n\n[System note: your previous turn was interrupted by the user pressing Stop, and its queued generations were cancelled. Treat that task as aborted — do not resume, retry, or re-dispatch any of it unless THIS message explicitly asks you to continue.]";
+    }
+
+    let generationsNote = "";
+    if (req.userId) {
+      try {
+        const jobs = await pool.query(
+          `SELECT type, model, status, result_url, params->>'prompt' AS prompt, created_at
+             FROM jobs
+            WHERE user_id = $1 AND params->>'source' = 'agent'
+              AND created_at > NOW() - INTERVAL '30 minutes'
+            ORDER BY created_at DESC LIMIT 6`,
+          [req.userId],
+        );
+        generationsNote = formatGenerationsNote(jobs.rows as GenerationRow[], Date.now());
+      } catch { /* the note is a nicety; never fail the turn over it */ }
+    }
+    message += generationsNote;
+
+    let selectionNote = "";
+    // The canvas selection, by node id. Selecting a rendered piece is how the user
+    // says "this one" — without the id the agent can only guess from list_canvas,
+    // and for an HTML render it can't revise in place at all.
+    const selectedNodeIds: string[] = Array.isArray(body.selectedNodeIds)
+      // uuid-shaped only: the selection can also hold synthetic ids (axiom slices,
+      // in-flight generations), and one of those makes the whole query throw.
+      ? body.selectedNodeIds.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)).slice(0, 16)
+      : [];
+    if (canvasId && selectedNodeIds.length > 0) {
+      try {
+        const sel = await pool.query(
+          `SELECT id, label, node_type, metadata->>'kind' AS kind FROM canvas_nodes
+            WHERE id = ANY($1::uuid[]) AND canvas_id = $2`,
+          [selectedNodeIds, canvasId],
+        );
+        const rows = sel.rows as { id: string; label: string | null; node_type: string; kind: string | null }[];
+        if (rows.length > 0) {
+          const lines = rows.map((r) => `- ${r.id} — ${r.node_type}${r.label ? ` "${String(r.label).slice(0, 60)}"` : ""}${r.kind === "html" ? " (rendered from HTML)" : ""}`);
+          let note = `\n\n[System note: the user has ${rows.length === 1 ? "this canvas node" : "these canvas nodes"} selected right now — when they say "this", "it", or "the ad", they mean ${rows.length === 1 ? "this one" : "these"}:\n${lines.join("\n")}`;
+          if (rows.some((r) => r.kind === "html")) {
+            note += `\nFor an HTML-rendered node: call get_html with that nodeId to read its markup, edit the markup, then call render_html with the SAME nodeId to replace it in place. Do not re-render it as a new node, and do not regenerate it with generate_media. To export one as a web page rather than a picture, call save_asset with that nodeId and format "html".`;
+          }
+          note += `]`;
+          selectionNote = note;
+        }
+      } catch { /* selection is a hint; a bad id must not fail the turn */ }
+    }
+    // Pieces picked inside a rendered-HTML node. Text is the handle the agent
+    // edits by (render_html `edits` find/replace), position disambiguates.
+    const picked = Array.isArray(body.selectedElements)
+      ? (body.selectedElements as unknown[]).filter((e): e is { nodeId: string; tag: string; text: string; bbox: number[] } =>
+          !!e && typeof e === "object" && typeof (e as { nodeId?: unknown }).nodeId === "string" && typeof (e as { tag?: unknown }).tag === "string").slice(0, 8)
+      : [];
+    if (picked.length > 0 && selectionNote) {
+      const lines = picked.map((e) => {
+        const [x, y, w, h] = Array.isArray(e.bbox) ? e.bbox.map(Number) : [0, 0, 0, 0];
+        const text = String(e.text || "").slice(0, 80);
+        return `- <${e.tag.replace(/[^a-z0-9-]/gi, "")}>${text ? ` "${text}"` : ""} at ${x},${y} (${w}×${h}px) in node ${e.nodeId}`;
+      });
+      selectionNote = selectionNote.slice(0, -1) + `\nThe user picked ${picked.length === 1 ? "this element" : "these elements"} inside the render — "this", "that text", "this bit" means exactly ${picked.length === 1 ? "it" : "them"}, nothing else on the page:\n${lines.join("\n")}\nChange only what was picked: get_html, then render_html with the same nodeId and \`edits\` whose find strings are that element's exact markup or text.]`;
+    }
+
+    // Tell Claude an image is attached AND that it's supplied to the tools
+    // automatically — otherwise Claude assumes it can only reference images that
+    // are already on the canvas (it has no URL of its own to pass) and asks the
+    // user to add it. The actual URLs are injected server-side at /api/agent/tool.
+    if (referenceUrls.length > 0) {
+      const n = referenceUrls.length;
+      const it = n > 1 ? "them" : "it";
+      const img = n > 1 ? "images" : "image";
+      // Keep labels attached to their image even when one download fails.
+      const staged: string[] = [], labels: string[] = [];
+      for (const [i, url] of referenceUrls.entries()) {
+        const files = await stageAttachments([url], ATTACH_DIR, UPLOADS_DIR);
+        const label = Array.isArray(body.referenceLabels) && typeof body.referenceLabels[i] === "string" ? body.referenceLabels[i].trim().slice(0, 80) : "";
+        for (const file of files) { staged.push(file); labels.push(label); }
+      }
+      const context = getOperatorContext(req.userId!);
+      if (context) { context.referenceFiles = staged; context.referenceLabels = labels; }
+      let note = `\n\n[System note: the user attached ${n} reference ${img} for this request.`;
+      if (staged.length > 0) {
+        note += ` To SEE ${it}, use your image-reading tool on ${staged.length > 1 ? "these files" : "this file"}: ${staged.join(", ")}. Read ${it} before answering anything about what the ${img} look${n > 1 ? "" : "s"} like.`;
+      }
+      note += ` Artist's reference labels (an empty label means unspecified): ${JSON.stringify(staged.map((file, i) => ({ file, label: labels[i] })))}. Respect the indicated purpose: material/style references do not by themselves specify geometry.`;
+      note += ` Use the references for the task the user requested. For Blender, call blender_run: it retains these files with the scene and exposes mb.references. Inspect all views, distinguish geometry from style, and ask about conflicting evidence. Image/video tools receive up to four URLs automatically; attaching images does not mean the user wants image generation.`;
+      // The URLs, verbatim. The auto-injection above only covers THIS turn: the
+      // context store is re-set (to []) on every message, so a follow-up like
+      // "now make another video from that image" arrives with no reference at
+      // all and silently generates text-to-video — which is exactly the moment
+      // continuity is lost. Holding the URLs means the agent can re-pass them.
+      // Only real URLs. A data: reference is megabytes of base64 — inlining it
+      // here blew the prompt past ARG_MAX (spawn E2BIG) and, on stdin, the
+      // context window. The bytes still reach the tools via the context store.
+      const reusable = referenceUrls.filter((u) => !u.startsWith("data:"));
+      if (reusable.length > 0) note += ` Reference URL${reusable.length > 1 ? "s" : ""}: ${reusable.join(", ")}. Keep ${n > 1 ? "these" : "this"} for the rest of the conversation: on ANY later generation that continues the same subject — a second video, a variation, another shot — pass ${it} yourself in referenceUrls, because the automatic attachment only applies to this message. Omitting ${it} does not error; it silently falls back to text-to-video and the subject will not match.`;
+      if (referenceAspectRatio) {
+        note += ` The attached ${img} ${n > 1 ? "are" : "is"} ${referenceAspectRatio} — use aspectRatio "${referenceAspectRatio}" to keep the lineage consistent, unless the user asked for a different shape.`;
+      }
+      note += `]`;
+      message += note;
+    }
+    // Last, so it outranks the attachment note above: that note pushes toward
+    // generate_media, which is the wrong move for a piece the user selected to
+    // revise.
+    message += selectionNote;
+
+    // ponytail: one count per turn; cheap on a jobs table with an index on user_id.
+    const firstSession = (await pool.query("SELECT 1 FROM jobs WHERE user_id = $1 AND status = 'complete' LIMIT 1", [req.userId])).rows.length === 0;
+    ac.signal.throwIfAborted();
+    const result = await runOperator({
       message,
       sessionId,
       model,
@@ -459,16 +454,29 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       botId,
       botPersona,
       signal: ac.signal,
-      onEvent: (e) => { if (e.type === "tool_use") sawToolUse = true; send(e); },
+      onEvent: (e) => {
+        // Register the first turn as soon as the CLI creates its session,
+        // before the client can send a follow-up using that id.
+        if ((e.type === "session" || e.type === "done") && e.sessionId) turn.identify(e.sessionId);
+        if (e.type === "tool_use") sawToolUse = true;
+        send(e);
+      },
     });
-    // A foreground turn holds the thread too: a message sent mid-render must
-    // stop it (same lock story as the review) instead of colliding with it.
-    const entry = { ac, done: run.then(() => undefined, () => undefined) };
-    if (sessionId) { reviews.set(sessionId, entry); entry.done.then(() => { if (reviews.get(sessionId) === entry) reviews.delete(sessionId); }); }
-    const { sessionId: finalSession } = await run;
+    finalSession = result.sessionId;
     // Redundant with the parsed 'done' event, but guarantees the client has the
     // resumable session id even if the result line was malformed.
     if (finalSession) send({ type: "session", sessionId: finalSession });
+  } catch (err) {
+    if (ac.signal.aborted) return;
+    if (err instanceof OperatorNotConfiguredError) {
+      send({ type: "error", message: err.message });
+    } else {
+      send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  } finally {
+    finished = true;
+    turn.finish();
+    try { res.write("event: end\ndata: {}\n\n"); res.end(); } catch { /* already closed */ }
     // Self-improvement pass. Only ever started for a foreground turn (this
     // handler is the only caller and never sets `review`), so it can't recurse.
     // Skipped for chat-only turns (nothing was made, so nothing to learn) and
@@ -478,15 +486,6 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
       lastReviewAt.set(finalSession, Date.now());
       startReview(finalSession, botId);
     }
-  } catch (err) {
-    if (err instanceof OperatorNotConfiguredError) {
-      send({ type: "error", message: err.message });
-    } else {
-      send({ type: "error", message: err instanceof Error ? err.message : String(err) });
-    }
-  } finally {
-    finished = true;
-    try { res.write("event: end\ndata: {}\n\n"); res.end(); } catch { /* already closed */ }
   }
 });
 

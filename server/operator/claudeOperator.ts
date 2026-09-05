@@ -310,6 +310,7 @@ export function stripBase64(text: string): string {
  * and generation errors surface as events.
  */
 export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId?: string }> {
+  opts.signal?.throwIfAborted();
   const runnerId = opts.runner ?? getOperatorRunner();
   const runner = RUNNERS.find((r) => r.id === runnerId) ?? claudeRunner;
   const bin = runner.resolveBinary();
@@ -368,6 +369,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     // reaching the user's Drive or inbox.
     connectors: opts.review === true ? [] : await runtimeConnectors(runner.id),
   };
+  opts.signal?.throwIfAborted();
   const args = runner.spawnArgs(ctx);
   const stdinText = runner.stdinText?.(ctx);
 
@@ -463,7 +465,7 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
     child.on("close", (code) => {
       liveKills.delete(killTree);
       opts.signal?.removeEventListener("abort", onAbort);
-      if (code !== 0 && code !== null) {
+      if (code !== 0 && code !== null && !opts.signal?.aborted) {
         const detail = stderrBuf.trim().split("\n").slice(-3).join(" ").slice(0, 400);
         opts.onEvent({
           type: "error",
