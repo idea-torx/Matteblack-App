@@ -299,7 +299,7 @@ function extractUrl(text: string): string | undefined {
   return any ? any[1] : undefined;
 }
 
-const MAX_REFS = 4; // /api/agent/tool caps referenceUrls at 4.
+const MAX_REFS = 16; // Modeling context; generation providers retain their own limits.
 
 // An image attached to the next generation — either uploaded via the (+) button
 // or a live reflection of the canvas selection. `url` is what we send as a

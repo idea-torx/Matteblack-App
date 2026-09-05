@@ -24,6 +24,49 @@ test("path sandbox: inside allowed, outside and traversal refused", () => {
 
 const BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender";
 
+test("mesh edits are observable and previews restore the artist's settings on success and failure", { skip: !fs.existsSync(BLENDER) }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mb-blender-state-"));
+  try {
+    fs.writeFileSync(path.join(dir, "bridge.py"), BRIDGE_PY);
+    fs.writeFileSync(path.join(dir, "step.py"), [
+      "import mb, os",
+      "bpy = mb.bpy",
+      "o = mb.greybox('cube', 'Hero')",
+      "mb.camera()",
+      "mb.resolution(64, 64)",
+      "sc = bpy.context.scene",
+      "sc.frame_set(9)",
+      "sc.render.engine = 'CYCLES'",
+      "sc.render.filepath = '//artist-output'",
+      "sc.render.image_settings.file_format = 'JPEG'",
+      "before = mb.summary()['objects'][0]['mesh']['hash']",
+      "o.data.vertices[0].co.x += 0.25",
+      "o.data.update()",
+      "after = mb.summary()['objects'][0]['mesh']['hash']",
+      "assert before != after, 'geometry edit was hidden'",
+      "o.modifiers.new('Edges', 'BEVEL').width = 0.1",
+      "assert mb.summary()['objects'][0]['modifiers'][0]['settings']['width'] > 0",
+      "mb.look('grey')",
+      "mb.still(os.path.join(mb.out_dir, 'preview.png'), 1)",
+      "assert sc.frame_current == 9",
+      "assert sc.render.engine == 'CYCLES'",
+      "assert sc.render.filepath == '//artist-output'",
+      "assert sc.render.image_settings.file_format == 'JPEG'",
+
+      "try: mb.still(os.path.join(mb.out_dir, 'broken.png'), 'invalid-frame')",
+      "except ValueError: pass",
+      "else: raise AssertionError('invalid frame should fail')",
+      "assert sc.frame_current == 9 and sc.render.engine == 'CYCLES'",
+      "assert sc.render.filepath == '//artist-output'",
+      "print('state checks passed')",
+    ].join("\n"));
+    const log = execFileSync(BLENDER, ["--background", "--python", path.join(dir, "bridge.py"), "--", path.join(dir, "step.py"), dir], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
+    assert.match(log, /state checks passed/);
+  } catch (err) {
+    assert.fail((err as { stdout?: string }).stdout || String(err));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("harness: cube + push_in renders a still and a playblast", { skip: !fs.existsSync(BLENDER) }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mb-blender-"));
   const bridge = path.join(dir, "bridge.py");

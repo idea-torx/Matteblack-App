@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import "./LeftToolbar.css";
 import "./SkillsPanel.css";
 import { SkillEditorPanel, KINDS, type SkillKind } from "./SkillEditorPanel";

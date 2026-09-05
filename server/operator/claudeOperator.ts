@@ -336,9 +336,8 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
       + (opts.botPersona.description ? ` They describe you as: ${opts.botPersona.description}` : "")
       + " Work as that collaborator — it is your brief, and it outranks your generic defaults where they disagree."
     : "";
-  // Install-day state the operator cannot see otherwise. No key means nothing
-  // can generate, so setup comes before whatever they typed.
-  const stateNote = (getFalKey() ? "" : "\n\nNO FAL KEY SAVED: nothing can generate yet. Fetch the `setup` skill and walk the user through it before anything else.")
+  // Gate provider setup by the operation; local Blender does not need fal.
+  const stateNote = (getFalKey() ? "" : "\n\nNO FAL KEY SAVED: fal generation needs setup. Blender, local rendering, and reference inspection work without it. Fetch the `setup` skill only when the requested operation needs fal.")
     + (opts.firstSession && getFalKey() ? "\n\nFIRST SESSION: this user has not generated anything yet. Unless the ask is already specific, fetch the `help` skill and offer its menu before starting." : "");
   const systemPrompt = operatorSystemPrompt() + persona + repoNote + skillIndex() + pinnedInstructions() + memoryInstructions(opts.botId) + stateNote;
   // Codex reads AGENTS.md out of its cwd; Claude keeps --append-system-prompt

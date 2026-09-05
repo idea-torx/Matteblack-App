@@ -677,7 +677,7 @@ const READ_TOOLS: Tool[] = [
   {
     name: "blender_run",
     description:
-      "Run a Python `step` in headless Blender against a persistent per-session .blend (grey-box previs: primitives, one camera, one move, playblast + stills onto the canvas). Before the first call, get_skill(\"blender-blockout\") — it is the `mb` helper API (greybox/camera/camera_move/keyframe/set_range/look/summary, plus mb.bpy for raw Blender) and the workflow. The scene persists between calls; the reply carries a compact scene summary and the step's own print() output. Check cheaply (no `render`, or one still) until the pose is right, then render once with playblast + first/middle/last stills. On a Python error the reply is the exception plus the step line that raised it: fix the step, call again.",
+      "Run a short Python step in the artist's VISIBLE Blender session. The window opens automatically and stays open; each step is undoable. Use raw bpy/BMesh and any relevant skills; mb helpers are optional conveniences, not a modeling limit. Inspect the scene and references first, explain each meaningful change, then make small edits the artist can steer. A step executes on Blender's UI thread: keep it short. Paused/Edit/Sculpt sessions wait for the artist. No fal key is needed. Render previews preserve scene settings. Use get_skill(\"blender-blockout\") only for previs; it is not required for modeling. References are saved per session and exposed as mb.references (local image paths). Omit render to inspect/edit without rendering.",
     inputSchema: {
       type: "object",
       properties: {
@@ -685,11 +685,12 @@ const READ_TOOLS: Tool[] = [
           type: "string",
           description: "Slug naming this scene, e.g. \"kitchen-spot\" (^[a-z0-9-]{1,40}$). Reuse the SAME slug for every step of one scene — that is what keeps the .blend.",
         },
-        step: { type: "string", description: "Python source to run inside Blender. Starts with `import mb`." },
+        step: { type: "string", description: "Python source to run inside visible Blender. Use import bpy or import mb. print(mb.summary()) inspects the full scene. Keep each step short and meaningful." },
         render: {
           type: "object",
-          description: "What to render after the step. Omit while checking a pose (the summary is free); finish the scene once with a playblast plus first/middle/last stills.",
+          description: "Optional previews or final renders. Omit for a geometry edit. Settings and the current frame are restored after rendering.",
           properties: {
+            look: { type: "string", enum: ["scene", "grey", "lit"], description: "Preview with current scene settings (default), Workbench, or Eevee. Restores the scene engine afterwards." },
             playblast: { type: "boolean", description: "Render the frame range to an H264 MP4." },
             stills: { type: "array", items: { type: "number" }, description: "Frame numbers to render as PNGs." },
             peek: { type: "boolean", description: "Return the stills to you inline only; nothing lands on the canvas. Use while checking framing." },
@@ -697,6 +698,8 @@ const READ_TOOLS: Tool[] = [
             views: { type: "array", items: {}, description: "Extra vantages for your eyes only, never the canvas: \"top\" | \"front\" | \"back\" | \"left\" | \"right\" | \"iso\" (orthographic, framed on every mesh) or {\"from\": [x,y,z], \"at\": [x,y,z], \"lens\": 35, \"frame\": N, \"label\": \"...\"}. Use them to check geometry the shot camera hides: a roof from the side, the layout from above." },
           },
         },
+        references: { type: "array", items: { type: "string" }, maxItems: 16, description: "Replace the session references with staged image paths from the attachment note. Omit to retain them; [] clears. New attached references are captured automatically." },
+        inspectReferences: { type: "boolean", description: "Return the saved reference images inline, including when resuming a session without new attachments." },
         revert: { type: "number", description: "Roll the scene back to the snapshot saved after step N before running this step (the step may be empty)." },
         runner: { type: "string", description: "Optional: which CLI is driving, stamped into the .blend." },
         model: { type: "string", description: "Optional: which model is driving, stamped into the .blend." },
@@ -1837,14 +1840,15 @@ async function runBlenderRun(args: Record<string, unknown>, onProgress?: Progres
   const t0 = Date.now();
   const tick = setInterval(() => onProgress?.(Math.round((Date.now() - t0) / 1000), "Blender is running the step"), 15_000);
   const r = (await httpJson(ep, "POST", "/api/agent/blender/run", {
-    session: args.session, step: args.step, render: args.render, revert: args.revert, runner: args.runner, model: args.model,
-  }, 16 * 60_000).finally(() => clearInterval(tick))) as { ok?: boolean; log?: string; summary?: unknown; nodes?: Array<{ id: string; kind: string; url: string }>; peeks?: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }>; warnings?: string[]; sheet?: { data: string; first: number; last: number } };
+    session: args.session, step: args.step, render: args.render, revert: args.revert, runner: args.runner, model: args.model, references: args.references, inspectReferences: args.inspectReferences,
+  }, 16 * 60_000).finally(() => clearInterval(tick))) as { ok?: boolean; log?: string; summary?: unknown; references?: string[]; referenceImages?: Array<{ label: string; data: string; mimeType: string }>; nodes?: Array<{ id: string; kind: string; url: string }>; peeks?: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }>; warnings?: string[]; sheet?: { data: string; first: number; last: number } };
   // `log` is already digested server-side: the error block, or the step's own prints.
   if (!r.ok) return fail(`Blender step failed:\n${(r.log || "").slice(-3000)}`);
   const placed = (r.nodes ?? []).map((n) => `${n.kind} -> node ${n.id} (${n.url})`).join("\n");
   const stills = (r.peeks ?? []).filter((p) => !p.label), views = (r.peeks ?? []).filter((p) => p.label);
   const content: CallToolResult["content"] = [{ type: "text", text: [
     `Scene: ${JSON.stringify(r.summary)}`,
+    `Saved references (mb.references): ${JSON.stringify(r.references ?? [])}`,
     r.log?.trim() ? `Step output:\n${r.log.trim()}` : "",
     `On the canvas:\n${placed || "(nothing rendered — pass `render` when the pose is right)"}`,
     stills.length ? `${(args.render as { peek?: boolean } | undefined)?.peek ? "Peeked (inline below, not on the canvas)" : "Stills inline below"}: frames ${stills.map((p) => p.frame).join(", ")}` : "",
@@ -1854,6 +1858,7 @@ async function runBlenderRun(args: Record<string, unknown>, onProgress?: Progres
   ].filter(Boolean).join("\n\n") }];
   if (r.sheet) content.push({ type: "image", data: r.sheet.data, mimeType: "image/png" });
   for (const p of [...stills.slice(0, 3), ...views.slice(0, 3)]) content.push({ type: "image", data: p.data, mimeType: "image/png" });
+  for (const ref of r.referenceImages ?? []) content.push({ type: "text", text: ref.label }, { type: "image", data: ref.data, mimeType: ref.mimeType });
   return { content };
 }
 

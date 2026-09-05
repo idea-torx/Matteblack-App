@@ -6,7 +6,7 @@
  * runs themselves still go through /api/agent/blender/run.
  */
 import { Router } from "express";
-import { spawn } from "node:child_process";
+import { openLiveBlender, livePid } from "../blender/live.js";
 import fs from "node:fs";
 import path from "node:path";
 import { requireAuth, type AuthRequest } from "../sessions.js";
@@ -34,14 +34,14 @@ router.post("/api/blender/sessions/:id/open", requireAuth, (req: AuthRequest, re
   if (!dir) { res.status(404).json({ error: "No such session." }); return; }
   const bin = resolveBin("blender");
   if (!bin.found) { res.status(503).json({ error: "Blender isn't installed." }); return; }
-  const child = spawn(bin.path, [path.join(dir, "scene.blend")], { detached: true, stdio: "ignore" });
-  child.unref();
+  openLiveBlender(bin.path, dir);
   res.json({ ok: true });
 });
 
 router.delete("/api/blender/sessions/:id", requireAuth, (req: AuthRequest, res) => {
   const dir = sessionDir(req.params.id);
   if (!dir) { res.status(404).json({ error: "No such session." }); return; }
+  if (livePid(dir)) { res.status(409).json({ error: "Close this Blender session before restarting it." }); return; }
   fs.rmSync(dir, { recursive: true, force: true });
   res.json({ ok: true });
 });

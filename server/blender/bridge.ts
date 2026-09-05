@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 /**
- * The headless Blender harness, as a string.
+ * The Blender harness, shared by the visible session and the integration tests.
  *
  * ponytail: a string constant, not a loose .py file. The server is bundled by
  * esbuild into a single dist-server/index.js and electron-builder ships only
@@ -9,7 +9,7 @@ import crypto from "node:crypto";
  * never reach the packaged app. The route writes this out beside the session
  * .blend before each run, so it is also the file a traceback points at.
  */
-export const BRIDGE_PY = String.raw`"""Headless Blender harness for the Matteblack agent bridge.
+export const BRIDGE_PY = String.raw`"""Blender harness for the Matteblack agent bridge.
 
 Run as:  blender --background [scene.blend] --python bridge.py -- <step.py> <session dir> [render json]
 
@@ -18,6 +18,10 @@ keyframe and render helpers. State lives in the .blend: the harness saves
 <session dir>/scene.blend when the step succeeds, so the next step opens it.
 """
 import contextlib
+import array
+import functools
+import hashlib
+import time
 import io
 import json
 import math
@@ -227,19 +231,18 @@ def set_range(start, end, fps=None):
     sc.render.fps_base = 1.0
 
 
-# Defaults from the app's Blender panel. Look is reset every run (not saved in the
-# .blend); resolution seeds a new session only; fps is set_range's default.
-_LOOK = "grey"
+# Preview overrides never replace the artist's saved render settings.
+_LOOK = "scene"
 _RES = (1280, 720)
 _FPS = 24
 
 
 def look(mode):
-    """'grey' (default): flat Workbench. 'lit': Eevee with the scene's own lights,
+    """'scene' (default): the artist's engine. 'grey': Workbench. 'lit': Eevee with scene lights,
     shadows and materials — for when the blockout needs to read light direction."""
     global _LOOK
-    if mode not in ("grey", "lit"):
-        raise ValueError("look must be 'grey' or 'lit'")
+    if mode not in ("scene", "grey", "lit"):
+        raise ValueError("look must be 'scene', 'grey' or 'lit'")
     _LOOK = mode
 
 
@@ -256,14 +259,35 @@ def _grey_setup():
     sc = bpy.context.scene
     if _LOOK == "lit":
         sc.render.engine = "BLENDER_EEVEE" if "BLENDER_EEVEE" in {e.identifier for e in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items} else "BLENDER_EEVEE_NEXT"
-        sc.eevee.taa_render_samples = 16  # ponytail: fixed low sample count, a knob if it looks noisy
-    else:
+    elif _LOOK == "grey":
         sc.render.engine = "BLENDER_WORKBENCH"
         sc.display.shading.light = "FLAT"
         sc.display.shading.color_type = "MATERIAL"
     return sc
 
 
+
+def _preserve_render(fn):
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        sc = bpy.context.scene
+        r = sc.render
+        fields = [(r, ("engine", "filepath", "use_file_extension")),
+                  (r.image_settings, ("media_type", "file_format", "color_mode", "color_depth", "quality", "compression")),
+                  (r.ffmpeg, ("format", "codec", "constant_rate_factor")),
+                  (sc.display.shading, ("light", "color_type"))]
+        saved = [(obj, key, getattr(obj, key)) for obj, keys in fields for key in keys if hasattr(obj, key)]
+        frame, subframe = sc.frame_current, sc.frame_subframe
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            for obj, key, value in saved:
+                setattr(obj, key, value)
+            sc.frame_set(frame, subframe=subframe)
+    return wrapped
+
+
+@_preserve_render
 def playblast(path):
     """Render the frame range to an H264 MP4 at 'path'."""
     sc = _grey_setup()
@@ -291,6 +315,7 @@ def playblast(path):
     return path
 
 
+@_preserve_render
 def still(path, frame):
     sc = _grey_setup()
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -311,7 +336,7 @@ _VIEW_DIRS = {"top": (0, 0, 1), "front": (0, -1, 0), "back": (0, 1, 0), "left": 
 def view(path, spec):
     """One frame from a vantage that is NOT the shot camera: the model's viewport.
     spec: {"view": preset} (orthographic, framed on every mesh) or {"from": xyz, "at": xyz, "lens": mm}."""
-    sc = _grey_setup()
+    sc = bpy.context.scene
     prev, prev_frame = sc.camera, sc.frame_current
     cam = bpy.data.objects.new("_mb_view", bpy.data.cameras.new("_mb_view"))
     sc.collection.objects.link(cam)
@@ -342,7 +367,9 @@ def view(path, spec):
     finally:
         sc.camera = prev
         sc.frame_set(prev_frame)
+        data = cam.data
         bpy.data.objects.remove(cam, do_unlink=True)
+        bpy.data.cameras.remove(data)
 
 
 def _fcurves(action):
@@ -387,11 +414,27 @@ def _camera_keyframes():
 def summary():
     """Compact scene digest: what exists, where the camera is and goes, timing."""
     sc = bpy.context.scene
-    sc.frame_set(sc.frame_start)  # rest pose, so the reply's diff does not flag animated objects after every render
+    bpy.context.view_layer.update()
     objs = list(sc.objects)
     out = []
     for o in objs:  # every object: the reply diff (agentBlender) is what caps the size
         d = {"name": o.name, "type": o.type, "loc": [round(v, 2) for v in o.location]}
+        d["world_loc"] = [round(v, 5) for v in o.matrix_world.translation]
+        d["dimensions"] = [round(v, 5) for v in o.dimensions]
+        if o.type == "MESH":
+            o.update_from_editmode()
+            mesh = o.data
+            coords = array.array("f", [0.0]) * (len(mesh.vertices) * 3)
+            indices = array.array("i", [0]) * len(mesh.loops)
+            mesh.vertices.foreach_get("co", coords)
+            mesh.loops.foreach_get("vertex_index", indices)
+            d["mesh"] = {"vertices": len(mesh.vertices), "faces": len(mesh.polygons),
+                         "hash": hashlib.sha256(coords.tobytes() + indices.tobytes()).hexdigest()[:16]}
+            d["materials"] = [m.name if m else None for m in mesh.materials]
+            d["modifiers"] = [{"name": m.name, "type": m.type,
+                "settings": {p.identifier: getattr(m, p.identifier) for p in m.bl_rna.properties
+                             if p.type in {"BOOLEAN", "INT", "FLOAT", "STRING", "ENUM"} and not p.is_readonly and not getattr(p, "is_array", False) and not getattr(p, "is_enum_flag", False)}}
+                             for m in o.modifiers]
         if o.parent is not None:
             d["in"] = o.parent.name
         if o.type == "CAMERA":
@@ -411,7 +454,12 @@ def summary():
         "camera_keyframes": keys,
         "camera_key_count": nkeys,
         "frame_range": [sc.frame_start, sc.frame_end],
-        "fps": sc.render.fps,
+        "fps": sc.render.fps / sc.render.fps_base,
+        "frame": sc.frame_current,
+        "selected": [o.name for o in bpy.context.selected_objects],
+        "mode": bpy.context.mode,
+        "blender_version": bpy.app.version_string,
+        "engine": sc.render.engine,
         "resolution": [sc.render.resolution_x, sc.render.resolution_y],
         "look": _LOOK,
     }
@@ -434,36 +482,34 @@ for _name in (
 mb.bpy = bpy
 
 
-def _main():
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    if len(argv) < 2:
-        raise SystemExit("usage: blender -b --python bridge.py -- <step.py> <session dir> [render json]")
-    step_path, session_dir = argv[0], argv[1]
-    render = json.loads(argv[2]) if len(argv) > 2 and argv[2] else {}
+def run_step(step_path, session_dir, render):
     cfg = render.get("config") or {}
-    global _RES, _FPS
-    _RES = (cfg.get("width") or _RES[0], cfg.get("height") or _RES[1])
-    _FPS = cfg.get("fps") or _FPS
-    if cfg.get("look"):
-        look(cfg["look"])
+    global _LOOK, _FPS
+    _LOOK = render.get("look", "scene")
+    _FPS = cfg.get("fps") or 24
     out_dir = os.path.join(session_dir, "out")
     os.makedirs(out_dir, exist_ok=True)
-    mb.out_dir = out_dir
-    mb.session_dir = session_dir
-
-    # A fresh session starts empty, not with Blender's default cube+light.
+    mb.out_dir, mb.session_dir = out_dir, session_dir
+    refs = os.path.join(session_dir, "references.json")
+    mb.references = json.load(open(refs, encoding="utf-8")) if os.path.exists(refs) else []
     if not bpy.data.filepath:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        resolution(*_RES)
-
+        resolution(cfg.get("width") or 1280, cfg.get("height") or 720)
+    if not bpy.context.scene.get("matteblack_initialized", False):
+        if cfg:
+            resolution(cfg.get("width") or 1280, cfg.get("height") or 720)
+            bpy.context.scene.render.fps = int(_FPS)
+            bpy.context.scene.render.fps_base = 1.0
+            if cfg.get("look"):
+                preview_look = _LOOK
+                look(cfg["look"])
+                _grey_setup()
+                _LOOK = preview_look
+        bpy.context.scene["matteblack_initialized"] = True
     with open(step_path, "r", encoding="utf-8") as fh:
         code = fh.read()
-
-    # The step's own print() output is what the model asked to see; Blender's
-    # render chatter is not. Capture the former, ship it in the summary block.
     buf = io.StringIO()
-    rendered = []
-    views = []
+    rendered, views = [], []
     try:
         with contextlib.redirect_stdout(buf):
             exec(compile(code, step_path, "exec"), {"__name__": "__mb_step__", "mb": mb})
@@ -476,12 +522,149 @@ def _main():
             label = str(spec.get("label") or spec.get("view") or "view%d" % (i + 1))
             file = os.path.join(out_dir, "view-%s.png" % re.sub(r"[^a-z0-9]+", "-", label.lower()))
             views.append(dict(view(file, spec), label=label, file=file))
-    except Exception as e:  # noqa: BLE001 — every failure must reach the model as one short block
-        _emit({"error": _compact_error(e, step_path), "stdout": buf.getvalue()[-2000:]})
-        sys.exit(1)
+        state = summary()
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(session_dir, "scene.blend"))
+        return {"summary": state, "rendered": rendered, "views": views, "stdout": buf.getvalue()[-8000:]}
+    except Exception as e:
+        return {"error": _compact_error(e, step_path), "stdout": buf.getvalue()[-8000:]}
 
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(session_dir, "scene.blend"))
-    _emit({"summary": summary(), "rendered": rendered, "views": views, "stdout": buf.getvalue()[-2000:]})
+
+def _write_json(file, data):
+    with open(file + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(file + ".tmp", file)
+
+
+def start_live(session_dir, addon_path=""):
+    """Run short steps on Blender's UI thread. No hidden worker or file reload loop."""
+    if bpy.app.background:
+        raise RuntimeError("Live sessions require a visible Blender window")
+    blend = os.path.join(session_dir, "scene.blend")
+    if bpy.data.filepath:
+        bpy.context.scene["matteblack_initialized"] = True
+    if not bpy.data.filepath:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        resolution(1280, 720)
+        bpy.context.scene.render.engine = "BLENDER_WORKBENCH"
+        bpy.ops.wm.save_as_mainfile(filepath=blend)
+    os.environ["MATTEBLACK_DATA_DIR"] = os.path.dirname(os.path.dirname(session_dir))
+    bpy.context.scene["matteblack_session"] = os.path.basename(session_dir)
+    pending, running = [os.path.join(session_dir, n + ".json") for n in ("command", "running")]
+    # A crashed prior process cannot keep the mailbox locked forever. A queued
+    # command is retained only until its expiry; running commands are never replayed.
+    if os.path.exists(running):
+        old = json.load(open(running, encoding="utf-8"))
+        _write_json(os.path.join(session_dir, "result-%s.json" % old["id"]),
+                    {"error": "Blender closed during this step. Inspect the saved scene before continuing."})
+        os.remove(running)
+
+    class MATTEBLACK_OT_step(bpy.types.Operator):
+        bl_idname = "matteblack.agent_step"
+        bl_label = "Matteblack step"
+        bl_options = {"REGISTER", "UNDO"}
+
+        def execute(self, context):
+            command = json.load(open(running, encoding="utf-8"))
+            step_id = command["id"]
+            # Capture the artist's current edits, including unsaved ones, before
+            # executing. copy=True keeps their open file and undo history intact.
+            before = os.path.join(session_dir, "before-%s.blend" % step_id)
+            try:
+                if not command.get("restored"):
+                    bpy.ops.wm.save_as_mainfile(filepath=before, copy=True)
+                result = run_step(os.path.join(session_dir, "step-%s.py" % step_id), session_dir, command["render"])
+                if "error" in result:
+                    result["error"] += "\nPartial changes may remain in the visible scene. Undo the Matteblack step to restore your edits. Checkpoint: " + before
+                else:
+                    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(session_dir, "scene.step-%s.blend" % step_id), copy=True)
+            except Exception as e:
+                result = {"error": str(e) + "\nCheckpoint: " + before}
+            _write_json(os.path.join(session_dir, "result-%s.json" % step_id), result)
+            os.remove(running)
+            for area in context.screen.areas:
+                area.tag_redraw()
+            return {"FINISHED"}  # even a partial failure gets a native undo entry
+
+    bpy.utils.register_class(MATTEBLACK_OT_step)
+
+    def poll():
+        _write_json(os.path.join(session_dir, "live.json"), {"pid": os.getpid(), "file": bpy.data.filepath, "ready": True})
+        if not os.path.exists(pending):
+            return 0.25
+        # Let the artist finish Edit/Sculpt mode and modal operations first.
+        if (bpy.context.mode != "OBJECT" or bpy.context.screen.is_animation_playing
+                or bpy.context.scene.get("matteblack_paused", False)
+                or getattr(bpy.context.window, "modal_operators", ())):
+            return 0.25
+        command = json.load(open(pending, encoding="utf-8"))
+        error = None
+        if time.time() * 1000 > command["expires"]:
+            error = "Queued step expired while Blender was busy; it was not executed."
+        elif os.path.realpath(bpy.data.filepath) != os.path.realpath(blend):
+            error = "The artist opened another file. Reopen this session before editing it."
+        if error:
+            _write_json(os.path.join(session_dir, "result-%s.json" % command["id"]), {"error": error})
+            os.remove(pending)
+            return 0.25
+        if command.get("revert") is not None and not command.get("restored"):
+            target = os.path.join(session_dir, "scene.step-%d.blend" % command["revert"])
+            bpy.ops.wm.save_as_mainfile(filepath=os.path.join(session_dir, "before-%s.blend" % command["id"]), copy=True)
+            bpy.ops.wm.open_mainfile(filepath=target, load_ui=False)
+            bpy.ops.wm.save_as_mainfile(filepath=blend)
+            command["restored"] = True
+            _write_json(pending, command)
+            return 0.25
+        os.replace(pending, running)
+        area = next((a for a in bpy.context.screen.areas if a.type == "VIEW_3D"), None)
+        if area:
+            region = next(r for r in area.regions if r.type == "WINDOW")
+            with bpy.context.temp_override(area=area, region=region):
+                bpy.ops.ed.undo_push(message="Before Matteblack step")
+                bpy.ops.matteblack.agent_step()
+        else:
+            bpy.ops.ed.undo_push(message="Before Matteblack step")
+            bpy.ops.matteblack.agent_step()
+        return 0.25
+
+    def tick():
+        try:
+            return poll()
+        except FileNotFoundError:
+            return 0.25  # request cancelled between read and claim
+        except Exception as e:
+            for file in (running, pending):
+                if os.path.exists(file):
+                    command = json.load(open(file, encoding="utf-8"))
+                    _write_json(os.path.join(session_dir, "result-%s.json" % command["id"]), {"error": str(e)})
+                    os.remove(file)
+            traceback.print_exc()
+            return 0.25
+
+    bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+    if addon_path:
+        import importlib.util
+        # Replace an already enabled copy in this process only; no preferences edited.
+        old = sys.modules.get("matteblack_addon")
+        if old and hasattr(old, "unregister"):
+            old.unregister()
+        spec = importlib.util.spec_from_file_location("matteblack_addon", addon_path)
+        addon = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = addon
+        spec.loader.exec_module(addon)
+        addon.register()
+
+
+def _main():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if argv and argv[0] == "--live":
+        start_live(argv[1], argv[2] if len(argv) > 2 else "")
+        return
+    if len(argv) < 2:
+        raise SystemExit("usage: blender --python bridge.py -- --live <session dir> [addon.py]")
+    result = run_step(argv[0], argv[1], json.loads(argv[2]) if len(argv) > 2 else {})
+    _emit(result)
+    if "error" in result:
+        sys.exit(1)
 
 
 def _emit(payload):
@@ -502,7 +685,8 @@ def _compact_error(e, step_path):
     return "\n".join(lines)
 
 
-_main()
+if __name__ == "__main__":
+    _main()
 `;
 
 /**
@@ -557,6 +741,6 @@ export function tellMessage(session: string, b: { selected?: Array<{ name: strin
     sel.length ? `They selected ${sel.length} object(s): ${sel.join("; ")}.` : "Nothing is selected.",
     b.viewport ? `Their viewport looks from ${JSON.stringify(b.viewport.from)} at ${JSON.stringify(b.viewport.at)} — pass that as a render view to see what they see.` : "",
     b.note?.trim() ? `They say: "${b.note.trim()}"` : "",
-    "Their own edits are already saved in scene.blend: read the summary before editing, then do what they asked and render one peek so they can check.",
+    "Their edits are in the live Blender scene, including unsaved changes. Inspect mb.summary() before editing. Discuss ambiguous design decisions; use short undoable steps and a preview for review.",
   ].filter(Boolean).join(" ");
 }

@@ -76,7 +76,7 @@ canvas, and do not regenerate unprompted. Report in one short line and end the t
 sequence you were asked for — there, keep going through the remaining shots without stopping to check in,
 then assemble. Silence is the finished state; the user can see the canvas.
 
-Long tool loops (a Blender blockout, a sequence of shots) are narrated, not silent: before each blender_run or generation, one plain line to the user saying what this step does; after each peek, one line saying what you saw and what you'll fix. The user can only see the chat, so a quiet ten-step build looks like a hang.
+Long tool loops (a Blender blockout, a sequence of shots) are narrated, not silent: before each blender_run or generation, one plain line to the user saying what this step does; after each peek, one line saying what you saw and what you'll fix. Blender modeling happens in the visible workspace: explain design choices, inspect references and artist edits, and use short undoable steps. Ask about ambiguous design choices; routine edits can proceed.
 
 ## Fetch before you act
 The rest of your standing instructions live in the skill library so this prompt stays small. Call get_skill
@@ -85,13 +85,11 @@ BEFORE starting the task, not after: \`sequences\` for anything longer than one 
 page; \`connectors\` when they name Drive, Gmail, Figma, Notion, Linear, Higgsfield or another connected
 service; \`scheduling\` for "every", "each morning", "keep", "whenever"; \`cuts\` before continuing or matching
 something made before, and when a multi-shot piece is finished; \`help\` when the user asks what you can do, how
-to do something, or the cheapest way; \`setup\` when there is no fal key, a generation fails with an auth error, or they
+to do something, or the cheapest way; \`setup\` when a fal generation needs a key, a generation fails with an auth error, or they
 ask how to get started.
 
 ## References
-If the user attaches a reference image (you'll see a bracketed system note saying so), it is supplied to the
-generation tools automatically — just call generate_media (or transform_media) right away; never ask the
-user to put it on the canvas or for a URL.
+Attached references are evidence for the requested task. Read them before modeling. Blender sessions retain up to 16 images across turns; use blender_run and raw bpy for modeling, with relevant skills as guidance. Do not switch a Blender request to image generation. Image/video generation tools receive up to four references automatically. Local Blender needs no fal key.
 `;
 
 const BRIDGE = `---
@@ -1593,10 +1591,12 @@ https://fal.ai/dashboard/billing rather than retrying.
 
 const BLENDER_BLOCKOUT = `---
 name: Blender blockout — previs a shot before you generate it
-description: The blender_run API and workflow. Grey primitives, one camera, one move, cheap checks, one final render, then the playblast becomes Seedance 2.5 motion direction. Get this before any blender_run call.
+description: The blender_run API and workflow. Grey primitives, one camera, one move, cheap checks, one final render, then the playblast becomes Seedance 2.5 motion direction. Use this only for previs and camera blocking, not as a prerequisite for Blender modeling.
 ---
 
 # Blender blockout
+
+This optional skill covers previs only. For accurate modeling use raw bpy/BMesh, references, and the appropriate modeling skills; primitives are not a capability limit.
 
 A blockout is staging, not a render: stand-ins for the set, one camera, one move, one timing. Its only job is
 to tell Seedance where the camera goes and how fast. Use it when the shot is about movement; for a static
@@ -1608,7 +1608,7 @@ session), \`blender-shots\` (shot vocabulary → camera numbers), \`blender-turn
 
 ## The tool
 
-\`blender_run(session, step, render?)\`. \`step\` is Python run inside headless Blender against
+\`blender_run(session, step, render?)\`. \`step\` is Python run in the visible Blender window for
 \`<data>/blender/<session>/scene.blend\`; the scene persists between calls, the step is a diff on it.
 \`session\` is \`^[a-z0-9-]{1,40}$\` — one shot = one session, \`<project>-<shot>\` (\`alley-chase-s03\`). Reuse the
 slug to keep building, change it to start clean.
@@ -1618,8 +1618,7 @@ there: \`objects[{name, type, loc:[x,y,z] (2 dp), lens (cameras), light (lights)
 (plus \`rot\` in degrees when set) with \`objects_total\`, \`camera\`, \`camera_keyframes\` (first and last key only) plus
 \`camera_key_count\`, \`frame_range\`, \`fps\`, \`look\`. \`objects\` lists only what this step added or changed (plus
 \`objects_unchanged\` and \`objects_removed\`), at most 30 of them with \`objects_more\` counting the rest; the rest of the scene is as you last saw it. On a Python error \`ok:false\` with one short block naming the
-step line; an AttributeError on \`mb\` lists the helpers that do exist. The scene stays as the last good step
-saved it. Rendered stills come back inline in the reply as images (up to three, plus up to three \`views\`), so look at them there;
+step line; an AttributeError on \`mb\` lists the helpers that do exist. A failed live step may leave partial edits; use native Undo to restore the before-step state. A before-step .blend checkpoint also includes the artist's unsaved edits. Rendered stills come back inline in the reply as images (up to three, plus up to three \`views\`), so look at them there;
 do not fetch them with get_asset or off disk.
 
 \`render\` decides what reaches the canvas: \`{"stills": [frames], "playblast": bool, "peek": bool, "sheet": bool}\` — ALWAYS pass it
@@ -1634,7 +1633,7 @@ PNG inline — 8 evenly spaced frames of the move, 4 across and 2 down, in time 
 "frame": N, "label": "…"}\`. The reply names each view with the pose it was taken from. Use them for what the shot camera hides:
 a roof pitch from the side, the layout from above, a prop from the front. Up to three views come back inline after the stills.
 
-\`revert: N\` rolls the scene back to the snapshot saved after step N before this step runs; the step itself may be
+\`revert: N\` explicitly restores a saved scene checkpoint (native Undo history is reset by a file restore). It rolls the scene back to the snapshot saved after step N before this step runs; the step itself may be
 empty. Every successful step leaves \`scene.step-N.blend\` beside \`scene.blend\`.
 
 The reply may carry \`warnings\`. \`stills X and Y are identical\` means the two frames rendered the same pixels: the
@@ -1672,10 +1671,10 @@ mb.out_dir, mb.session_dir                  # paths, rarely needed
 \`\`\`
 
 Persisted in the .blend between steps: objects, materials, lights, world, camera + keyframes, frame range,
-fps, Workbench display flags. Not persisted: \`mb.look()\`, Python variables. Re-running \`greybox("cube","hero")\`
+fps, Workbench display flags. Preview overrides and Python variables are per step. Preview rendering restores the artist's render settings and current frame. Re-running \`greybox("cube","hero")\`
 makes \`hero.001\` — check \`summary\` before adding, edit existing objects through \`mb.bpy.data.objects["hero"]\`.
 
-Renders: 1280x720 (peeks come back at 640x360), \`grey\` = flat Workbench (default), \`lit\` = Eevee 16 samples. A Workbench still is ~1 s, a
+Renders: 1280x720 (peeks come back at 640x360), \`scene\` preserves the scene engine (default), \`grey\` = flat Workbench, \`lit\` = Eevee. A Workbench still is ~1 s, a
 grey 240-frame playblast well under a minute; Eevee costs ~1 s/frame. Hard stop at 15 min per step.
 
 ## The loop: check cheaply, render once
@@ -1695,7 +1694,7 @@ grey 240-frame playblast well under a minute; Eevee costs ~1 s/frame. Hard stop 
    warnings mean the hold or the animation did nothing.
 6. **A gap list is a to-do list, not a verdict.** When the brief grants unlimited budget or asks for "as close as
    possible", every gap you can name ("boat is a plain box", "foliage too sparse") gets fixed, peeked and re-judged
-   before you ship. Stop only when the list is empty or an item is beyond primitives, and say which.
+   before you ship. Use raw bpy/BMesh for details beyond primitives. Report uncertain reference evidence and discuss consequential design choices with the artist.
 
 Frame ranges that snap cleanly to Seedance at 24 fps: 96 (4 s), 144 (6 s), 192 (8 s), 240 (10 s).
 
@@ -1796,7 +1795,7 @@ Hero warm, set neutral, people blue. Do this in the same step as the set, before
   location plus absolute keys double-offsets the root (the blocks-car-4 walker only moved right after clearing and restarting
   the root at origin). To ride a character inside a car, parent the person group to the car group with
   \`person.matrix_parent_inverse.identity()\` after the get-in — local walk/scale keys then move with the car for the drive.
-- Prefer \`bpy.data.*\` to \`bpy.ops.*\`; ops that need a view, selection or mode fail headless.
+- Prefer \`bpy.data.*\` to \`bpy.ops.*\`; context-sensitive ops require the correct view, selection and mode, even in the visible session.
 - Only \`render={...}\` reaches the canvas; \`mb.still()\` in the step does not.
 `;
 
@@ -1865,7 +1864,7 @@ description: Raw bpy recipes for mb.look("lit"): sun key + area fill + world col
 # Blender lit look
 
 Stay \`grey\` unless the shot is ABOUT light: a shadow that crosses the frame, a silhouette, a spotlit product.
-\`lit\` = Eevee at 16 samples, ~1 s/frame; \`mb.look("lit")\` must be in every step that renders lit (it is
+\`lit\` previews with Eevee using the scene settings; \`mb.look("lit")\` must be in every step that renders lit (it is
 not saved; the lights and materials below are).
 
 ## Lights and world (verified)
@@ -1934,7 +1933,7 @@ assign("person", material("person_mat", (0.2, 0.4, 0.8)))
 Checker is black/white by default — tint with \`t.inputs["Color1"].default_value = (r, g, b, 1)\` and
 \`Color2\`. Metal: \`bsdf.inputs["Metallic"].default_value = 1.0\`, roughness 0.3. Emissive screen / bulb:
 \`bsdf.inputs["Emission Color"]\` + \`["Emission Strength"] = 5\`. Emission only makes the object read bright;
-in Eevee at 16 samples it casts no light. For a pool on the ground put a POINT light inside the bulb.
+a visible emissive material alone does not guarantee useful scene illumination. For a pool on the ground put a POINT light inside the bulb.
 
 Check with one still (\`render={"stills":[1]}\`) before the playblast: a 240-frame lit playblast is ~4 min.
 `;
