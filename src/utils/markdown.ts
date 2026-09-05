@@ -14,7 +14,7 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTR = ["href", "title", "target", "rel", "class"];
 
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(text: string, { images = false } = {}): string {
   if (!text) return "";
   let html: string;
   try {
@@ -23,8 +23,8 @@ export function renderMarkdown(text: string): string {
     return escapeHtml(text);
   }
   const sanitized = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
+    ALLOWED_TAGS: images ? [...ALLOWED_TAGS, "img"] : ALLOWED_TAGS,
+    ALLOWED_ATTR: images ? [...ALLOWED_ATTR, "src", "alt"] : ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
   });
   return ensureSafeLinks(sanitized);

@@ -114,16 +114,16 @@ function App() {
   const [railView, setRailView] = useState<RailView>(null);
   // Text handed to the agent composer from another panel (Skills). The nonce
   // makes a repeat hand-off of the same skill re-seed rather than no-op.
-  const [agentSeed, setAgentSeed] = useState<{ text: string; nonce: number; send?: boolean } | null>(null);
+  const [agentSeed, setAgentSeed] = useState<{ text: string; nonce: number; send?: boolean; blender?: { canvasId?: string; displayText?: string } } | null>(null);
   // Agent panel is tracked independently of railView so it can stay open
   // alongside any left-side panel (e.g. Library + Agent simultaneously).
   const [agentOpen, setAgentOpen] = useState<boolean>(true);
   // Blender's "Tell the agent" arrives on the canvas stream; it opens the Operator and sends itself.
   useEffect(() => addCanvasSseListener((_cid, data) => {
-    const d = data as { type?: string; text?: string };
+    const d = data as { type?: string; text?: string; canvasId?: string; displayText?: string };
     if (d.type !== "blender:tell" || !d.text) return;
     setAgentOpen(true);
-    setAgentSeed({ text: d.text, nonce: Date.now(), send: true });
+    setAgentSeed({ text: d.text, nonce: Date.now(), send: true, blender: { canvasId: d.canvasId, displayText: d.displayText } });
   }), []);
   // Lifted from AgentPanel so the canvas-area can paint the busy edge glow.
   // Defaults false — AgentPanel reports the real busy state on mount.

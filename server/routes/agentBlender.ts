@@ -11,11 +11,12 @@ import { requireMcpToken, importLocalMedia } from "./agentRender.js";
 import { getPresenceTransport } from "./canvas.js";
 import { diffObjects, pixelDigest, tellMessage } from "../blender/bridge.js";
 import { getBlenderConfig } from "../config/userConfig.js";
-import { SESSION_RE } from "../utils/blenderPath.js";
+import { SESSION_RE, tellCapture } from "../utils/blenderPath.js";
 import { bin } from "../setup/doctor.js";
 
 import { runLiveStep } from "../blender/live.js";
-import { sessionReferences } from "../utils/referenceFiles.js";
+import { sessionReferences, sessionReferenceLabels, stageAttachments } from "../utils/referenceFiles.js";
+import { saveFile } from "../storage.js";
 import { REPOS_DIR } from "../github/ghCli.js";
 
 const router = Router();
@@ -31,7 +32,7 @@ type Summary = {
 
 /** The harness's one JSON block: summary + renders on success, error on a Python
  *  failure; `stdout` is the step's own print() output either way. */
-type Harness = { summary?: Summary; rendered?: string[]; views?: Array<{ label: string; file: string; from: number[]; rot: number[] }>; error?: string; stdout?: string };
+type Harness = { summary?: Summary; rendered?: string[]; views?: Array<{ label: string; file: string; from: number[]; rot: number[] }>; comparison?: { before: string; after: string }; warnings?: string[]; error?: string; stdout?: string };
 
 /**
  * 8 evenly spaced frames of the playblast tiled into one PNG (4 across, 2 down)
@@ -110,6 +111,7 @@ router.post("/api/agent/blender/run", requireMcpToken, requireAuth, async (req: 
   const previousReferences = sessionReferences(dir, undefined, attachmentDir);
   const attached = context?.referenceFiles?.length && !context.blenderReferenceSessions?.has(session) ? context.referenceFiles : undefined;
   const references = sessionReferences(dir, body.references !== undefined ? body.references : attached, attachmentDir);
+  const referenceLabels = sessionReferenceLabels(dir, references, body.referenceLabels ?? (attached && body.references === undefined ? context?.referenceLabels : undefined));
   if (context) (context.blenderReferenceSessions ??= new Set()).add(session);
 
   // ponytail: snapshots are never pruned — one .blend per step, forever.
@@ -144,7 +146,14 @@ router.post("/api/agent/blender/run", requireMcpToken, requireAuth, async (req: 
   // Stills first, so the playblast node can carry their URLs.
   const stills = rendered.filter((f) => !path.basename(f).startsWith("playblast"));
   const stillUrls: string[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = parsed.warnings ?? [];
+  const comparison = [];
+  if (parsed.comparison) {
+    for (const [label, file] of Object.entries(parsed.comparison)) {
+      const url = await saveFile("blender", `${session}/${path.basename(file)}`, fs.readFileSync(file));
+      comparison.push({ label, url, data: (await shrink(file)).toString("base64") });
+    }
+  }
   const seenStill = new Map<string, number>();
   // peek: the model looks, the canvas stays clean (no node per framing check).
   const peeks: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }> = [];
@@ -201,22 +210,37 @@ router.post("/api/agent/blender/run", requireMcpToken, requireAuth, async (req: 
       const bytes = await shrink(file);
       const png = bytes.subarray(1, 4).toString() === "PNG";
       const mimeType = png ? "image/png" : /\.jpe?g$/i.test(file) ? "image/jpeg" : /\.webp$/i.test(file) ? "image/webp" : "image/gif";
-      referenceImages.push({ label: `Reference ${i + 1}: ${file}`, data: bytes.toString("base64"), mimeType });
+      referenceImages.push({ label: `Reference ${i + 1} (${referenceLabels[i] || "unlabeled"}): ${file}`, data: bytes.toString("base64"), mimeType });
     }
   }
-  res.json({ ok: true, log: [stdout.trim(), ...problems].filter(Boolean).join("\n"), summary: slim, references, referenceImages, nodes, peeks, warnings, sheet });  }
+  res.json({ ok: true, log: [stdout.trim(), ...problems].filter(Boolean).join("\n"), summary: slim, references, referenceLabels, referenceImages, comparison, nodes, peeks, warnings, sheet });  }
 });
 
 /** Selection + note from the Blender add-on → one Continue message for the open Operator session (over the canvas SSE stream). */
 
-router.post("/api/agent/blender/tell", requireMcpToken, requireAuth, (req: AuthRequest, res) => {
-  const body = (req.body ?? {}) as { session?: unknown; canvasId?: unknown; selected?: unknown; viewport?: unknown; note?: unknown };
+router.post("/api/agent/blender/tell", requireMcpToken, requireAuth, async (req: AuthRequest, res) => {
+  const body = (req.body ?? {}) as { session?: unknown; canvasId?: unknown; selected?: unknown; viewport?: unknown; note?: unknown; capture?: unknown };
   const session = typeof body.session === "string" && SESSION_RE.test(body.session) ? body.session : null;
   if (!session) { res.status(400).json({ error: "session must be a Matteblack session slug." }); return; }
   const canvasId = typeof body.canvasId === "string" && /^[0-9a-f-]{36}$/i.test(body.canvasId) ? body.canvasId : getOperatorContext(req.userId ?? "")?.canvasId ?? null;
   if (!canvasId) { res.status(400).json({ error: "No canvas is open in Matteblack." }); return; }
-  const text = tellMessage(session, body as Parameters<typeof tellMessage>[1]);
-  getPresenceTransport().writeToCanvas(canvasId, `data: ${JSON.stringify({ type: "blender:tell", canvasId, text })}\n\n`);
+  if ((body.note !== undefined && (typeof body.note !== "string" || body.note.length > 8000))
+      || (body.selected !== undefined && (!Array.isArray(body.selected) || body.selected.some((o) => !o || typeof o.name !== "string")))) {
+    res.status(400).json({ error: "Invalid selection or note." }); return;
+  }
+  let imagePath: string | undefined, imageUrl: string | undefined;
+  if (body.capture !== undefined) {
+    try {
+      const file = tellCapture(path.join(DATA_DIR, "blender"), session, body.capture);
+      imageUrl = await saveFile("blender", `${session}/${path.basename(file)}`, fs.readFileSync(file));
+      [imagePath] = await stageAttachments([`data:image/png;base64,${fs.readFileSync(file).toString("base64")}`], path.join(REPOS_DIR, ".attachments"), DATA_DIR);
+      if (!imagePath) throw new Error("Could not stage the viewport image for the Operator.");
+    } catch (err) { res.status(400).json({ error: err instanceof Error ? err.message : String(err) }); return; }
+  }
+  const text = tellMessage(session, { ...body as Parameters<typeof tellMessage>[1], imagePath, imageUrl });
+  const selected = (body.selected as Array<{ name: string }> | undefined)?.slice(0, 40).map((o) => o.name) ?? [];
+  const displayText = [`Blender · ${session}`, typeof body.note === "string" ? body.note.trim() : "", selected.length ? `Selected: ${selected.join(", ")}` : "", imageUrl ? `![Artist's Blender viewport](${imageUrl})` : ""].filter(Boolean).join("\n\n");
+  getPresenceTransport().writeToCanvas(canvasId, `data: ${JSON.stringify({ type: "blender:tell", canvasId, text, displayText })}\n\n`);
   res.json({ ok: true });
 });
 

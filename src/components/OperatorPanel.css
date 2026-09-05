@@ -952,3 +952,12 @@
   animation: operatorLive 1.2s ease-in-out infinite;
 }
 @keyframes operatorLive { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* Native purpose labels stay attached to the thumbnail they describe. */
+.operator-ref-label {
+  position: absolute; bottom: 0; left: 0; width: 100%;
+  font: inherit; font-size: 10px; color: #fff;
+  background: #232323; border: 0; border-radius: 0 0 6px 6px;
+}
+
+.agent-panel .agent-panel__markdown img { max-width: 100%; height: auto; border-radius: 6px; }

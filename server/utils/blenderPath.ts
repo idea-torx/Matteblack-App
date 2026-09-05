@@ -28,6 +28,20 @@ export function underBlenderDir(
 /** A session slug: the only shape the bridge and the panel will touch. */
 export const SESSION_RE = /^[a-z0-9-]{1,40}$/;
 
+/** Only the PNG belonging to this note's session may enter the conversation. */
+export function tellCapture(root: string, session: string, capture: unknown): string {
+  if (!SESSION_RE.test(session) || typeof capture !== "string" || !/^tell-[a-f0-9]{32}$/.test(capture)) {
+    throw new Error("Invalid viewport capture ID.");
+  }
+  const guard = underBlenderDir(path.join(root, session, "out", capture + ".png"), path.join(root, session, "out"));
+  if ("error" in guard) throw new Error(guard.error);
+  const bytes = fs.readFileSync(guard.path);
+  if (bytes.length > 20_000_000 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    throw new Error("Viewport capture must be a PNG under 20MB.");
+  }
+  return guard.path;
+}
+
 export type BlenderSession = {
   id: string;
   updatedAt: string;

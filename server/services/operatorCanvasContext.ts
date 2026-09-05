@@ -27,6 +27,7 @@ type OperatorContext = {
   // never bleeds into a later, unrelated generation.
   referenceUrls?: string[];
   referenceFiles?: string[];
+  referenceLabels?: string[];
   blenderReferenceSessions?: Set<string>; // attach once per scene per turn; explicit replacements then persist
   // The selected canvas image's aspect-ratio label (e.g. "3:4"). When set and
   // the user didn't pin an AR, the next generation inherits it (lineage).
