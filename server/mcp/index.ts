@@ -695,10 +695,12 @@ const READ_TOOLS: Tool[] = [
             stills: { type: "array", items: { type: "number" }, description: "Frame numbers to render as PNGs." },
             peek: { type: "boolean", description: "Return the stills to you inline only; nothing lands on the canvas. Use while checking framing." },
             sheet: { type: "boolean", description: "With `playblast`, also return one contact-sheet PNG inline: 8 evenly spaced frames of the move, 4 across and 2 down. Nothing lands on the canvas. Read it before calling a move done." },
+            viewport: { type: "string", description: "Capture ID from Tell the agent (tell- followed by 32 hex characters). Returns actual before/after screenshots from the artist's saved viewport, including overlays. Show the returned image URLs in your reply and explain your design choice. Current view and frame are restored afterwards." },
             views: { type: "array", items: {}, description: "Extra vantages for your eyes only, never the canvas: \"top\" | \"front\" | \"back\" | \"left\" | \"right\" | \"iso\" (orthographic, framed on every mesh) or {\"from\": [x,y,z], \"at\": [x,y,z], \"lens\": 35, \"frame\": N, \"label\": \"...\"}. Use them to check geometry the shot camera hides: a roof from the side, the layout from above." },
           },
         },
         references: { type: "array", items: { type: "string" }, maxItems: 16, description: "Replace the session references with staged image paths from the attachment note. Omit to retain them; [] clears. New attached references are captured automatically." },
+        referenceLabels: { type: "array", items: { type: "string", maxLength: 80 }, maxItems: 16, description: "One purpose label per saved reference, in the same order: e.g. front, side, proportions, material, detail, style. Empty string means unspecified. Omit to retain labels by file identity. Artist labels arrive automatically; do not silently reinterpret them. Available in Python as mb.reference_labels (path to label)." },
         inspectReferences: { type: "boolean", description: "Return the saved reference images inline, including when resuming a session without new attachments." },
         revert: { type: "number", description: "Roll the scene back to the snapshot saved after step N before running this step (the step may be empty)." },
         runner: { type: "string", description: "Optional: which CLI is driving, stamped into the .blend." },
@@ -1840,15 +1842,16 @@ async function runBlenderRun(args: Record<string, unknown>, onProgress?: Progres
   const t0 = Date.now();
   const tick = setInterval(() => onProgress?.(Math.round((Date.now() - t0) / 1000), "Blender is running the step"), 15_000);
   const r = (await httpJson(ep, "POST", "/api/agent/blender/run", {
-    session: args.session, step: args.step, render: args.render, revert: args.revert, runner: args.runner, model: args.model, references: args.references, inspectReferences: args.inspectReferences,
-  }, 16 * 60_000).finally(() => clearInterval(tick))) as { ok?: boolean; log?: string; summary?: unknown; references?: string[]; referenceImages?: Array<{ label: string; data: string; mimeType: string }>; nodes?: Array<{ id: string; kind: string; url: string }>; peeks?: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }>; warnings?: string[]; sheet?: { data: string; first: number; last: number } };
+    session: args.session, step: args.step, render: args.render, revert: args.revert, runner: args.runner, model: args.model, references: args.references, referenceLabels: args.referenceLabels, inspectReferences: args.inspectReferences,
+  }, 16 * 60_000).finally(() => clearInterval(tick))) as { ok?: boolean; log?: string; summary?: unknown; references?: string[]; referenceLabels?: string[]; comparison?: Array<{ label: string; url: string; data: string }>; referenceImages?: Array<{ label: string; data: string; mimeType: string }>; nodes?: Array<{ id: string; kind: string; url: string }>; peeks?: Array<{ frame: number; data: string; label?: string; from?: number[]; rot?: number[] }>; warnings?: string[]; sheet?: { data: string; first: number; last: number } };
   // `log` is already digested server-side: the error block, or the step's own prints.
   if (!r.ok) return fail(`Blender step failed:\n${(r.log || "").slice(-3000)}`);
   const placed = (r.nodes ?? []).map((n) => `${n.kind} -> node ${n.id} (${n.url})`).join("\n");
   const stills = (r.peeks ?? []).filter((p) => !p.label), views = (r.peeks ?? []).filter((p) => p.label);
   const content: CallToolResult["content"] = [{ type: "text", text: [
     `Scene: ${JSON.stringify(r.summary)}`,
-    `Saved references (mb.references): ${JSON.stringify(r.references ?? [])}`,
+    `Saved references (mb.references): ${JSON.stringify((r.references ?? []).map((file, i) => ({ file, label: r.referenceLabels?.[i] ?? "" })))}`,
+    ...(r.comparison ?? []).map((c) => `Artist viewport ${c.label}: ${c.url}`),
     r.log?.trim() ? `Step output:\n${r.log.trim()}` : "",
     `On the canvas:\n${placed || "(nothing rendered — pass `render` when the pose is right)"}`,
     stills.length ? `${(args.render as { peek?: boolean } | undefined)?.peek ? "Peeked (inline below, not on the canvas)" : "Stills inline below"}: frames ${stills.map((p) => p.frame).join(", ")}` : "",
@@ -1857,6 +1860,7 @@ async function runBlenderRun(args: Record<string, unknown>, onProgress?: Progres
     ...(r.warnings ?? []).map((w) => `Warning: ${w}`),
   ].filter(Boolean).join("\n\n") }];
   if (r.sheet) content.push({ type: "image", data: r.sheet.data, mimeType: "image/png" });
+  for (const c of r.comparison ?? []) content.push({ type: "text", text: `Artist viewport: ${c.label}` }, { type: "image", data: c.data, mimeType: "image/png" });
   for (const p of [...stills.slice(0, 3), ...views.slice(0, 3)]) content.push({ type: "image", data: p.data, mimeType: "image/png" });
   for (const ref of r.referenceImages ?? []) content.push({ type: "text", text: ref.label }, { type: "image", data: ref.data, mimeType: ref.mimeType });
   return { content };

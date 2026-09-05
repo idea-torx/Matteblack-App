@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { stageAttachments, sessionReferences } from "./referenceFiles.ts";
+import { stageAttachments, sessionReferences, sessionReferenceLabels } from "./referenceFiles.ts";
 
 test("six references survive later turns and reloads, with explicit replacement/clear and path confinement", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mb-references-"));
@@ -14,6 +14,10 @@ test("six references survive later turns and reloads, with explicit replacement/
     const originals = await stageAttachments(urls, attachments, root);
     assert.equal(originals.length, 6);
     assert.deepEqual(sessionReferences(scene, originals, attachments), originals);
+    const labels = ["front", "side", "back", "top", "material", "detail"];
+    assert.deepEqual(sessionReferenceLabels(scene, originals, labels), labels);
+    assert.deepEqual(sessionReferenceLabels(scene, [...originals].reverse()), [...labels].reverse());
+    assert.throws(() => sessionReferenceLabels(scene, originals, ["side"]), /one label/);
     const next = await stageAttachments(["data:image/png;base64,bmV4dA=="], attachments, root);
     assert.ok(originals.every((p) => fs.existsSync(p)));
     assert.deepEqual(sessionReferences(scene, undefined, attachments), originals);
@@ -24,6 +28,8 @@ test("six references survive later turns and reloads, with explicit replacement/
     assert.throws(() => sessionReferences(scene, [outside], attachments), /staged image/);
     assert.deepEqual(sessionReferences(scene, undefined, attachments), originals);
     assert.deepEqual(sessionReferences(scene, next, attachments), next);
+    assert.deepEqual(sessionReferenceLabels(scene, next), [""]);
     assert.deepEqual(sessionReferences(scene, [], attachments), []);
+    assert.deepEqual(sessionReferenceLabels(scene, []), []);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

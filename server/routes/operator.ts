@@ -233,7 +233,7 @@ router.delete("/api/bots/:id", requireAuth, async (req: AuthRequest, res) => {
 router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) => {
   const body = (req.body || {}) as {
     message?: unknown; sessionId?: unknown; model?: unknown; effort?: unknown; canvasId?: unknown; viewport?: unknown;
-    referenceUrls?: unknown; referenceAspectRatio?: unknown; selectedNodeIds?: unknown; botId?: unknown;
+    referenceUrls?: unknown; referenceLabels?: unknown; referenceAspectRatio?: unknown; selectedNodeIds?: unknown; botId?: unknown;
   };
   let message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message) {
@@ -359,13 +359,20 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
     const n = referenceUrls.length;
     const it = n > 1 ? "them" : "it";
     const img = n > 1 ? "images" : "image";
-    const staged = await stageAttachments(referenceUrls, ATTACH_DIR, UPLOADS_DIR);
+    // Keep labels attached to their image even when one download fails.
+    const staged: string[] = [], labels: string[] = [];
+    for (const [i, url] of referenceUrls.entries()) {
+      const files = await stageAttachments([url], ATTACH_DIR, UPLOADS_DIR);
+      const label = Array.isArray(body.referenceLabels) && typeof body.referenceLabels[i] === "string" ? body.referenceLabels[i].trim().slice(0, 80) : "";
+      for (const file of files) { staged.push(file); labels.push(label); }
+    }
     const context = getOperatorContext(req.userId!);
-    if (context) context.referenceFiles = staged;
+    if (context) { context.referenceFiles = staged; context.referenceLabels = labels; }
     let note = `\n\n[System note: the user attached ${n} reference ${img} for this request.`;
     if (staged.length > 0) {
       note += ` To SEE ${it}, use your image-reading tool on ${staged.length > 1 ? "these files" : "this file"}: ${staged.join(", ")}. Read ${it} before answering anything about what the ${img} look${n > 1 ? "" : "s"} like.`;
     }
+    note += ` Artist's reference labels (an empty label means unspecified): ${JSON.stringify(staged.map((file, i) => ({ file, label: labels[i] })))}. Respect the indicated purpose: material/style references do not by themselves specify geometry.`;
     note += ` Use the references for the task the user requested. For Blender, call blender_run: it retains these files with the scene and exposes mb.references. Inspect all views, distinguish geometry from style, and ask about conflicting evidence. Image/video tools receive up to four URLs automatically; attaching images does not mean the user wants image generation.`;
     // The URLs, verbatim. The auto-injection above only covers THIS turn: the
     // context store is re-set (to []) on every message, so a follow-up like

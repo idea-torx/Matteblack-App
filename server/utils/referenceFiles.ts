@@ -36,6 +36,20 @@ const EXT_FOR_MIME: Record<string, string> = {
   "image/webp": ".webp",
 };
 
+/** Labels follow file identity when references are reordered or replaced. */
+export function sessionReferenceLabels(sessionDir: string, files: string[], labels?: unknown): string[] {
+  const manifest = path.join(sessionDir, "reference-labels.json");
+  if (labels !== undefined && (!Array.isArray(labels) || labels.length !== files.length || labels.some((s) => typeof s !== "string" || s.length > 80))) {
+    throw new Error("referenceLabels must contain one label (up to 80 characters) per reference; use an empty string for unlabeled.");
+  }
+  const previous: Record<string, string> = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {};
+  const next = Object.fromEntries(files.map((file, i) => [file, labels === undefined ? previous[file] ?? "" : (labels as string[])[i].trim()]));
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(manifest + ".tmp", JSON.stringify(next));
+  fs.renameSync(manifest + ".tmp", manifest);
+  return files.map((file) => next[file]);
+}
+
 /**
  * Copy the turn's reference images into the operator's working directory and
  * return their paths.

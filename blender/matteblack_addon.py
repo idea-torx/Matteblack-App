@@ -9,7 +9,7 @@ gets a 1s timeout, so a panel redraw costs at most one short blocking call.
 bl_info = {
     "name": "Matteblack",
     "author": "Matteblack",
-    "version": (0, 2, 0),
+    "version": (0, 3, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar (N) > Matteblack",
     "description": "Matteblack connection, skills and send-to-canvas inside Blender.",
@@ -20,7 +20,10 @@ import glob
 import json
 import math
 import os
+import re
+import struct
 import time
+import uuid
 import urllib.error
 import urllib.request
 
@@ -245,14 +248,116 @@ class MATTEBLACK_OT_pause(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _view_area(context):
+    if context.area and context.area.type == "VIEW_3D":
+        return context.area
+    return next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
+
+
 def _viewport(context):
     """Where the user is looking: the 3D view's eye and the point it orbits."""
-    for area in context.screen.areas:
-        if area.type == "VIEW_3D":
-            r3d = area.spaces.active.region_3d
-            eye = r3d.view_matrix.inverted().translation
-            return {"from": [round(v, 2) for v in eye], "at": [round(v, 2) for v in r3d.view_location]}
+    area = _view_area(context)
+    if area:
+        r3d = area.spaces.active.region_3d
+        eye = r3d.view_matrix.inverted().translation
+        return {"from": [round(v, 2) for v in eye], "at": [round(v, 2) for v in r3d.view_location]}
     return None
+
+
+_VIEW_PROPS = ("view_rotation", "view_location", "view_distance", "view_perspective",
+               "view_camera_zoom", "view_camera_offset")
+
+
+def _view_state(area):
+    space = area.spaces.active
+    state = {}
+    for key in _VIEW_PROPS:
+        value = getattr(space.region_3d, key)
+        state[key] = list(value) if hasattr(value, "__len__") and not isinstance(value, str) else value
+    return {"region": state, "lens": space.lens, "shading": space.shading.type}
+
+
+def _apply_view(area, state):
+    space = area.spaces.active
+    for key, value in state["region"].items():
+        setattr(space.region_3d, key, value)
+    space.lens = state["lens"]
+    space.shading.type = state["shading"]
+    space.region_3d.update()
+
+
+def _camera_state(context, area):
+    space = area.spaces.active
+    camera = space.camera if space.use_local_camera else context.scene.camera
+    if not camera:
+        return None
+    r = context.scene.render
+    return [str(camera.matrix_world), camera.data.type, camera.data.lens,
+            camera.data.ortho_scale, camera.data.shift_x, camera.data.shift_y,
+            r.resolution_x, r.resolution_y, r.pixel_aspect_x, r.pixel_aspect_y]
+
+
+def _screenshot(context, area, file):
+    if area.spaces.active.region_quadviews:
+        raise RuntimeError("Use a single 3D view for a viewport comparison.")
+    region = next(r for r in area.regions if r.type == "WINDOW")
+    window, screen = context.window, context.screen
+    context.view_layer.update()
+    area.tag_redraw()
+    with context.temp_override(window=window, screen=screen, area=area, region=region):
+        bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+    # redraw_timer clears the area context in Blender 5.1. Re-enter it, or
+    # screenshot_area silently writes a 1x1 crop of the previous framebuffer.
+    with context.temp_override(window=window, screen=screen, area=area, region=region):
+        result = bpy.ops.screen.screenshot_area("EXEC_AREA", filepath=file, hide_props_region=False, check_existing=False)
+    if "FINISHED" not in result or not os.path.exists(file):
+        raise RuntimeError("Blender could not capture the viewport.")
+    with open(file, "rb") as f:
+        header = f.read(24)
+    if len(header) < 24 or min(struct.unpack(">II", header[16:24])) < 100:
+        raise RuntimeError("Blender returned an empty viewport capture. Try again once the view has drawn.")
+
+
+def capture_tell(context):
+    """Capture before opening the note dialog, keeping overlays and selection."""
+    area = _view_area(context)
+    if not area:
+        raise RuntimeError("Open a 3D viewport first.")
+    capture = "tell-" + uuid.uuid4().hex
+    out = _out_dir(context.scene)
+    file = os.path.join(out, capture + ".png")
+    _screenshot(context, area, file)
+    state = {"view": _view_state(area), "area": area.as_pointer(),
+             "size": [area.width, area.height], "frame": context.scene.frame_current,
+             "subframe": context.scene.frame_subframe, "camera": _camera_state(context, area)}
+    with open(os.path.join(out, capture + ".json"), "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    return capture
+
+
+def compare_viewport(capture, out_dir):
+    """Use the artist's saved view; restore their current view afterwards."""
+    if not isinstance(capture, str) or not re.fullmatch(r"tell-[a-f0-9]{32}", capture):
+        raise ValueError("viewport must be the capture ID from Tell the agent.")
+    with open(os.path.join(out_dir, capture + ".json"), encoding="utf-8") as f:
+        saved = json.load(f)
+    context = bpy.context
+    area = next((a for a in context.screen.areas if a.as_pointer() == saved["area"] and a.type == "VIEW_3D"), None)
+    if not area or [area.width, area.height] != saved["size"]:
+        raise RuntimeError("The captured viewport was closed or resized. Send a new note from that view.")
+    current, frame, subframe = _view_state(area), context.scene.frame_current, context.scene.frame_subframe
+    file = os.path.join(out_dir, capture + "-after-" + uuid.uuid4().hex + ".png")
+    try:
+        context.scene.frame_set(saved["frame"], subframe=saved.get("subframe", 0))
+        if saved["view"]["region"]["view_perspective"] == "CAMERA" and saved["camera"] != _camera_state(context, area):
+            raise RuntimeError("The shot camera or framing changed. Send a new note for a matching comparison.")
+        _apply_view(area, saved["view"])
+        _screenshot(context, area, file)
+    finally:
+        _apply_view(area, current)
+        context.scene.frame_set(frame, subframe=subframe)
+        area.tag_redraw()
+    return {"before": os.path.join(out_dir, capture + ".png"), "after": file}
 
 
 class MATTEBLACK_OT_tell(bpy.types.Operator):
@@ -263,6 +368,11 @@ class MATTEBLACK_OT_tell(bpy.types.Operator):
     note: bpy.props.StringProperty(name="Note", description="What should change")
 
     def invoke(self, context, event):
+        try:
+            self.capture = capture_tell(context)
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
         return context.window_manager.invoke_props_dialog(self, width=420)
 
     def execute(self, context):
@@ -277,9 +387,15 @@ class MATTEBLACK_OT_tell(bpy.types.Operator):
             "rot": [round(math.degrees(v), 1) for v in o.rotation_euler],
             "scale": [round(v, 2) for v in o.scale],
         } for o in context.selected_objects]
+        try:
+            capture = getattr(self, "capture", None) or capture_tell(context)
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
         _, err = _post("/api/agent/blender/tell", {
             "session": session, "canvasId": scene.get("matteblack_canvas_id"), "selected": selected, "viewport": _viewport(context), "note": self.note,
-        }, timeout=5.0)
+            "capture": capture,
+        }, timeout=15.0)
         if err:
             self.report({"ERROR"}, "Tell failed: %s" % err)
             return {"CANCELLED"}

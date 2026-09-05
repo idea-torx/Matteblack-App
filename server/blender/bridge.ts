@@ -492,6 +492,8 @@ def run_step(step_path, session_dir, render):
     mb.out_dir, mb.session_dir = out_dir, session_dir
     refs = os.path.join(session_dir, "references.json")
     mb.references = json.load(open(refs, encoding="utf-8")) if os.path.exists(refs) else []
+    labels = os.path.join(session_dir, "reference-labels.json")
+    mb.reference_labels = json.load(open(labels, encoding="utf-8")) if os.path.exists(labels) else {}
     if not bpy.data.filepath:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         resolution(cfg.get("width") or 1280, cfg.get("height") or 720)
@@ -522,9 +524,16 @@ def run_step(step_path, session_dir, render):
             label = str(spec.get("label") or spec.get("view") or "view%d" % (i + 1))
             file = os.path.join(out_dir, "view-%s.png" % re.sub(r"[^a-z0-9]+", "-", label.lower()))
             views.append(dict(view(file, spec), label=label, file=file))
+        comparison, warnings = None, []
+        if render.get("viewport"):
+            try:
+                import matteblack_addon
+                comparison = matteblack_addon.compare_viewport(render["viewport"], out_dir)
+            except Exception as e:
+                warnings.append("Viewport comparison unavailable: " + str(e))
         state = summary()
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(session_dir, "scene.blend"))
-        return {"summary": state, "rendered": rendered, "views": views, "stdout": buf.getvalue()[-8000:]}
+        return {"summary": state, "rendered": rendered, "views": views, "comparison": comparison, "warnings": warnings, "stdout": buf.getvalue()[-8000:]}
     except Exception as e:
         return {"error": _compact_error(e, step_path), "stdout": buf.getvalue()[-8000:]}
 
@@ -734,13 +743,16 @@ export function diffObjects<T extends { name: string }>(prev: T[] | undefined, n
 }
 
 // What "Tell the agent" in the Blender add-on turns into: one Continue message for the open Operator session.
-export function tellMessage(session: string, b: { selected?: Array<{ name: string; loc: number[]; rot: number[]; scale: number[] }>; viewport?: { from: number[]; at: number[] }; note?: string }): string {
+export function tellMessage(session: string, b: { selected?: Array<{ name: string; loc: number[]; rot: number[]; scale: number[] }>; viewport?: { from: number[]; at: number[] }; note?: string; capture?: string; imagePath?: string; imageUrl?: string }): string {
   const sel = (b.selected ?? []).slice(0, 40).map((o) => `${o.name} loc ${JSON.stringify(o.loc)} rot ${JSON.stringify(o.rot)}° scale ${JSON.stringify(o.scale)}`);
   return [
     `Continue Blender session "${session}": the user is in Blender with the scene open.`,
     sel.length ? `They selected ${sel.length} object(s): ${sel.join("; ")}.` : "Nothing is selected.",
-    b.viewport ? `Their viewport looks from ${JSON.stringify(b.viewport.from)} at ${JSON.stringify(b.viewport.at)} — pass that as a render view to see what they see.` : "",
+    b.viewport ? `Their viewport looks from ${JSON.stringify(b.viewport.from)} at ${JSON.stringify(b.viewport.at)}.` : "",
+    b.imagePath ? `Read the actual Blender viewport screenshot with your image-reading tool before editing: ${b.imagePath}. It includes the visible selection and overlays; it is working-scene context, not a replacement for the saved references.` : "No viewport screenshot was supplied; do not infer the exact view from coordinates alone.",
+    b.capture ? `After a meaningful edit, pass render.viewport=${JSON.stringify(b.capture)} to blender_run for a before/after comparison from this same view. Show the returned comparison images in your reply, explain the design choice, and ask the artist when evidence is ambiguous.` : "",
     b.note?.trim() ? `They say: "${b.note.trim()}"` : "",
     "Their edits are in the live Blender scene, including unsaved changes. Inspect mb.summary() before editing. Discuss ambiguous design decisions; use short undoable steps and a preview for review.",
+    b.imageUrl ? `\n\n![Artist's Blender viewport](${b.imageUrl})` : "",
   ].filter(Boolean).join(" ");
 }

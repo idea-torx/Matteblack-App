@@ -455,7 +455,7 @@ export function OperatorPanel({
   canvasReferenceImages?: ReferenceImage[];
   /** Text dropped into the composer from elsewhere (e.g. the Skills panel).
    *  Carries a nonce so sending the same text twice still re-seeds. */
-  seedPrompt?: { text: string; nonce: number; send?: boolean } | null;
+  seedPrompt?: { text: string; nonce: number; send?: boolean; blender?: { canvasId?: string; displayText?: string } } | null;
   /** The open project. Threads are filtered and stamped with it. */
   projectId?: string;
   /** Every project in the workspace — History groups threads under their names. */
@@ -497,6 +497,7 @@ export function OperatorPanel({
   // Uploaded attachments (via the + button). Canvas-selected references come
   // from the prop and are tracked separately (with a per-id dismiss set).
   const [uploads, setUploads] = useState<Attachment[]>([]);
+  const [referenceLabels, setReferenceLabels] = useState<Record<string, string>>({});
   const [dismissedCanvasRefs, setDismissedCanvasRefs] = useState<Set<string>>(() => new Set());
   const [chats, setChats] = useState<ChatStore>(initialChats);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -543,7 +544,7 @@ export function OperatorPanel({
   // In-flight upload promises (resolve to the hosted URL, or null on failure).
   // send() awaits these so a reference is never dropped just because its upload
   // hadn't finished when the user hit enter.
-  const pendingUploadsRef = useRef<Promise<string | null>[]>([]);
+  const pendingUploadsRef = useRef<Promise<{ id: string; url: string } | null>[]>([]);
 
   useEffect(() => { onBusyChange?.(streaming); }, [streaming, onBusyChange]);
 
@@ -686,7 +687,7 @@ export function OperatorPanel({
     setUploads((prev) => [...prev, { id, url: "", preview, label: file.name, source: "upload", uploading: true }]);
     // Track the upload promise so send() can await it — a reference must never
     // be dropped just because its upload hadn't finished when the user hit send.
-    const p = (async (): Promise<string | null> => {
+    const p = (async (): Promise<{ id: string; url: string } | null> => {
       try {
         const form = new FormData();
         form.append("file", file);
@@ -695,7 +696,7 @@ export function OperatorPanel({
         const data = (await res.json()) as { url?: string };
         if (!data.url) throw new Error("no url");
         setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, url: data.url!, uploading: false } : u)));
-        return data.url;
+        return { id, url: data.url };
       } catch {
         URL.revokeObjectURL(preview);
         setUploads((prev) => prev.filter((u) => u.id !== id));
@@ -777,7 +778,7 @@ export function OperatorPanel({
     }
   }, []);
 
-  const send = useCallback(async (override?: string) => {
+  const send = useCallback(async (override?: string, blenderTell?: { canvasId?: string; displayText?: string }) => {
     // Starter chips pass their text; the composer's onClick passes an event.
     const message = (typeof override === "string" ? override : input).trim();
     if (!message) return;
@@ -794,7 +795,7 @@ export function OperatorPanel({
       const bridge = desktopBridge();
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: "user", text: message, streaming: false, gens: [] },
+        { id: nextId(), role: "user", text: blenderTell?.displayText || message, streaming: false, gens: [] },
         {
           id: nextId(),
           role: "assistant",
@@ -815,7 +816,7 @@ export function OperatorPanel({
     const assistantId = nextId();
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role: "user", text: message, streaming: false, gens: [] },
+      { id: nextId(), role: "user", text: blenderTell?.displayText || message, streaming: false, gens: [] },
       { id: assistantId, role: "assistant", text: "", streaming: true, gens: [] },
     ]);
     setStreaming(true);
@@ -824,18 +825,18 @@ export function OperatorPanel({
     let ctx: ReturnType<NonNullable<typeof getCanvasContext>> = {};
     try { ctx = getCanvasContext?.() || {}; } catch { /* canvas not ready */ }
     // Wait for any in-flight uploads so their references are never dropped.
-    const uploadedUrls = (await Promise.allSettled(pendingUploadsRef.current))
-      .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((u): u is string => !!u);
-    pendingUploadsRef.current = [];
-    const canvasUrls = canvasChips.map((c) => c.url);
-    const referenceUrls = Array.from(new Set([...uploadedUrls, ...canvasUrls])).slice(0, MAX_REFS);
+    const completed = (await Promise.allSettled(blenderTell ? [] : pendingUploadsRef.current))
+      .flatMap((r) => r.status === "fulfilled" && r.value ? [r.value] : []);
+    if (!blenderTell) pendingUploadsRef.current = [];
+    const sentAttachments = blenderTell ? [] : [...uploads.map((u) => ({ ...u, url: completed.find((c) => c.id === u.id)?.url || u.url })), ...canvasChips]
+      .filter((a, i, all) => a.url && all.findIndex((b) => b.url === a.url) === i).slice(0, MAX_REFS);
+    const referenceUrls = sentAttachments.map((a) => a.url);
     // Inherit the selected canvas image's aspect ratio so the new generation
     // keeps the lineage (unless the user asks for a different shape — Claude
     // decides that from the wording; this is just the default).
-    const referenceAspectRatio = canvasChips.find((c) => c.aspectRatio)?.aspectRatio;
+    const referenceAspectRatio = blenderTell ? undefined : canvasChips.find((c) => c.aspectRatio)?.aspectRatio;
     // Uploads are consumed by this turn; canvas chips keep tracking the selection.
-    setUploads((prev) => {
+    if (!blenderTell) setUploads((prev) => {
       prev.forEach((u) => { if (u.preview.startsWith("blob:")) URL.revokeObjectURL(u.preview); });
       return [];
     });
@@ -850,11 +851,12 @@ export function OperatorPanel({
           model: model || undefined,
           effort: EFFORT_LEVELS[effortIndex]?.id,
           botId: mode === "bots" && botId ? botId : undefined,
-          canvasId: ctx.canvasId,
+          canvasId: blenderTell?.canvasId || ctx.canvasId,
           viewport: ctx.viewport,
-          selectedNodeIds: ctx.selectedNodeIds?.length ? ctx.selectedNodeIds : undefined,
-          selectedElements: ctx.selectedElements?.length ? ctx.selectedElements : undefined,
+          selectedNodeIds: !blenderTell && ctx.selectedNodeIds?.length ? ctx.selectedNodeIds : undefined,
+          selectedElements: !blenderTell && ctx.selectedElements?.length ? ctx.selectedElements : undefined,
           referenceUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
+          referenceLabels: sentAttachments.map((a) => referenceLabels[a.id] ?? ""),
           referenceAspectRatio,
         }),
         signal: ac.signal,
@@ -895,7 +897,7 @@ export function OperatorPanel({
         abortRef.current = null;
       }
     }
-  }, [input, streaming, refreshStatus, model, effortIndex, mode, botId, handleEvent, patchAssistant, canvasChips, getCanvasContext]);
+  }, [input, streaming, refreshStatus, model, effortIndex, mode, botId, handleEvent, canvasChips, getCanvasContext, uploads, referenceLabels]);
 
   const changeModel = useCallback((value: string) => {
     setModel(value);
@@ -931,10 +933,10 @@ export function OperatorPanel({
   useEffect(() => {
     if (!seedPrompt?.text) return;
     // `send`: Blender's "Tell the agent" goes straight out (interrupting a run in progress, as a spoken note would).
-    if (seedPrompt.send) { void sendRef.current(seedPrompt.text); return; }
+    if (seedPrompt.send) { void sendRef.current(seedPrompt.text, seedPrompt.blender); return; }
     setInput(seedPrompt.text);
     textareaRef.current?.focus();
-  }, [seedPrompt?.nonce, seedPrompt?.text, seedPrompt?.send]);
+  }, [seedPrompt?.nonce, seedPrompt?.text, seedPrompt?.send, seedPrompt?.blender]);
 
   // Persisted mid-stream, throttled. Saving only at turn boundaries meant a
   // reload during a long agent run — exactly when the user is most likely to
@@ -1570,7 +1572,7 @@ export function OperatorPanel({
                   {showBubble && (
                     <div className="agent-panel__bubble">
                       {isUser ? (
-                        m.text
+                        <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text, { images: true }) }} />
                       ) : m.streaming && !hasText ? (
                         <>
                           <Steps steps={steps} />
@@ -1582,7 +1584,7 @@ export function OperatorPanel({
                           {m.streaming ? (
                             <StreamingText text={m.text} />
                           ) : (
-                            <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+                            <div className="agent-panel__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text, { images: true }) }} />
                           )}
                           {m.streaming && <ThinkingPill className="agent-panel__thinking agent-panel__thinking--inline" label={stepLabel(steps)} />}
                         </>
@@ -1625,6 +1627,11 @@ export function OperatorPanel({
                   title={att.label}
                 >
                   {att.uploading && <span className="operator-ref__spinner"><QuantumThinking size={16} ariaLabel="Uploading" /></span>}
+                  <select className="operator-ref-label" aria-label={`Purpose of ${att.label}`} value={referenceLabels[att.id] ?? ""}
+                    onChange={(e) => setReferenceLabels((prev) => ({ ...prev, [att.id]: e.target.value }))}>
+                    <option value="">Label…</option>
+                    {["front", "side", "back", "top", "proportions", "material", "detail", "style"].map((label) => <option key={label} value={label}>{label}</option>)}
+                  </select>
                   <button
                     type="button"
                     className="agent-panel__ref-x"
