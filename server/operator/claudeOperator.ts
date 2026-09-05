@@ -73,6 +73,7 @@ const WEB_TOOLS = ["WebFetch", "WebSearch"];
 export const OPERATOR_MCP_TOOL_NAMES = [
   "generate_media",
   "higgsfield",
+  "blender_run",
   "continue_video",
   "generate_music",
   "generate_voiceover",
@@ -201,7 +202,7 @@ export class OperatorNotConfiguredError extends Error {}
 
 /** Claude Code's `--effort` levels, weakest to strongest. Codex's three levels
  *  are mapped onto these in its runner. */
-export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "ultra", "max"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
 // ---------------------------------------------------------------------------
@@ -479,6 +480,9 @@ export async function runOperator(opts: RunOperatorOptions): Promise<{ sessionId
 export function cleanEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const k of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"]) delete env[k];
+  // Operator turns are minutes apart (Blender renders, the user looking); a 5-minute cache
+  // rewrites the whole context each time it lapses. Unset the CLI only picks 1h when under limits.
+  env.CLAUDE_CODE_PROMPT_CACHE_TTL ??= "1h";
   return env;
 }
 

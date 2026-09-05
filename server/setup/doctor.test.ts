@@ -31,7 +31,7 @@ test("neither brew nor npm → codex not installable", () => {
 });
 
 test("found/path come from the resolver", () => {
-  const rows = doctor(fake(["git", "brew", "ffmpeg", "claude", "codex", "opencode"]));
+  const rows = doctor(fake(["git", "brew", "ffmpeg", "blender", "claude", "codex", "opencode"]));
   assert.ok(rows.every((r) => r.found));
   assert.equal(get(rows, "claude").path, "/fake/claude");
 });

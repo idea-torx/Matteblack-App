@@ -8,7 +8,14 @@ type SvgEditToolbarProps = {
   onJoinAction?: () => void;
   onSimplifyAction?: () => void;
   onExit?: () => void;
+  /** Blobs are picked: show download / save / delete for just those. */
+  blobsActive?: boolean;
+  onDeleteBlobs?: () => void;
+  onDownloadBlobs?: () => void;
+  onSaveBlobs?: () => void;
   zoom: number;
+  /** Node rotation in degrees; the pill un-rotates so it always reads upright. */
+  rotation?: number;
   canJoin?: boolean;
   canCut?: boolean;
 };
@@ -51,6 +58,21 @@ const ICON = {
       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </>
   ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
+    </>
+  ),
+  trash: (
+    <>
+      <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+    </>
+  ),
 } as const;
 
 function Icon({ name }: { name: keyof typeof ICON }) {
@@ -63,7 +85,7 @@ function Icon({ name }: { name: keyof typeof ICON }) {
 
 const DIVIDER = <div className="freeform-canvas__toolbar-divider" />;
 
-export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAction, onSimplifyAction, onExit, zoom, canJoin, canCut }: SvgEditToolbarProps) {
+export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAction, onSimplifyAction, onExit, blobsActive, onDeleteBlobs, onDownloadBlobs, onSaveBlobs, zoom, rotation = 0, canJoin, canCut }: SvgEditToolbarProps) {
   // Same pill and the same zoom-resistant scale as the node mini-menu, just
   // parked above the node so it never covers the points being edited.
   const scale = Math.min(1.55 * Math.pow(1 / zoom, 0.55), 3.5);
@@ -96,7 +118,7 @@ export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAc
         padding: "5px 7px",
         bottom: "auto",
         left: "50%",
-        transform: `translateX(-50%) translateY(-100%) scale(${scale})`,
+        transform: `translateX(-50%) translateY(-100%) rotate(${-rotation}deg) scale(${scale})`,
         transformOrigin: "bottom center",
       }}
       onPointerDown={(e) => e.stopPropagation()}
@@ -110,6 +132,14 @@ export function SvgEditToolbar({ activeTool, onToolChange, onCutAction, onJoinAc
       {button("cut", "cut", "Cut", () => onCutAction?.(), { disabled: !canCut })}
       {button("join", "join", "Join", () => onJoinAction?.(), { disabled: !canJoin })}
       {button("simplify", "simplify", "Simplify — fewer points, same shape", () => onSimplifyAction?.())}
+      {blobsActive && (
+        <>
+          {DIVIDER}
+          {button("download", "download", "Download selected blobs as SVG", () => onDownloadBlobs?.())}
+          {button("save", "save", "Save selected blobs to library", () => onSaveBlobs?.())}
+          {button("trash", "trash", "Delete selected blobs", () => onDeleteBlobs?.())}
+        </>
+      )}
       {DIVIDER}
       {button("exit", "exit", "Done (Esc)", () => onExit?.())}
     </div>

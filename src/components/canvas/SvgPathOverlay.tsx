@@ -248,8 +248,7 @@ export function SvgPathOverlay({
         return (
           <g>
             <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0}
-              fill="none" stroke={STROKE_COLOR} strokeWidth={1 * invZoomAvg}
-              strokeDasharray={`${4 * invZoomAvg} ${3 * invZoomAvg}`}
+              fill="none" stroke={STROKE_COLOR} strokeWidth={2 * invZoomAvg}
               style={{ pointerEvents: "none" }} />
             {/* Rotate: a grip on a stalk above the box, turning about its centre. */}
             {(() => {

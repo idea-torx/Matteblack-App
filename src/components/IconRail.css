@@ -225,3 +225,14 @@ html.is-mac .icon-rail {
   background: color-mix(in srgb, var(--rail-color) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rail-color) 30%, transparent);
 }
+
+/* Agent working while its panel is closed: a pulsing dot on the rail icon.
+ * A real element, not ::after — that slot is the tooltip. */
+.icon-rail-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--rail-color);
+  animation: railBusy 1.2s ease-in-out infinite;
+}
+.icon-rail-btn--active .icon-rail-dot { background: #ffffff; }
+@keyframes railBusy { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

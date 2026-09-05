@@ -12,6 +12,7 @@
  *    still bounds our own tools inside the MCP server.
  *  - The prompt is a positional argv (no stdin form).
  */
+import { REPOS_DIR } from "../../github/ghCli.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -53,8 +54,10 @@ function configContent(ctx: RunnerContext): string {
   };
   // Deny-by-default: read/glob/grep mirror Claude's FILE_TOOLS grant, and
   // everything else (bash, edit, write, webfetch, websearch, task) is refused.
-  const permission: Record<string, string> = {
+  const permission: Record<string, unknown> = {
     "*": "deny", read: "allow", glob: "allow", grep: "allow", "falforge_*": "allow",
+    // The turn's staged reference images live here; OpenCode flags the dir as external.
+    external_directory: { [path.join(REPOS_DIR, ".attachments", "*")]: "allow" },
   };
   for (const c of ctx.connectors ?? []) {
     if (c.url) mcp[c.name] = { type: "remote", url: c.url, enabled: true };
@@ -93,7 +96,7 @@ export const opencodeRunner: Runner = {
     args.push("--auto");
     const model = (!ctx.review && ctx.model) || opencodeRunner.models[0].id;
     args.push("-m", model);
-    const variant = ctx.effort === "max" ? "max" : ctx.effort === "high" || ctx.effort === "xhigh" ? "high" : undefined;
+    const variant = ctx.effort === "max" || ctx.effort === "ultra" ? "max" : ctx.effort === "high" || ctx.effort === "xhigh" ? "high" : undefined;
     if (variant) args.push("--variant", variant);
     args.push(ctx.message);
     return args;

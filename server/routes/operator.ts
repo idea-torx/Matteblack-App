@@ -113,7 +113,9 @@ export function formatGenerationsNote(rows: GenerationRow[], now: number): strin
 // ---------------------------------------------------------------------------
 
 const REVIEW_PROMPT = [
-  "Review this conversation and update two things.",
+  "Review this conversation and update two things. This is a long-horizon pass: take as many steps as it needs.",
+  "First `get_skill` every skill that was in play and read it whole. Judge each line against what actually happened: a line that led you wrong, is stale, duplicates another, or is vaguer than what you now know gets rewritten or deleted in place with `patch_skill`. Append only when nothing existing covers the lesson.",
+  "Your own verdict is a signal: every gap you named at the end ('boat is a plain box', 'colours flatter than the reference') and every retry, failed step or workaround becomes a concrete recipe in the skill that would have prevented it. Keep going until the skill, followed literally, would have produced a better result on this brief.",
   "MEMORY: who the user is — persona, preferences, expectations about how you should work — with `remember`.",
   "SKILLS: how to do this class of task. Be active; most sessions produce at least one skill update, and a pass that does nothing is a missed learning opportunity.",
   "Signals: the user corrected your style, format, workflow, or approach (frustration is a first-class skill signal); a non-trivial technique or fix emerged; a skill you followed turned out wrong or outdated.",
@@ -150,9 +152,9 @@ function startReview(sessionId: string, botId?: string): void {
   const done = runOperator({
     message: REVIEW_PROMPT,
     sessionId,
-    // ponytail: lowest effort — this is a bookkeeping pass. The cheap-model
-    // choice is the runner's (claude picks haiku; codex stays on its default).
-    effort: "low",
+    // High effort: the pass re-reads whole skills and rewrites them, not bookkeeping.
+    // The model choice is still the runner's (claude picks haiku; codex/opencode stay on their default).
+    effort: "high",
     review: true,
     botId,
     allowedTools: REVIEW_MCP_TOOLS,
@@ -381,7 +383,7 @@ router.post("/api/operator/message", requireAuth, async (req: AuthRequest, res) 
         const lines = rows.map((r) => `- ${r.id} — ${r.node_type}${r.label ? ` "${String(r.label).slice(0, 60)}"` : ""}${r.kind === "html" ? " (rendered from HTML)" : ""}`);
         let note = `\n\n[System note: the user has ${rows.length === 1 ? "this canvas node" : "these canvas nodes"} selected right now — when they say "this", "it", or "the ad", they mean ${rows.length === 1 ? "this one" : "these"}:\n${lines.join("\n")}`;
         if (rows.some((r) => r.kind === "html")) {
-          note += `\nFor an HTML-rendered node: call get_html with that nodeId to read its markup, edit the markup, then call render_html with the SAME nodeId to replace it in place. Do not re-render it as a new node, and do not regenerate it with generate_media.`;
+          note += `\nFor an HTML-rendered node: call get_html with that nodeId to read its markup, edit the markup, then call render_html with the SAME nodeId to replace it in place. Do not re-render it as a new node, and do not regenerate it with generate_media. To export one as a web page rather than a picture, call save_asset with that nodeId and format "html".`;
         }
         note += `]`;
         selectionNote = note;

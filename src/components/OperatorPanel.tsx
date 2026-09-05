@@ -441,8 +441,11 @@ export function OperatorPanel({
   seedPrompt,
   projectId,
   projects,
+  hidden,
 }: {
   onClose: () => void;
+  /** Closed but still mounted, so a run in flight keeps streaming into its thread. */
+  hidden?: boolean;
   onBusyChange?: (busy: boolean) => void;
   // Supplies the canvas the user has open + their current viewport (world
   // coords), captured at send time so operator generations land on-screen.
@@ -452,7 +455,7 @@ export function OperatorPanel({
   canvasReferenceImages?: ReferenceImage[];
   /** Text dropped into the composer from elsewhere (e.g. the Skills panel).
    *  Carries a nonce so sending the same text twice still re-seeds. */
-  seedPrompt?: { text: string; nonce: number } | null;
+  seedPrompt?: { text: string; nonce: number; send?: boolean } | null;
   /** The open project. Threads are filtered and stamped with it. */
   projectId?: string;
   /** Every project in the workspace — History groups threads under their names. */
@@ -923,11 +926,15 @@ export function OperatorPanel({
 
   // Seed the composer from outside (Skills → "use with the agent"). Keyed on the
   // nonce, not the text, so handing over the same skill twice still lands.
+  const sendRef = useRef(send);
+  sendRef.current = send;
   useEffect(() => {
     if (!seedPrompt?.text) return;
+    // `send`: Blender's "Tell the agent" goes straight out (interrupting a run in progress, as a spoken note would).
+    if (seedPrompt.send) { void sendRef.current(seedPrompt.text); return; }
     setInput(seedPrompt.text);
     textareaRef.current?.focus();
-  }, [seedPrompt?.nonce, seedPrompt?.text]);
+  }, [seedPrompt?.nonce, seedPrompt?.text, seedPrompt?.send]);
 
   // Persisted mid-stream, throttled. Saving only at turn boundaries meant a
   // reload during a long agent run — exactly when the user is most likely to
@@ -1197,7 +1204,7 @@ export function OperatorPanel({
   const aliveLabel = streaming ? `${brand} is thinking` : `${brand} is online`;
 
   return (
-    <aside className="agent-panel">
+    <aside className="agent-panel" style={hidden ? { display: "none" } : undefined}>
       <div className="agent-panel__header agent-panel__header--with-alive">
         <div
           className={`agent-panel__alive${streaming ? " agent-panel__alive--busy" : ""}`}
@@ -1415,6 +1422,7 @@ export function OperatorPanel({
                     <button type="button" className="operator-hist__open" onClick={() => openChat(sn.id)}>
                       <span className="operator-hist__title">{sn.title}</span>
                       <span className="operator-hist__meta">
+                        {sn.id === chatIdRef.current && streaming && <span className="operator-hist__live">Working</span>}
                         {new Date(sn.updatedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {sn.messages.length} messages
                       </span>
                     </button>

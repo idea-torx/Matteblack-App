@@ -155,10 +155,10 @@ export const claudeRunner: Runner = {
       "--autocompact", "350000",
     ];
     if (ctx.sessionId) args.push("--resume", ctx.sessionId);
-    // ponytail: cheapest model for the bookkeeping pass, unless one was asked for.
-    const model = ctx.model ?? (ctx.review ? "haiku" : undefined);
+    // The review pass rewrites skills, so it runs on the turn's model, not a cheap one.
+    const model = ctx.model;
     if (model) args.push("--model", model);
-    if (ctx.effort) args.push("--effort", ctx.effort);
+    if (ctx.effort) args.push("--effort", ctx.effort === "ultra" ? "max" : ctx.effort); // Claude Code has no ultra
     return args;
   },
   stdinText: (ctx: RunnerContext) => ctx.message,

@@ -88,6 +88,7 @@ Mirror the harness, plus the minimum canvas I/O so Claude can see and place work
 | `list_canvas` | canvas read API | returns current canvas nodes/assets with the same `canvas:<n>` / `agent:<n>` reference ids the tools already accept, so Claude can target references. |
 | `get_asset` | asset fetch | returns a thumbnail/data-uri + metadata so Claude can "see" a result and decide next steps. |
 | `list_models` | static/`fal.ts` | enumerates available models + tiers (self-documenting). |
+| `blender_run` | `POST /api/agent/blender/run` | runs a Python step in headless Blender against the session's persistent `.blend` (grey-box + camera helpers in `mb`), then puts the playblast/stills on the canvas. The reply is token-lean by design: a compact scene summary (objects capped at 30, camera first/last key + key count, floats rounded), the step's own `print()` output, and the canvas nodes — never Blender's render log. A Python error comes back as `ExcType: message` plus the step line(s) that raised it (no bridge frames); only a Blender crash/timeout returns a digested log tail. The `mb` API and workflow live in the `blender-blockout` skill, which the tool description tells the model to `get_skill` first; `render` is optional so a pose can be checked for free before the one real render. |
 
 **Key behavioral change vs. the in-app agent:** MCP tools are request/response, so the generation
 tools **block until done and return the result** (the MCP server internally does the `/api/job/:id`

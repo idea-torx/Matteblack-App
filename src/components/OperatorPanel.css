@@ -940,3 +940,15 @@
 .operator-slash__slug { font-weight: 600; font-size: 12px; white-space: nowrap; }
 .operator-slash__desc { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-scheme="light"] .operator-slash { background: #ffffff; }
+
+/* The thread that is running right now, in History — so a user coming back to
+ * the panel sees which session is still working before starting another. */
+.operator-hist__live {
+  display: inline-flex; align-items: center; gap: 5px; margin-right: 8px;
+  color: var(--accent, #007aff); font-weight: 600;
+}
+.operator-hist__live::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  animation: operatorLive 1.2s ease-in-out infinite;
+}
+@keyframes operatorLive { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }

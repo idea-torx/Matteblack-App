@@ -5,6 +5,7 @@ type UseLayerOrderParams = {
   nodesRef: React.MutableRefObject<CanvasNode[]>;
   selectedIdsRef: React.MutableRefObject<Set<string>>;
   nodesInFramesRef: React.MutableRefObject<Map<string, string>>;
+  memberToGroupMapRef?: React.MutableRefObject<Map<string, string>>;
   setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>;
   pushUndo: (cmd: UndoCommand) => void;
   canvasId: string | null;
@@ -51,6 +52,7 @@ export function useLayerOrder({
   nodesRef,
   selectedIdsRef,
   nodesInFramesRef,
+  memberToGroupMapRef,
   setNodes,
   pushUndo,
   canvasId,
@@ -78,11 +80,15 @@ export function useLayerOrder({
     allNodes.forEach((n) => prevZ.set(n.id, n.z_index));
 
     const nif = nodesInFramesRef.current;
+    const groups = memberToGroupMapRef?.current;
+    // Layers stack inside the node's group first, then its frame: a member
+    // moving "up" swaps with its sibling, not with whatever is above it on the canvas.
+    const parentOf = (id: string) => groups?.get(id) ?? nif.get(id) ?? null;
 
     const frameGroups = new Map<string | null, Set<string>>();
     for (const sel of selected) {
       if (isFrame(sel)) continue;
-      const parentFrame = nif.get(sel.id) ?? null;
+      const parentFrame = parentOf(sel.id);
       if (!frameGroups.has(parentFrame)) frameGroups.set(parentFrame, new Set());
       frameGroups.get(parentFrame)!.add(sel.id);
     }
@@ -90,8 +96,7 @@ export function useLayerOrder({
     for (const [frameId, selInGroup] of frameGroups) {
       const siblings = allNodes.filter((n) => {
         if (isFrame(n) || n.node_type === "group" || n.visible === false) return false;
-        const nParent = nif.get(n.id) ?? null;
-        return nParent === frameId;
+        return parentOf(n.id) === frameId;
       });
       if (siblings.length <= 1) continue;
       const sorted = [...siblings].sort((a, b) => a.z_index - b.z_index);
@@ -164,7 +169,7 @@ export function useLayerOrder({
     });
 
     persistZChanges(changes);
-  }, [nodesRef, selectedIdsRef, nodesInFramesRef, setNodes, pushUndo, persistZChanges]);
+  }, [nodesRef, selectedIdsRef, nodesInFramesRef, memberToGroupMapRef, setNodes, pushUndo, persistZChanges]);
 
   const moveUp = useCallback(() => {
     applyReorder(reorderMoveUp);

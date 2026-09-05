@@ -15,6 +15,8 @@ import {
   appendGroups,
   groupSubPaths,
   mapGroups,
+  ungroupGroups,
+  reorderGroups,
 } from "../utils/svgPathModel";
 
 type SelectedPoint = { subPathIdx: number; anchorIdx: number };
@@ -785,11 +787,31 @@ export function useSvgPathEdit({
       handlePasteBlobs();
       return;
     }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "g" || e.key === "G")) {
+      const pathData = getPathData(editingNodeId);
+      if (!pathData || activeGroups.length === 0) return;
+      e.preventDefault();
+      const { pathData: next, groups } = ungroupGroups(pathData, activeGroups);
+      updatePathData(editingNodeId, next, true);
+      setActiveGroupsState(groups);
+      setEnteredGroup(null);
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "]" || e.key === "[" || e.key === "}" || e.key === "{")) {
+      const pathData = getPathData(editingNodeId);
+      if (!pathData || activeGroups.length === 0) return;
+      e.preventDefault();
+      const fwd = e.key === "]" || e.key === "}";
+      const dir = e.shiftKey ? (fwd ? "top" : "bottom") : (fwd ? "up" : "down");
+      updatePathData(editingNodeId, reorderGroups(pathData, activeGroups, dir), true);
+      setSelectedPoints([]);
+      return;
+    }
     if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleJoinSelected();
     }
-  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected, handleCopyActiveGroups, handlePasteBlobs]);
+  }, [editingNodeId, activeGroups, enteredGroup, setActiveGroup, exitEditMode, handleDeleteSelected, handleDeleteActiveGroups, handleJoinSelected, handleCopyActiveGroups, handlePasteBlobs, getPathData, updatePathData]);
 
   const isEditingPath = useCallback((nodeId: string) => editingNodeId === nodeId, [editingNodeId]);
 
@@ -887,6 +909,7 @@ export function useSvgPathEdit({
   }, [editingNodeId, nodesRef, getPathData]);
 
   return {
+    handleDeleteActiveGroups,
     editingNodeId,
     isEditingPath,
     selectedPoints,
@@ -900,6 +923,8 @@ export function useSvgPathEdit({
     exitEditMode,
     getPathData,
     ensurePathData,
+    updatePathData,
+    getViewBoxScale,
     handleGroupMovePointerDown,
     handleGroupScalePointerDown,
     handleGroupRotatePointerDown,

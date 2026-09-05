@@ -14,7 +14,7 @@ test("single path scales into node space", () => {
   assert.ok(pd);
   assert.equal(pd.subPaths.length, 1);
   assert.deepEqual(pd.subPaths[0].anchors.map((a) => [a.x, a.y]), [[0, 0], [100, 0], [100, 100]]);
-  assert.equal(pd.subPaths[0].fill, "#f00");
+  assert.equal(pd.subPaths[0].fill, "#ff0000");
   assert.deepEqual(pd.viewBox, { x: 0, y: 0, width: 100, height: 100 });
 });
 
@@ -25,7 +25,7 @@ test("every path is kept, with its own paint, in document order", () => {
        <path d="M5 5 L10 5 L10 10 Z" fill="#222"/>
      </svg>`, 10, 10);
   assert.ok(pd);
-  assert.deepEqual(pd.subPaths.map((sp) => sp.fill), ["#111", "#222"]);
+  assert.deepEqual(pd.subPaths.map((sp) => sp.fill), ["#111111", "#222222"]);
   assert.deepEqual(pd.subPaths.map((sp) => sp.group), [0, 1]);
 });
 
@@ -35,7 +35,7 @@ test("ancestor transforms and inherited fill are flattened onto anchors", () => 
        <g transform="scale(2)"><path d="M1 1 L2 1"/></g></g></svg>`, 10, 10);
   assert.ok(pd);
   assert.deepEqual(pd.subPaths[0].anchors.map((a) => [a.x, a.y]), [[4, 5], [6, 5]]);
-  assert.equal(pd.subPaths[0].fill, "#0f0");
+  assert.equal(pd.subPaths[0].fill, "#00ff00");
 });
 
 test("subPaths of one path share a group so holes survive", () => {
@@ -45,6 +45,14 @@ test("subPaths of one path share a group so holes survive", () => {
   assert.equal(pd.subPaths.length, 2);
   assert.deepEqual(pd.subPaths.map((sp) => sp.group), [0, 0]);
   assert.equal(pd.subPaths[0].fillRule, "evenodd");
+});
+
+test("separate blobs in one path get their own groups", () => {
+  const pd = extractPathDataFromSvg(
+    `<svg viewBox="0 0 10 10"><path d="M0 0 L3 0 L3 3 Z M1 1 L2 1 L2 2 Z M6 6 L9 6 L9 9 Z"/><path d="M0 8 L1 8 L1 9 Z"/></svg>`, 10, 10);
+  assert.ok(pd);
+  // ring + its hole share a group, the far blob stands alone, the next <path> continues numbering
+  assert.deepEqual(pd.subPaths.map((sp) => sp.group), [0, 0, 1, 2]);
 });
 
 test("basic shapes become paths; missing fill defaults to black", () => {
@@ -96,7 +104,7 @@ test("art too dense to edit is refitted at import instead of refused", () => {
   const pd = extractPathDataFromSvg(svg, 100, 100);
   assert.ok(pd, "6000 anchors should be simplified into editability, not refused");
   assert.ok(countAnchors(pd) <= 4000, `still ${countAnchors(pd)} anchors`);
-  assert.deepEqual(pd.subPaths.map((sp) => sp.fill), ["#123", "#456"]);
+  assert.deepEqual(pd.subPaths.map((sp) => sp.fill), ["#112233", "#445566"]);
 });
 
 const { subPathToSampledPoints, DEFAULT_SIMPLIFY_TOLERANCE } = await import("./svgPathModel.ts");
@@ -187,7 +195,7 @@ test("a gradient between two indistinguishable stops is a solid, not a refusal",
     `</linearGradient></defs><path d="M1 1L9 1L9 9Z" fill="url(#g)"/></svg>`;
   const pd = extractPathDataFromSvg(flat, 10, 10);
   assert.ok(pd, "a two-near-black-stop ramp is a solid the vectoriser spelled oddly");
-  assert.equal(pd.subPaths[0].fill, "rgb(1,0,0)");
+  assert.equal(pd.subPaths[0].fill, "#010000");
 
   const real = flat.replace('stop-color="rgb(9,5,4)"', 'stop-color="rgb(240,10,10)"');
   assert.equal(extractPathDataFromSvg(real, 10, 10), null, "a real colour ramp still refuses");
@@ -199,7 +207,7 @@ test("a gradient between two indistinguishable stops is a solid, not a refusal",
     "";
   const pd2 = extractPathDataFromSvg(speck, 1465, 2048);
   assert.ok(pd2, "a negligible gradient speck should not refuse the whole artwork");
-  assert.equal(pd2.subPaths[0].fill, "rgb(121,5,5)");
+  assert.equal(pd2.subPaths[0].fill, "#790505");
 });
 
 const { scalePathData } = await import("./svgPathModel.ts");
@@ -231,4 +239,65 @@ test("duplicateGroups copies only the picked group", async () => {
   const [x, y] = [rot.subPaths[1].anchors[0].x, rot.subPaths[1].anchors[0].y];
   assert.ok(Math.abs(x - 6) < 1e-9 && Math.abs(y - 4) < 1e-9, `got ${x},${y}`);
   assert.deepEqual(rot.subPaths[0], pd.subPaths[0]);
+});
+
+test("ungroupGroups splits only the picked group", async () => {
+  const { ungroupGroups } = await import("./svgPathModel.ts");
+  const sp = (group: number): SubPath => ({ anchors: [{ x: 0, y: 0, smooth: false }], closed: true, group });
+  const { pathData, groups } = ungroupGroups({ subPaths: [sp(0), sp(0), sp(1)] }, [0]);
+  assert.deepEqual(pathData.subPaths.map((s) => s.group), [2, 3, 1]);
+  assert.deepEqual(groups, [2, 3]);
+});
+
+test("reorderGroups moves the picked group through paint order", async () => {
+  const { reorderGroups } = await import("./svgPathModel.ts");
+  const sp = (group: number): SubPath => ({ anchors: [{ x: 0, y: 0, smooth: false }], closed: true, group });
+  const pd = { subPaths: [sp(0), sp(1), sp(1), sp(2)] };
+  const order = (p: { subPaths: SubPath[] }) => p.subPaths.map((s) => s.group);
+  assert.deepEqual(order(reorderGroups(pd, [1], "up")), [0, 2, 1, 1]);
+  assert.deepEqual(order(reorderGroups(pd, [1], "down")), [1, 1, 0, 2]);
+  assert.deepEqual(order(reorderGroups(pd, [0], "top")), [1, 1, 2, 0]);
+  assert.deepEqual(order(reorderGroups(pd, [2], "bottom")), [2, 0, 1, 1]);
+  assert.deepEqual(order(reorderGroups(pd, [2], "up")), [0, 1, 1, 2]);
+});
+
+test("splitByGroups gives each group its own re-based path", async () => {
+  const { splitByGroups } = await import("./svgPathModel.ts");
+  const sp = (group: number, x: number): SubPath => ({ anchors: [{ x, y: 5, smooth: false }, { x: x + 2, y: 8, smooth: false }], closed: true, group });
+  const pieces = splitByGroups({ subPaths: [sp(0, 10), sp(0, 11), sp(1, 40)] });
+  assert.deepEqual(pieces.map((p) => [p.x, p.y, p.width, p.height]), [[10, 5, 3, 3], [40, 5, 2, 3]]);
+  assert.deepEqual(pieces[0].pathData.subPaths.map((s) => [s.anchors[0].x, s.anchors[0].y]), [[0, 0], [1, 0]]);
+});
+
+const { pathDataToSvgString } = await import("./svgPathModel.ts");
+const _reparse = extractPathDataFromSvg;
+test("pathDataToSvgString round-trips through the parser", () => {
+  const src = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#f00" d="M0 0h4v4H0z"/><path fill="#00f" d="M6 6h4v4H6z"/></svg>';
+  const pd = _reparse(src, 10, 10)!;
+  const out = pathDataToSvgString(pd);
+  assert.ok(out.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'));
+  const back = _reparse(out, 10, 10)!;
+  assert.equal(back.subPaths.length, pd.subPaths.length);
+  assert.deepEqual(back.subPaths.map((sp: SubPath) => sp.fill), pd.subPaths.map((sp: SubPath) => sp.fill));
+});
+
+const { mergeSvgNodes } = await import("./svgPathModel.ts");
+test("mergeSvgNodes lays members out where they sit on canvas", () => {
+  const sq = _reparse('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path fill="#f00" d="M0 0h10v10H0z"/></svg>', 10, 10)!;
+  const merged = mergeSvgNodes([
+    { x: 100, y: 100, width: 10, height: 10, pathData: sq },
+    { x: 130, y: 100, width: 20, height: 20, pathData: sq }, // scaled 2x
+  ]);
+  assert.deepEqual(merged.viewBox, { x: 0, y: 0, width: 50, height: 20 });
+  const xs = merged.subPaths.map((sp: SubPath) => sp.anchors.map((a) => a.x));
+  assert.deepEqual(xs[0], [0, 10, 10, 0]);
+  assert.deepEqual(xs[1], [30, 50, 50, 30]);
+  assert.notEqual(merged.subPaths[0].group, merged.subPaths[1].group);
+});
+
+const { paintToHex } = await import("./svgPathModel.ts");
+test("paintToHex normalises rgb() and hex, leaves none alone", () => {
+  assert.equal(paintToHex("rgb(0,105,225)"), "#0069e1");
+  assert.equal(paintToHex("#FfF"), "#ffffff");
+  assert.equal(paintToHex("none"), "none");
 });

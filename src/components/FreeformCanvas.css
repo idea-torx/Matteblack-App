@@ -271,14 +271,8 @@
 
 .freeform-canvas__group-bbox {
   position: absolute;
-  border: 1.5px dashed rgba(99, 162, 255, 0.6);
-  border-radius: 2px;
+  outline: calc(2px / var(--zoom, 1)) solid #2196F3;
   z-index: 99998;
-}
-
-.freeform-canvas__group-bbox--multi {
-  border-style: solid;
-  border-color: rgba(99, 162, 255, 0.7);
 }
 
 .freeform-canvas__group-handle {
@@ -286,8 +280,8 @@
   width: 10px;
   height: 10px;
   background: #fff;
-  border: 1.5px solid rgba(99, 162, 255, 0.8);
-  border-radius: 2px;
+  border: 2px solid #2196F3;
+  border-radius: 0;
   z-index: 99999;
   transform: scale(calc(1 / var(--zoom, 1)));
 }
@@ -296,10 +290,6 @@
 .freeform-canvas__group-handle--ne { top: -5px; right: -5px; cursor: ne-resize; }
 .freeform-canvas__group-handle--sw { bottom: -5px; left: -5px; cursor: sw-resize; }
 .freeform-canvas__group-handle--se { bottom: -5px; right: -5px; cursor: se-resize; }
-.freeform-canvas__group-handle--n { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
-.freeform-canvas__group-handle--s { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
-.freeform-canvas__group-handle--w { left: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
-.freeform-canvas__group-handle--e { right: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
 
 .freeform-canvas__node--frame-selected {
   outline: calc(2px / var(--zoom, 1)) solid #2196F3;

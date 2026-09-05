@@ -1382,6 +1382,7 @@ function SetupSection() {
   const [rows, setRows] = useState<SetupRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [falCheck, setFalCheck] = useState<string | null>(null);
+  const [blenderAddon, setBlenderAddon] = useState<{ installed: boolean } | null>(null);
   const checkFal = async () => {
     setFalCheck("Checking…");
     try {
@@ -1393,6 +1394,8 @@ function SetupSection() {
     try {
       const res = await fetch("/api/setup/doctor", { credentials: "include" });
       if (res.ok) setRows((await res.json()).rows || []);
+      const b = await fetch("/api/setup/blender-addon", { credentials: "include" });
+      if (b.ok) setBlenderAddon(await b.json());
     } catch { /* offline */ }
   }, []);
   useEffect(() => {
@@ -1410,6 +1413,15 @@ function SetupSection() {
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
       });
     } catch { /* the Terminal window is the feedback */ }
+    await load();
+    setBusy(null);
+  };
+
+  const installBlenderAddon = async () => {
+    setBusy("blender-addon");
+    try {
+      await fetch("/api/setup/blender-addon", { method: "POST", credentials: "include" });
+    } catch { /* the row re-probes below */ }
     await load();
     setBusy(null);
   };
@@ -1448,6 +1460,21 @@ function SetupSection() {
             <span className="settings-toggle-desc">{falCheck ?? "Generation runs on your own fal.ai key — $1 of credit is enough to start."}</span>
           </div>
           <button type="button" className="settings-btn-primary" disabled={falCheck === "Checking…"} onClick={() => void checkFal()}>Check</button>
+        </div>
+        <div className="settings-toggle-row">
+          <ServiceLogo name="Blender" />
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">Blender add-on</span>
+            <span className="settings-toggle-desc">Shows Matteblack connection, skills and send-to-canvas inside Blender.</span>
+          </div>
+          <button
+            type="button"
+            className="settings-btn-primary"
+            disabled={!!blenderAddon?.installed || busy !== null}
+            onClick={() => void installBlenderAddon()}
+          >
+            {busy === "blender-addon" ? "Installing…" : blenderAddon?.installed ? "Installed" : "Install"}
+          </button>
         </div>
         <div className="settings-card-note">
           Install opens a Terminal window so you can watch it and answer any password prompt.

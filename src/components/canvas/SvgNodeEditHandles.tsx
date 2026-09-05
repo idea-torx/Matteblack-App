@@ -11,6 +11,7 @@ type SvgNodeEditHandlesProps = {
   activeGroups: number[];
   enteredGroup: number | null;
   zoom: number;
+  rotation?: number;
   isDragging: boolean;
   editTool: SvgEditTool;
   canJoin: boolean;
@@ -20,6 +21,9 @@ type SvgNodeEditHandlesProps = {
   onJoinAction: () => void;
   onSimplifyAction: () => void;
   onExit: () => void;
+  onDeleteBlobs?: () => void;
+  onDownloadBlobs?: () => void;
+  onSaveBlobs?: () => void;
   onSelectGroup: (group: number | null, additive: boolean) => void;
   onGroupMovePointerDown: (e: React.PointerEvent, group: number) => void;
   onGroupScalePointerDown: (e: React.PointerEvent, grabX: number, grabY: number, fixedX: number, fixedY: number) => void;
@@ -37,6 +41,7 @@ export function SvgNodeEditHandles({
   activeGroups,
   enteredGroup,
   zoom,
+  rotation,
   isDragging,
   editTool,
   canJoin,
@@ -46,6 +51,9 @@ export function SvgNodeEditHandles({
   onJoinAction,
   onSimplifyAction,
   onExit,
+  onDeleteBlobs,
+  onDownloadBlobs,
+  onSaveBlobs,
   onSelectGroup,
   onGroupMovePointerDown,
   onGroupScalePointerDown,
@@ -80,7 +88,12 @@ export function SvgNodeEditHandles({
           onJoinAction={onJoinAction}
           onSimplifyAction={onSimplifyAction}
           onExit={onExit}
+          blobsActive={enteredGroup === null && activeGroups.length > 0}
+          onDeleteBlobs={onDeleteBlobs}
+          onDownloadBlobs={onDownloadBlobs}
+          onSaveBlobs={onSaveBlobs}
           zoom={zoom}
+          rotation={rotation}
           canJoin={canJoin}
           canCut={canCut}
         />

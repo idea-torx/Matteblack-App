@@ -780,10 +780,10 @@
 .rpanel-inline-error {
   display: block;
   font-size: 11px;
-  color: #ff6b6b;
+  color: var(--danger-fg);
   margin-top: 6px;
   padding: 4px 8px;
-  background: rgba(255, 107, 107, 0.1);
+  background: rgba(var(--danger-rgb), 0.1);
   border-radius: 4px;
 }
 
@@ -1472,6 +1472,16 @@
 
 .rpanel-action-btn--secondary:hover {
   background: rgba(var(--tint-rgb), 0.1);
+}
+
+/* Destructive action: tinted like the danger list button, sized like the primary. */
+.rpanel-action-btn--danger {
+  background: rgba(var(--danger-rgb), 0.08);
+  color: var(--danger-fg);
+}
+
+.rpanel-action-btn--danger:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb), 0.14);
 }
 
 .rpanel-list-btn--danger {
@@ -2738,6 +2748,8 @@
 [data-scheme="light"] .rpanel-model-selector-icon { background: var(--c-amber); color: #ffffff; }
 [data-scheme="light"] .rpanel-action-btn { background: var(--c-cyan); color: #ffffff; }
 [data-scheme="light"] .rpanel-action-btn:hover:not(:disabled) { filter: brightness(0.95); }
+[data-scheme="light"] .rpanel-action-btn--secondary { color: var(--text-secondary); } /* the cyan rule above would leave it white-on-white */
+[data-scheme="light"] .rpanel-action-btn--danger { background: rgba(var(--danger-rgb), 0.08); color: var(--danger-fg); }
 .rpanel-ar-card--active { color: var(--accent); }
 [data-scheme="light"] .rpanel-ar-card--active { color: #ffffff; }
 [data-scheme="light"] .rpanel-card .rpanel-textarea { border: none; box-shadow: none; }

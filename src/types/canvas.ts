@@ -160,6 +160,7 @@ export type CanvasApi = {
   toggleSvgSmooth?: (nodeId: string, subPathIdx: number, anchorIdx: number) => void;
   updateSvgPointRadius?: (nodeId: string, subPathIdx: number, anchorIdx: number, radius: number) => void;
   pushUndo?: (cmd: UndoCommand) => void;
+  downloadSelected?: () => void;
   svgBooleanOp?: (op: "union" | "subtract" | "intersect" | "exclude" | "flatten", nodeIds: string[]) => void;
   addNode?: (x: number, y: number, props: Partial<CanvasNode>) => CanvasNode | undefined;
   updateNode?: (nodeId: string, fields: Partial<CanvasNode>) => void;
