@@ -5,7 +5,7 @@ import { TextProperties } from "./design/TextProperties";
 import { PanelSection } from "./design/PanelSection";
 import ColorPicker from "./design/ColorPicker";
 import NumericInput from "./NumericInput";
-import { simplifyPathData, type PathData } from "../utils/svgPathModel";
+import { paintToHex, simplifyPathData, type PathData } from "../utils/svgPathModel";
 import "./RightPanel.css";
 
 function NumInput({ value, onChange, label, min, max, step = 1 }: { value: number; onChange: (v: number) => void; label: string; min?: number; max?: number; step?: number }) {
@@ -479,7 +479,8 @@ export function DesignPanel({
                 const metaOpacity01 = rawMetaOpacity !== undefined ? (rawMetaOpacity > 1 ? rawMetaOpacity / 100 : rawMetaOpacity) : undefined;
                 const svgFillOpacity = (pathData?.fillOpacity as number) ?? (pathData?.opacity as number) ?? metaOpacity01 ?? 1;
                 const svgCornerRadius = (pathData?.cornerRadius as number) ?? 0;
-                const svgFillHex = svgFill === "none" ? "#5b5fc7" : svgFill;
+                // Older nodes still carry rgb()/named fills; the picker only speaks hex.
+                const svgFillHex = svgFill === "none" ? "#5b5fc7" : paintToHex(svgFill) ?? svgFill;
                 const isFillNone = svgFill === "none";
 
                 const paintGroups = svgEditState?.isEditing && svgEditState.activeGroups?.length

@@ -372,6 +372,19 @@ function parseRgb(c: string): [number, number, number] | null {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
+/** Any CSS paint as #rrggbb so colour inputs can show it; "none"/unknown pass through.
+ *  Named colours resolve through the browser's parser when there is one. */
+export function paintToHex(c: string | undefined): string | undefined {
+  if (!c || c === "none") return c;
+  let rgb = parseRgb(c);
+  if (!rgb && typeof document !== "undefined") {
+    const st = document.createElement("span").style;
+    st.color = c;
+    if (st.color) rgb = parseRgb(st.color);
+  }
+  return rgb ? `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}` : c;
+}
+
 function gradientSolid(doc: Document, ref: string): { color: string; flat: boolean } | null {
   const id = /url\(\s*#([^)\s]+)\s*\)/.exec(ref)?.[1];
   if (!id) return null;
@@ -511,6 +524,37 @@ export function countAnchors(pathData: PathData): number {
   return pathData.subPaths.reduce((n, sp) => n + sp.anchors.length, 0);
 }
 
+/** Island index per subPath: connected components of the box-overlap graph.
+ *  ponytail: axis-aligned boxes, so two blobs whose boxes cross but shapes
+ *  don't stay one group; upgrade to point-in-path if that ever bites. */
+export function islandsOf(subPaths: SubPath[]): number[] {
+  const boxes = subPaths.map((sp) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const a of sp.anchors) {
+      for (const p of [a, a.handleIn, a.handleOut]) {
+        if (!p) continue;
+        x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+        x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+      }
+    }
+    return { x0, y0, x1, y1 };
+  });
+  const parent = boxes.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1) parent[find(i)] = find(j);
+    }
+  }
+  const ids = new Map<number, number>();
+  return boxes.map((_, i) => {
+    const r = find(i);
+    if (!ids.has(r)) ids.set(r, ids.size);
+    return ids.get(r)!;
+  });
+}
+
 export function extractPathDataFromSvg(svgContent: string, nodeWidth: number, nodeHeight: number): PathData | null {
   try {
     const parser = new DOMParser();
@@ -589,12 +633,19 @@ export function extractPathDataFromSvg(svgContent: string, nodeWidth: number, no
             if (a.handleIn) a.handleIn = xf(m2, a.handleIn);
             if (a.handleOut) a.handleOut = xf(m2, a.handleOut);
           }
+        }
+        // One <path> often holds many separate blobs. Sub-paths whose boxes
+        // never touch cannot affect each other's fill, so each island becomes
+        // its own group and picks/copies/deletes alone; a hole stays with the
+        // ring it sits in because their boxes overlap.
+        const island = islandsOf(own);
+        for (const [i, sp] of own.entries()) {
           anchorCount += sp.anchors.length;
-          sp.group = group;
+          sp.group = group + island[i];
           // SVG's default fill is black, not "no paint": leaving it undefined
           // renders the whole artwork invisible.
-          sp.fill = inh2.fill ?? "#000000";
-          if (inh2.stroke !== undefined) sp.stroke = inh2.stroke;
+          sp.fill = paintToHex(inh2.fill) ?? "#000000";
+          if (inh2.stroke !== undefined) sp.stroke = paintToHex(inh2.stroke);
           if (sw !== undefined && !Number.isNaN(sw)) sp.strokeWidth = sw * scale;
           if (inh2.fillRule === "evenodd") sp.fillRule = "evenodd";
           if (inh2.fillOpacity < 1) sp.fillOpacity = inh2.fillOpacity;
@@ -602,7 +653,7 @@ export function extractPathDataFromSvg(svgContent: string, nodeWidth: number, no
           subPaths.push(sp);
         }
         if (approximated && coversMoreThanNegligible(own, nodeWidth * nodeHeight)) { refused = true; return; }
-        group++;
+        group += Math.max(0, ...island) + 1;
         if (anchorCount > HARD_ANCHOR_CEILING) { refused = true; return; }
       } else if (tag !== "svg" && tag !== "g" && tag !== "a") {
         // An element we do not know at all: refuse rather than drop it.
@@ -1437,6 +1488,134 @@ export function duplicateGroups(
   dy: number,
 ): { pathData: PathData; groups: number[] } {
   return appendGroups(pathData, groupSubPaths(pathData, groups), dx, dy);
+}
+
+/** Give every subPath in the picked groups its own fresh group id. */
+export function ungroupGroups(pathData: PathData, groups: Iterable<number>): { pathData: PathData; groups: number[] } {
+  const gs = new Set(groups);
+  const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) }));
+  let next = pinned.reduce((m, sp) => Math.max(m, sp.group!), -1) + 1;
+  const out: number[] = [];
+  const subPaths = pinned.map((sp) => (gs.has(sp.group!) ? (out.push(next), { ...sp, group: next++ }) : sp));
+  return { pathData: { ...pathData, subPaths }, groups: out };
+}
+
+/** Move the picked groups one step, or all the way, through the paint order.
+ *  SubPaths paint in array order, so z-order is just position. */
+export function reorderGroups(pathData: PathData, groups: Iterable<number>, dir: "up" | "down" | "top" | "bottom"): PathData {
+  const gs = new Set(groups);
+  const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) }));
+  const order = [...new Set(pinned.map((sp) => sp.group!))];
+  const picked = order.filter((g) => gs.has(g));
+  if (picked.length === 0) return pathData;
+  const rest = order.filter((g) => !gs.has(g));
+  const first = order.indexOf(picked[0]);
+  const at = dir === "top" ? rest.length : dir === "bottom" ? 0
+    : Math.max(0, Math.min(rest.length, first + (dir === "up" ? 1 : -1)));
+  const next = [...rest.slice(0, at), ...picked, ...rest.slice(at)];
+  return { ...pathData, subPaths: next.flatMap((g) => pinned.filter((sp) => sp.group === g)) };
+}
+
+/** One PathData per group, each re-based to its own top-left corner. `x`/`y`/
+ *  `width`/`height` are in the source's anchor units. */
+export function splitByGroups(pathData: PathData): { x: number; y: number; width: number; height: number; pathData: PathData }[] {
+  const pinned = pathData.subPaths.map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) }));
+  const order = [...new Set(pinned.map((sp) => sp.group!))];
+  return order.map((g) => extractGroups(pathData, [g]));
+}
+
+/** The picked groups on their own, re-based to their top-left. */
+export function extractGroups(pathData: PathData, groups: Iterable<number>): { x: number; y: number; width: number; height: number; pathData: PathData } {
+  const gs = new Set(groups);
+  return (() => {
+    const sps = pathData.subPaths.map((sp, i) => ({ ...sp, group: groupIdOf(sp, i) })).filter((sp) => gs.has(sp.group!));
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const sp of sps) for (const a of sp.anchors) for (const p of [a, a.handleIn, a.handleOut]) {
+      if (!p) continue;
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+    }
+    const width = Math.max(x1 - x0, 1), height = Math.max(y1 - y0, 1);
+    const shift = (p: { x: number; y: number }) => ({ x: p.x - x0, y: p.y - y0 });
+    return {
+      x: x0, y: y0, width, height,
+      pathData: {
+        ...pathData,
+        viewBox: pathData.viewBox ? { x: 0, y: 0, width, height } : undefined,
+        subPaths: sps.map((sp) => ({
+          ...sp,
+          group: 0,
+          anchors: sp.anchors.map((a) => ({
+            ...a, ...shift(a),
+            handleIn: a.handleIn ? shift(a.handleIn) : undefined,
+            handleOut: a.handleOut ? shift(a.handleOut) : undefined,
+          })),
+        })),
+      },
+    };
+  })();
+}
+
+/** Several SVG nodes as one PathData, laid out as they sit on canvas (rotation ignored). */
+export function mergeSvgNodes(items: { x: number; y: number; width: number; height: number; pathData: PathData }[]): PathData {
+  const minX = Math.min(...items.map((n) => n.x)), minY = Math.min(...items.map((n) => n.y));
+  const maxX = Math.max(...items.map((n) => n.x + n.width)), maxY = Math.max(...items.map((n) => n.y + n.height));
+  let group = 0;
+  const subPaths: SubPath[] = [];
+  for (const it of items) {
+    const pd = it.pathData;
+    let vb = pd.viewBox;
+    if (!vb) {
+      let w = 0, h = 0;
+      for (const sp of pd.subPaths) for (const a of sp.anchors) for (const q of [a, a.handleIn, a.handleOut]) { if (q) { w = Math.max(w, q.x); h = Math.max(h, q.y); } }
+      vb = { x: 0, y: 0, width: w || it.width, height: h || it.height };
+    }
+    const sx = it.width / vb.width, sy = it.height / vb.height;
+    const map = (q: { x: number; y: number }) => ({ x: it.x - minX + (q.x - vb!.x) * sx, y: it.y - minY + (q.y - vb!.y) * sy });
+    const base = group;
+    let top = 0;
+    pd.subPaths.forEach((sp, i) => {
+      const g = groupIdOf(sp, i);
+      top = Math.max(top, g);
+      subPaths.push({
+        ...sp,
+        // Pin the item's defaults on each shape: the merged file has no per-item fallback.
+        fill: sp.fill ?? pd.fill, stroke: sp.stroke ?? pd.stroke, strokeWidth: sp.strokeWidth ?? pd.strokeWidth,
+        fillOpacity: sp.fillOpacity ?? pd.fillOpacity ?? pd.opacity, strokeOpacity: sp.strokeOpacity ?? pd.strokeOpacity, fillRule: sp.fillRule ?? pd.fillRule,
+        group: base + g,
+        anchors: sp.anchors.map((a) => ({ ...a, ...map(a), handleIn: a.handleIn ? map(a.handleIn) : undefined, handleOut: a.handleOut ? map(a.handleOut) : undefined })),
+      });
+    });
+    group = base + top + 1;
+  }
+  return { subPaths, viewBox: { x: 0, y: 0, width: maxX - minX, height: maxY - minY } };
+}
+
+/** Standalone SVG markup: consecutive same-group subPaths share one <path>, as on canvas. */
+export function pathDataToSvgString(pd: PathData): string {
+  const vb = pd.viewBox ?? (() => {
+    let w = 0, h = 0;
+    for (const sp of pd.subPaths) for (const a of sp.anchors) for (const q of [a, a.handleIn, a.handleOut]) { if (q) { w = Math.max(w, q.x); h = Math.max(h, q.y); } }
+    return { x: 0, y: 0, width: w || 1, height: h || 1 };
+  })();
+  const runs: SubPath[][] = [];
+  pd.subPaths.forEach((sp, i) => {
+    const last = runs[runs.length - 1];
+    if (last && groupIdOf(last[0], pd.subPaths.indexOf(last[0])) === groupIdOf(sp, i)) last.push(sp);
+    else runs.push([sp]);
+  });
+  const attr = (k: string, v: unknown) => (v === undefined || v === null ? "" : ` ${k}="${String(v)}"`);
+  const paths = runs.map((sps) => {
+    const sp = sps[0];
+    return `<path d="${buildDWithRadius({ ...pd, subPaths: sps })}"`
+      + attr("fill", sp.fill ?? pd.fill ?? "none")
+      + attr("fill-opacity", sp.fillOpacity ?? pd.fillOpacity ?? pd.opacity)
+      + attr("fill-rule", sp.fillRule ?? pd.fillRule)
+      + attr("stroke", sp.stroke ?? pd.stroke ?? "none")
+      + attr("stroke-opacity", sp.strokeOpacity ?? pd.strokeOpacity)
+      + attr("stroke-width", sp.strokeWidth ?? pd.strokeWidth ?? 0)
+      + "/>";
+  }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${vb.width}" height="${vb.height}" viewBox="${vb.x} ${vb.y} ${vb.width} ${vb.height}">${paths}</svg>`;
 }
 
 /** Rotate the picked groups by `angle` radians about (cx, cy). */

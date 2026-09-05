@@ -8,6 +8,8 @@ type UseFrameClipboardParams = {
   addNodeAtPosition: (x: number, y: number, props: Partial<CanvasNode>) => CanvasNode;
   onSelectMultiple?: (ids: string[], mode?: "exclusive" | "add") => void;
   onDeselectAll?: () => void;
+  /** Inside the SVG editor the blob clipboard owns Cmd+C/V/D, not whole nodes. */
+  suspended?: boolean;
 };
 
 const FRAME_GAP = 40;
@@ -103,6 +105,7 @@ export function useFrameClipboard({
   addNodeAtPosition,
   onSelectMultiple,
   onDeselectAll,
+  suspended,
 }: UseFrameClipboardParams) {
   const clipboardRef = clipboardStore;
   const pasteCountRef = useRef(0);
@@ -116,6 +119,8 @@ export function useFrameClipboard({
   onSelectMultipleRef.current = onSelectMultiple;
   const onDeselectAllRef = useRef(onDeselectAll);
   onDeselectAllRef.current = onDeselectAll;
+  const suspendedRef = useRef(suspended);
+  suspendedRef.current = suspended;
 
   const copyNodes = useCallback((nodesToCopy: CanvasNode[]) => {
     if (nodesToCopy.length === 0) return;
@@ -253,6 +258,7 @@ export function useFrameClipboard({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (suspendedRef.current) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLElement && e.target.isContentEditable) return;
 

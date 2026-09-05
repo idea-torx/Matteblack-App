@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { pathDataToSvgString, type PathData } from "../utils/svgPathModel";
 import type { CanvasNode, UndoCommand } from "../types/canvas";
 import { enqueueDirty } from "../services/CanvasStore";
 import { saveNodeToLibraryOptimistic, sortNodesReadingOrder } from "../utils/canvasUtils";
@@ -40,7 +41,9 @@ export function useNodeToolbar() {
   }, []);
 
   const downloadNode = useCallback(async (node: CanvasNode, projectName?: string, allNodes?: CanvasNode[]) => {
-    const url = node.src || "";
+    // Edited or split vectors carry their truth in pathData, not at src.
+    const pd = node.node_type === "svg" ? (node.metadata?.pathData as PathData | undefined) : undefined;
+    const url = pd ? URL.createObjectURL(new Blob([pathDataToSvgString(pd)], { type: "image/svg+xml" })) : (node.src || "");
     if (!url) return;
     const safePrefix = (projectName || "Asset").replace(/[<>:"/\\|?*]/g, "_");
     const typeLabel = node.node_type === "video" ? "VIDEO" : node.node_type === "audio" ? "AUDIO" : node.node_type === "svg" ? "SVG" : "IMAGE";

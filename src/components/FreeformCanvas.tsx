@@ -22,7 +22,7 @@ import { useSvgPathEdit } from "../hooks/useSvgPathEdit";
 import { usePenDraw, PenDrawGhost } from "../hooks/usePenDraw";
 import { useFreehandDraw, FreehandDrawGhost } from "../hooks/useFreehandDraw";
 import { SvgNodeEditHandles } from "./canvas/SvgNodeEditHandles";
-import { extractPathDataFromSvg, scalePathData } from "../utils/svgPathModel";
+import { extractPathDataFromSvg, extractGroups, mergeSvgNodes, pathDataToSvgString, scalePathData, splitByGroups } from "../utils/svgPathModel";
 import type { PathData } from "../utils/svgPathModel";
 import { performBooleanOp, type BooleanOpType } from "../utils/svgBooleanOps";
 import { useLayerOrder } from "../hooks/canvas/useLayerOrder";
@@ -376,7 +376,9 @@ export function FreeformCanvas({
     return map;
   }, [nodes]);
 
-  const selectedIds = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
+  // The app selects a group id so the right panel opens for it; the canvas keeps its
+  // selection empty while a group is active (delete/drag/copy read activeGroupId instead).
+  const selectedIds = useMemo(() => new Set(selectedImageIds.filter((id) => nodes.find((n) => n.id === id)?.node_type !== "group")), [selectedImageIds, nodes]);
 
   const downloadableNodes = useMemo(() => {
     if (selectedImageIds.length < 2) return [];
@@ -657,6 +659,26 @@ export function FreeformCanvas({
   } | null>(null);
   const [, setIsGroupResizing] = useState(false);
 
+  const groupRotateState = useRef<{
+    cx: number; cy: number; startAngle: number;
+    orig: Map<string, { x: number; y: number; width: number; height: number; rotation: number }>;
+  } | null>(null);
+
+  const finalizeGroupRotate = useCallback(() => {
+    const st = groupRotateState.current;
+    if (!st) return;
+    groupRotateState.current = null;
+    const apply = (vals: Map<string, { x: number; y: number; rotation: number }>) => {
+      setNodes((prev) => prev.map((n) => { const v = vals.get(n.id); return v ? { ...n, ...v } : n; }));
+      if (canvasId) saveNodesBatchDebounced(canvasId, Array.from(vals, ([id, v]) => ({ id, ...v })));
+    };
+    const after = new Map<string, { x: number; y: number; rotation: number }>();
+    nodesRef.current.forEach((n) => { if (st.orig.has(n.id)) after.set(n.id, { x: n.x, y: n.y, rotation: n.rotation || 0 }); });
+    const before = new Map(Array.from(st.orig, ([id, o]) => [id, { x: o.x, y: o.y, rotation: o.rotation }]));
+    apply(after);
+    pushUndo({ type: "move", undo: () => apply(before), redo: () => apply(after) });
+  }, [canvasId, pushUndo, setNodes]);
+
   const finalizeGroupResize = useCallback(() => {
     const st = groupResizeState.current;
     if (!st) return;
@@ -838,10 +860,14 @@ export function FreeformCanvas({
 
   const nodesInFramesRef = useRef<Map<string, string>>(new Map());
 
+  const memberToGroupMapRef = useRef(memberToGroupMap);
+  memberToGroupMapRef.current = memberToGroupMap;
+
   const { moveUp: layerMoveUp, moveDown: layerMoveDown, bringToTop: layerBringToTop, sendToBottom: layerSendToBottom } = useLayerOrder({
     nodesRef,
     selectedIdsRef,
     nodesInFramesRef,
+    memberToGroupMapRef,
     setNodes,
     pushUndo,
     canvasId,
@@ -1050,6 +1076,9 @@ export function FreeformCanvas({
     if (gradientUrl && !gradientUrl.startsWith("http://") && !gradientUrl.startsWith("https://") && !gradientUrl.startsWith("data:")) {
       gradientUrl = "";
     }
+    // A group made only of vectors is a vector group: the right panel treats it as one SVG.
+    const members = node.node_type === "group" ? (node.metadata?.members as string[] | undefined) ?? [] : [];
+    const isVectorGroup = members.length > 0 && members.every((id) => nodesRef.current.find((n) => n.id === id)?.node_type === "svg");
     onNodeMeta(effectiveId, {
       id: effectiveId,
       label: node.label || "Canvas Node",
@@ -1058,7 +1087,7 @@ export function FreeformCanvas({
       axiomImages,
       axiomName,
       axiomDescription,
-      nodeType: node.node_type === "video" ? "video" : node.node_type === "svg" ? "svg" : node.node_type === "group" ? "group" : node.node_type === "frame" ? "frame" : node.node_type === "shape" ? "shape" : node.node_type === "text" ? "text" : node.node_type === "cinema" ? "cinema" : node.node_type === "image" ? "image" : undefined,
+      nodeType: node.node_type === "video" ? "video" : node.node_type === "svg" || isVectorGroup ? "svg" : node.node_type === "group" ? "group" : node.node_type === "frame" ? "frame" : node.node_type === "shape" ? "shape" : node.node_type === "text" ? "text" : node.node_type === "cinema" ? "cinema" : node.node_type === "image" ? "image" : undefined,
       fontFamily: node.node_type === "text" ? (node.metadata?.fontFamily as string) || "Inter, sans-serif" : undefined,
       fontWeight: node.node_type === "text" ? (node.metadata?.fontWeight as number) || 400 : undefined,
       fontSize: node.node_type === "text" ? (node.metadata?.fontSize as number) || 48 : undefined,
@@ -1085,6 +1114,12 @@ export function FreeformCanvas({
   }, [onNodeMeta]);
 
   const emitNodeMetaRef = useRef(emitNodeMeta);
+  const selectGroup = useCallback((groupId: string) => {
+    setActiveGroupId(groupId);
+    const gNode = nodesRef.current.find((n) => n.id === groupId);
+    if (gNode) emitNodeMetaRef.current(groupId, gNode);
+    onSelectImageRef.current(groupId, "exclusive");
+  }, []);
   emitNodeMetaRef.current = emitNodeMeta;
 
   const handleCinemaMetaUpdate = useCallback((nodeId: string, updatedNode: CanvasNode) => {
@@ -1411,6 +1446,16 @@ export function FreeformCanvas({
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     }
   }, [memberToGroupMap, insideGroupId, svgPathEdit.editingNodeId]);
+
+  const enterSvgEdit = useCallback((nodeId: string) => {
+    const groupId = memberToGroupMap.get(nodeId);
+    if (groupId) {
+      setActiveGroupId(groupId);
+      setInsideGroupId(groupId);
+      onSelectImageRef.current(nodeId, "exclusive");
+    }
+    svgPathEdit.enterEditMode(nodeId);
+  }, [memberToGroupMap, svgPathEdit.enterEditMode]);
 
   const handleNodePointerMove = useCallback((e: React.PointerEvent) => {
     if (pendingNodeDrag.current) {
@@ -1887,14 +1932,23 @@ export function FreeformCanvas({
     const memberIds = gNode.metadata.members as string[];
     const members = nodes.filter((n) => memberIds.includes(n.id));
     if (members.length === 0) return null;
+    // When every member shares one rotation the box turns with them: measure in
+    // the members' rotated frame, then place the frame's top-left back on canvas.
+    const r0 = members[0].rotation || 0;
+    const rotation = members.every((n) => Math.abs((n.rotation || 0) - r0) < 1e-6) ? r0 : 0;
+    const rad = rotation * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     members.forEach((n) => {
-      minX = Math.min(minX, n.x);
-      minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + n.width);
-      maxY = Math.max(maxY, n.y + n.height);
+      const cx = n.x + n.width / 2, cy = n.y + n.height / 2;
+      const fx = cx * cos + cy * sin, fy = -cx * sin + cy * cos;
+      minX = Math.min(minX, fx - n.width / 2);
+      minY = Math.min(minY, fy - n.height / 2);
+      maxX = Math.max(maxX, fx + n.width / 2);
+      maxY = Math.max(maxY, fy + n.height / 2);
     });
-    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+    const width = maxX - minX, height = maxY - minY;
+    const left = minX * cos - minY * sin, top = minX * sin + minY * cos;
+    return { minX: left, minY: top, maxX: left + width, maxY: top + height, width, height, rotation };
   }, [activeGroupId, nodes]);
 
   const multiSelectionBox = useMemo<
@@ -1929,11 +1983,12 @@ export function FreeformCanvas({
       return {
         bounds: { minX: activeGroupBounds.minX, minY: activeGroupBounds.minY, width: activeGroupBounds.width, height: activeGroupBounds.height },
         memberIds,
+        rotation: activeGroupBounds.rotation,
         kind: "group" as const,
       };
     }
     if (multiSelectionBox) {
-      return { ...multiSelectionBox, kind: "multi" as const };
+      return { ...multiSelectionBox, rotation: 0, kind: "multi" as const };
     }
     return null;
   }, [activeGroupBounds, activeGroupId, multiSelectionBox, nodes]);
@@ -2061,6 +2116,8 @@ export function FreeformCanvas({
         }
       }
 
+      // Inside an SVG the brackets layer blobs, not nodes.
+      if (svgPathEdit.editingNodeId && (e.ctrlKey || e.metaKey) && (e.code === "BracketRight" || e.code === "BracketLeft")) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "]" || e.code === "BracketRight")) {
         e.preventDefault();
         if (e.shiftKey) {
@@ -2132,7 +2189,7 @@ export function FreeformCanvas({
 
     const groupId = memberToGroupMap.get(nodeId);
     if (groupId && !insideGroupId) {
-      setActiveGroupId(groupId);
+      selectGroup(groupId);
       setContextMenu({ x: e.clientX, y: e.clientY, nodeId });
       return;
     }
@@ -2143,7 +2200,7 @@ export function FreeformCanvas({
       if (node) emitNodeMetaRef.current(nodeId, node);
       onSelectImageRef.current(nodeId);
     }
-  }, [memberToGroupMap, insideGroupId, inFlightTextNodeId]);
+  }, [memberToGroupMap, insideGroupId, inFlightTextNodeId, selectGroup]);
 
   const contextMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2342,11 +2399,40 @@ export function FreeformCanvas({
     api.updateSvgPointRadius = svgPathEdit.updatePointRadius;
     api.pushUndo = pushUndo;
     api.svgBooleanOp = handleSvgBooleanOp;
+    api.downloadSelected = () => {
+      // A picked group stands in for its members; the group node itself has no file.
+      const ids = new Set(selectedIdsRef.current);
+      if (activeGroupId) ids.add(activeGroupId);
+      const all = nodesRef.current;
+      const targets = new Set<string>();
+      ids.forEach((id) => {
+        const n = all.find((x) => x.id === id);
+        if (!n) return;
+        if (n.node_type === "group") (Array.isArray(n.metadata?.members) ? n.metadata.members as string[] : []).forEach((m) => targets.add(m));
+        else targets.add(id);
+      });
+      const picked = all.filter((n) => targets.has(n.id));
+      // A vector group is one drawing: ship it as a single SVG.
+      if (picked.length > 1 && picked.every((n) => n.node_type === "svg")) {
+        void Promise.all(picked.map(async (n) => {
+          let pd = (n.metadata?.pathData as PathData | undefined) ?? (n.metadata?.svg_content ? extractPathDataFromSvg(n.metadata.svg_content as string, n.width, n.height) : null);
+          if (!pd && n.src) pd = extractPathDataFromSvg(await fetch(n.src).then((r) => r.text()).catch(() => ""), n.width, n.height);
+          return pd ? { x: n.x, y: n.y, width: n.width, height: n.height, pathData: pd } : null;
+        })).then((items) => {
+          const ok = items.filter((i): i is NonNullable<typeof i> => !!i);
+          if (ok.length === 0) return;
+          const merged = mergeSvgNodes(ok);
+          void downloadNode({ ...picked[0], node_type: "svg", label: "vector group", metadata: { pathData: merged } });
+        });
+        return;
+      }
+      picked.forEach((n) => void downloadNode(n));
+    };
     api.addNode = (x: number, y: number, props: Partial<CanvasNode>) => {
       return addNodeAtPosition(x, y, props);
     };
     onCanvasApi?.(api);
-  }, [onCanvasApi, alignNodes, distributeNodes, applyLayout, svgPathEdit.updatePointPosition, svgPathEdit.togglePointSmooth, svgPathEdit.updatePointRadius, pushUndo, handleSvgBooleanOp, addNodeAtPosition]);
+  }, [onCanvasApi, alignNodes, distributeNodes, applyLayout, svgPathEdit.updatePointPosition, svgPathEdit.togglePointSmooth, svgPathEdit.updatePointRadius, pushUndo, handleSvgBooleanOp, addNodeAtPosition, downloadNode, activeGroupId]);
 
   const shapeApiResult = useShapeApi({
     viewportRef,
@@ -2591,6 +2677,7 @@ export function FreeformCanvas({
     addNodeAtPosition,
     onSelectMultiple,
     onDeselectAll,
+    suspended: !!svgPathEdit.editingNodeId,
   });
 
   const { dragOver, dragPlaceholder, handleDragOver, handleDragLeave, handleDrop } = useCanvasDrop({
@@ -2707,7 +2794,7 @@ export function FreeformCanvas({
         setInsideGroupId(null);
         if (onDeselectAllRef.current) onDeselectAllRef.current();
         if (groupId && clickedNode?.node_type !== "group") {
-          setActiveGroupId(groupId);
+          selectGroup(groupId);
         } else {
           setActiveGroupId(null);
           if (clickedNode) emitNodeMetaRef.current(nodeId, clickedNode);
@@ -2719,7 +2806,13 @@ export function FreeformCanvas({
 
     if (groupId && !insideGroupId && clickedNode?.node_type !== "group") {
       if (onDeselectAllRef.current) onDeselectAllRef.current();
-      setActiveGroupId(groupId);
+      selectGroup(groupId);
+      // Second click on a member of the active group selects the member itself.
+      if (groupId === activeGroupId && clickedNode) {
+        setInsideGroupId(groupId);
+        emitNodeMetaRef.current(nodeId, clickedNode);
+        onSelectImageRef.current(nodeId, "exclusive");
+      }
       return;
     }
 
@@ -2730,7 +2823,7 @@ export function FreeformCanvas({
       setActiveGroupId(null);
       setInsideGroupId(null);
     }
-  }, [memberToGroupMap, insideGroupId]);
+  }, [memberToGroupMap, insideGroupId, activeGroupId, selectGroup]);
 
   const handleViewportDoubleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -3290,7 +3383,7 @@ export function FreeformCanvas({
               inFlightTextNodeId={inFlightTextNodeId}
               inFlightTextBounds={inFlightTextBounds}
               onStartTextEdit={handleStartTextEdit}
-              onDoubleClickSvg={svgPathEdit.enterEditMode}
+              onDoubleClickSvg={enterSvgEdit}
               isEditingPath={svgPathEdit.isEditingPath(node.id)}
               onToggleLock={toggleLockNode}
               onRequestCinemaExport={onRequestCinemaExport}
@@ -3381,7 +3474,7 @@ export function FreeformCanvas({
               } as React.CSSProperties}
               onPointerDown={(e) => handleNodePointerDown(e, node.id)}
               onClick={(e) => { e.stopPropagation(); handleNodeClick(e, node.id); }}
-              onDoubleClick={(e) => { e.stopPropagation(); if (node.node_type === "text") handleStartTextEdit(node.id); if (node.node_type === "svg") svgPathEdit.enterEditMode(node.id); }}
+              onDoubleClick={(e) => { e.stopPropagation(); if (node.node_type === "text") handleStartTextEdit(node.id); if (node.node_type === "svg") enterSvgEdit(node.id); }}
               onContextMenu={(e) => { e.stopPropagation(); handleContextMenu(e, node.id); }}
             >
               {svgPathEdit.isEditingPath(node.id) ? (
@@ -3393,6 +3486,7 @@ export function FreeformCanvas({
                   activeGroups={svgPathEdit.activeGroups}
                   enteredGroup={svgPathEdit.enteredGroup}
                   zoom={zoom}
+                  rotation={node.rotation || 0}
                   isDragging={svgPathEdit.isDragging}
                   editTool={svgPathEdit.editTool}
                   canJoin={svgPathEdit.canJoin}
@@ -3402,6 +3496,22 @@ export function FreeformCanvas({
                   onJoinAction={svgPathEdit.handleJoinSelected}
                   onSimplifyAction={svgPathEdit.handleSimplify}
                   onExit={svgPathEdit.exitEditMode}
+                  onDeleteBlobs={svgPathEdit.handleDeleteActiveGroups}
+                  onDownloadBlobs={() => {
+                    const pd = svgPathEdit.getPathData(node.id);
+                    if (!pd) return;
+                    void downloadNode({ ...node, metadata: { pathData: extractGroups(pd, svgPathEdit.activeGroups).pathData } });
+                  }}
+                  onSaveBlobs={async () => {
+                    const pd = svgPathEdit.getPathData(node.id);
+                    if (!pd) return;
+                    const svg = pathDataToSvgString(extractGroups(pd, svgPathEdit.activeGroups).pathData);
+                    const form = new FormData();
+                    form.append("file", new Blob([svg], { type: "image/svg+xml" }), "blob.svg");
+                    const res = await fetch("/api/upload-to-fal", { method: "POST", credentials: "include", body: form }).then((r) => r.json()).catch(() => null);
+                    if (!res?.url) return;
+                    void handleToolbarSave({ ...node, id: `${node.id}-blob-${Date.now()}`, src: res.url, metadata: {} });
+                  }}
                   onSelectGroup={svgPathEdit.setActiveGroup}
                   onGroupMovePointerDown={svgPathEdit.handleGroupMovePointerDown}
                   onGroupScalePointerDown={svgPathEdit.handleGroupScalePointerDown}
@@ -3450,11 +3560,58 @@ export function FreeformCanvas({
               top: selectionBox.bounds.minY,
               width: selectionBox.bounds.width,
               height: selectionBox.bounds.height,
+              transform: selectionBox.rotation ? `rotate(${selectionBox.rotation}deg)` : undefined,
+              transformOrigin: "0 0",
               pointerEvents: "none",
               "--zoom": settledZoom,
             } as React.CSSProperties}
           >
-            {(["nw", "ne", "sw", "se", "n", "s", "w", "e"] as const).map((h) => (
+            {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+              <div
+                key={`rot-${corner}`}
+                className={`freeform-canvas__rotate-corner freeform-canvas__rotate-corner--${corner}`}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const b = selectionBox.bounds;
+                  const br = (selectionBox.rotation || 0) * Math.PI / 180;
+                  const hw = b.width / 2, hh = b.height / 2;
+                  const cx = b.minX + hw * Math.cos(br) - hh * Math.sin(br);
+                  const cy = b.minY + hw * Math.sin(br) + hh * Math.cos(br);
+                  const p = screenToCanvas(e.clientX, e.clientY);
+                  const orig = new Map<string, { x: number; y: number; width: number; height: number; rotation: number }>();
+                  nodesRef.current.forEach((n) => {
+                    if (selectionBox.memberIds.includes(n.id)) orig.set(n.id, { x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation || 0 });
+                  });
+                  groupRotateState.current = { cx, cy, startAngle: Math.atan2(p.y - cy, p.x - cx), orig };
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  const st = groupRotateState.current;
+                  if (!st) return;
+                  const p = screenToCanvas(e.clientX, e.clientY);
+                  let d = Math.atan2(p.y - st.cy, p.x - st.cx) - st.startAngle;
+                  if (e.shiftKey) d = Math.round(d / (Math.PI / 12)) * (Math.PI / 12);
+                  const cos = Math.cos(d), sin = Math.sin(d);
+                  // ponytail: the box stays axis-aligned around the rotated members; a rotated bbox needs the group node to own a rotation.
+                  setNodes((prev) => prev.map((n) => {
+                    const o = st.orig.get(n.id);
+                    if (!o) return n;
+                    const mx = o.x + o.width / 2 - st.cx, my = o.y + o.height / 2 - st.cy;
+                    return {
+                      ...n,
+                      x: st.cx + mx * cos - my * sin - o.width / 2,
+                      y: st.cy + mx * sin + my * cos - o.height / 2,
+                      rotation: o.rotation + d * (180 / Math.PI),
+                    };
+                  }));
+                }}
+                onPointerUp={finalizeGroupRotate}
+                onPointerCancel={finalizeGroupRotate}
+                onLostPointerCapture={finalizeGroupRotate}
+              />
+            ))}
+            {(["nw", "ne", "sw", "se"] as const).map((h) => (
               <div
                 key={h}
                 className={`freeform-canvas__group-handle freeform-canvas__group-handle--${h}`}
@@ -4107,6 +4264,72 @@ export function FreeformCanvas({
                   </button>
                 );
               })()}
+              {selectedIds.size >= 2 && !isGroupNode && (
+                <button
+                  type="button"
+                  className="freeform-canvas__context-item"
+                  onClick={groupSelected}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 9.4l-9-5.19" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
+                  Group
+                </button>
+              )}
+              {(isGroupNode || contextNode?.node_type === "svg") && (
+                <button
+                  type="button"
+                  className="freeform-canvas__context-item"
+                  onClick={() => {
+                    if (isGroupNode) {
+                      const gid = contextGroupId || contextMenu.nodeId!;
+                      const members = (nodesRef.current.find((n) => n.id === gid)?.metadata?.members as string[] | undefined) ?? [];
+                      ungroupNode(gid);
+                      setActiveGroupId(null);
+                      // The app was holding the group id; hand it the freed members instead.
+                      if (onSelectMultipleRef.current) onSelectMultipleRef.current(members, "exclusive"); else onDeselectAllRef.current?.();
+                      return;
+                    }
+                    const node = contextNode!;
+                    setContextMenu(null);
+                    const run = (pd: PathData | null) => {
+                    const pieces = pd ? splitByGroups(pd) : [];
+                    if (!pd || pieces.length < 2) return;
+                    // ponytail: pieces ignore node rotation; rotate after ungrouping if it matters.
+                    // Scale from the data in hand: nodesRef may not carry pathData yet if ensurePathData just parsed it.
+                    let vbW = pd.viewBox?.width ?? 0, vbH = pd.viewBox?.height ?? 0;
+                    if (!pd.viewBox) pd.subPaths.forEach((sp) => sp.anchors.forEach((a) => [a, a.handleIn, a.handleOut].forEach((q) => { if (q) { vbW = Math.max(vbW, q.x); vbH = Math.max(vbH, q.y); } })));
+                    const sx = (vbW || node.width) / node.width, sy = (vbH || node.height) / node.height;
+                    pieces.forEach((p, i) => addNodeAtPosition(node.x + p.x / sx, node.y + p.y / sy, {
+                      node_type: "svg",
+                      width: p.width / sx,
+                      height: p.height / sy,
+                      label: node.label ? `${node.label} ${i + 1}` : "",
+                      // ponytail: data-URL src so library save has a file_url; upload to fal if the library needs a real URL.
+                      src: `data:image/svg+xml;utf8,${encodeURIComponent(pathDataToSvgString(p.pathData))}`,
+                      metadata: { pathData: p.pathData },
+                    }));
+                    setNodes((prev) => prev.filter((n) => n.id !== node.id));
+                    if (canvasId) enqueueDirty({ type: "delete", canvasId, nodeId: node.id, committed: true });
+                    pushUndo({
+                      type: "delete",
+                      undo: () => { setNodes((prev) => [...prev, node]); if (canvasId) enqueueDirty({ type: "create", localId: node.id, clientId: node.id, canvasId, node: { ...node }, committed: true }); },
+                      redo: () => { setNodes((prev) => prev.filter((n) => n.id !== node.id)); if (canvasId) enqueueDirty({ type: "delete", canvasId, nodeId: node.id, committed: true }); },
+                    });
+                    };
+                    const pd = svgPathEdit.ensurePathData(node.id);
+                    if (pd || !node.src) { run(pd); return; }
+                    // Generated vectors can land with only a URL; pull the markup like the editor does.
+                    void fetch(node.src).then((r) => r.text()).then((text) => {
+                      const parsed = extractPathDataFromSvg(text, node.width, node.height);
+                      if (!parsed) return;
+                      setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, metadata: { ...n.metadata, svg_content: text, pathData: parsed } } : n)));
+                      run(parsed);
+                    }).catch(() => {});
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M12 22v-6" /><path d="M12 8V2" /><path d="M20.7 7L12 12 3.3 7" /><path d="M3.3 17L12 12l8.7 5" /></svg>
+                  Ungroup
+                </button>
+              )}
               <div className="freeform-canvas__context-divider" />
               <button
                 type="button"
@@ -4139,30 +4362,8 @@ export function FreeformCanvas({
                   Send to Bottom
                 </button>
               </div>
-              {selectedIds.size >= 2 && !isGroupNode && (
-                <button
-                  type="button"
-                  className="freeform-canvas__context-item"
-                  onClick={groupSelected}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 9.4l-9-5.19" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
-                  Group
-                </button>
-              )}
               {isGroupNode && (
                 <>
-                  <button
-                    type="button"
-                    className="freeform-canvas__context-item"
-                    onClick={() => {
-                      const gid = contextGroupId || contextMenu.nodeId!;
-                      ungroupNode(gid);
-                      setActiveGroupId(null);
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M12 22v-6" /><path d="M12 8V2" /><path d="M20.7 7L12 12 3.3 7" /><path d="M3.3 17L12 12l8.7 5" /></svg>
-                    Ungroup
-                  </button>
                   <div className="freeform-canvas__context-divider" />
                   <button
                     type="button"
