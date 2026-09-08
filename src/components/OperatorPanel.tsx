@@ -430,7 +430,6 @@ function botTint(seed: string): string {
   return `hsl(${h} 70% 62%)`;
 }
 
-const MODE_STORAGE_KEY = "matteblack.operator.mode";
 const BOT_STORAGE_KEY = "matteblack.operator.botId";
 
 export function OperatorPanel({
@@ -509,9 +508,8 @@ export function OperatorPanel({
   // the one agent memory; a bot is a named collaborator with its own durable
   // memory and budget. Both use the same thread store — a bot's threads are
   // keyed by its id exactly as a project's are keyed by the project's.
-  const [mode, setMode] = useState<PanelMode>(() => {
-    try { return localStorage.getItem(MODE_STORAGE_KEY) === "sessions" ? "sessions" : "bots"; } catch { return "bots"; }
-  });
+  // Bots only; "sessions" remains in the type so old project-scoped threads still load.
+  const mode = "bots" as PanelMode;
   const [bots, setBots] = useState<Bot[]>([]);
   const [botId, setBotId] = useState<string>(() => {
     try { return localStorage.getItem(BOT_STORAGE_KEY) || ""; } catch { return ""; }
@@ -1038,7 +1036,6 @@ export function OperatorPanel({
     } catch { /* the panel still works in Sessions mode */ }
   }, []);
   useEffect(() => { void loadBots(); }, [loadBots]);
-  useEffect(() => { try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* ignore */ } }, [mode]);
   useEffect(() => { try { localStorage.setItem(BOT_STORAGE_KEY, botId); } catch { /* ignore */ } }, [botId]);
 
   const createBot = useCallback(async () => {
@@ -1239,26 +1236,7 @@ export function OperatorPanel({
               </svg>
               <span className="operator-crumb__name">{activeBot.name}</span>
             </button>
-          ) : (
-            <div className="operator-seg" role="group" aria-label="Agent mode">
-              <button
-                type="button"
-                className="operator-seg__btn"
-                aria-pressed={mode === "sessions"}
-                onClick={() => { setMode("sessions"); setHistoryOpen(false); }}
-              >
-                Sessions
-              </button>
-              <button
-                type="button"
-                className="operator-seg__btn"
-                aria-pressed={mode === "bots"}
-                onClick={() => { setMode("bots"); setBotId(""); setHistoryOpen(false); }}
-              >
-                Bots
-              </button>
-            </div>
-          ))}
+          ) : null)}
         </div>
         <div className="agent-panel__header-actions">
           <button
