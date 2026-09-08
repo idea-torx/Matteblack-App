@@ -3,7 +3,7 @@ import "./AgentPanel.css";
 import type { ReferenceImage, CanvasNode } from "../types/canvas";
 import { renderMarkdown } from "../utils/markdown";
 import { QuantumThinking } from "./QuantumThinking";
-import { ThinkingPill } from "./ThinkingPill";
+import { ThinkingGrid, ThinkingPill } from "./ThinkingPill";
 import { StreamingText } from "./StreamingText";
 import { useGenerationSound } from "../hooks/useGenerationSound";
 import { findEmptySlots, layout, placeholderSize } from "../utils/canvasPlacement";
@@ -3032,7 +3032,7 @@ export const AgentPanel = forwardRef<AgentPanelHandle, AgentPanelProps>(function
                               disabled={!resolveLiveNodeId(g)}
                             >
                               {inFlight ? (
-                                <QuantumThinking size={14} ariaLabel="Generating" />
+                                <ThinkingGrid className="agent-gen__grid" />
                               ) : (
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <rect x="3" y="3" width="18" height="18" rx="2" />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
 import { CodexMark } from "./CodexMark";
-import { ThinkingPill } from "./ThinkingPill";
+import { ThinkingGrid, ThinkingPill } from "./ThinkingPill";
 import { humanizeTool, stepLabel, type Step } from "./thinkingLabel";
 import { StreamingText } from "./StreamingText";
 import { renderMarkdown } from "../utils/markdown";
@@ -1584,7 +1584,7 @@ export function OperatorPanel({
                         <div key={g.id} className={`agent-gen agent-gen--on-canvas agent-gen--${g.status}`}>
                           <div className={`agent-gen__placed-chip ${g.status === "failed" ? "agent-gen__placed-chip--failed" : ""}`}>
                             {g.status === "running" ? (
-                              <QuantumThinking size={14} ariaLabel="Generating" />
+                              <ThinkingGrid className="agent-gen__grid" />
                             ) : (
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="1.5" /></svg>
                             )}

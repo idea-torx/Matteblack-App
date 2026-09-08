@@ -2945,3 +2945,7 @@
 .agent-panel__alive { color: #007AFF; }
 [data-scheme="light"] .agent-panel__alive { color: var(--text-primary); }
 [data-theme="fal"] .agent-panel__alive { color: var(--accent-bright); }
+
+/* "Generating on canvas" rows: the 3x3 grid, in grey rather than the palette. */
+.agent-gen__grid { --tp-cell: 3px; }
+.agent-gen__grid .thinking-pill__cell { background: currentColor; }
