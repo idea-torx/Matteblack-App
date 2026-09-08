@@ -430,7 +430,6 @@ function botTint(seed: string): string {
   return `hsl(${h} 70% 62%)`;
 }
 
-const BOT_STORAGE_KEY = "matteblack.operator.botId";
 
 export function OperatorPanel({
   onClose,
@@ -511,9 +510,7 @@ export function OperatorPanel({
   // Bots only; "sessions" remains in the type so old project-scoped threads still load.
   const mode = "bots" as PanelMode;
   const [bots, setBots] = useState<Bot[]>([]);
-  const [botId, setBotId] = useState<string>(() => {
-    try { return localStorage.getItem(BOT_STORAGE_KEY) || ""; } catch { return ""; }
-  });
+  const [botId, setBotId] = useState<string>(""); // every load opens on the bot list
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [newBotName, setNewBotName] = useState("");
   const [newBotDesc, setNewBotDesc] = useState("");
@@ -1036,7 +1033,6 @@ export function OperatorPanel({
     } catch { /* the panel still works in Sessions mode */ }
   }, []);
   useEffect(() => { void loadBots(); }, [loadBots]);
-  useEffect(() => { try { localStorage.setItem(BOT_STORAGE_KEY, botId); } catch { /* ignore */ } }, [botId]);
 
   const createBot = useCallback(async () => {
     const name = newBotName.trim();

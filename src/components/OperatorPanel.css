@@ -732,7 +732,9 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  background: inherit; /* same paint as the header above it, whatever the scheme */
+  /* The panel's ::before backdrop (z:-1) paints over the panel's own
+     background, so the visible panel tone is the backdrop — match it. */
+  background: var(--agent-backdrop);
   border-radius: 0 0 4px 4px;
 }
 
