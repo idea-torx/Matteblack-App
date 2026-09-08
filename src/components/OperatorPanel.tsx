@@ -1406,7 +1406,7 @@ export function OperatorPanel({
       {historyOpen && (
         <div className="operator-page">
           <div className="operator-page__head">
-            <span className="operator-page__title">{activeBot ? `${activeBot.name} sessions` : "History"}</span>
+            <span className="operator-page__title">{activeBot ? "Sessions" : "History"}</span>
             <div className="operator-seg operator-seg--sm" role="group" aria-label="History filter">
               <button type="button" className="operator-seg__btn" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Active</button>
               <button type="button" className="operator-seg__btn" aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Archived</button>
