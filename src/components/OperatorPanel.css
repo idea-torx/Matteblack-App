@@ -820,6 +820,8 @@
 }
 .operator-botrow__meta { font-size: 11.5px; color: var(--text-muted, #6b7280); }
 
+.operator-hist__newsession { margin: 0 10px 12px; }
+
 /* History — threads under the project they belong to. */
 .operator-hist__group { margin-bottom: 14px; }
 

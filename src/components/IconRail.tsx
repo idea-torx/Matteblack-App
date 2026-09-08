@@ -65,7 +65,6 @@ export function IconRail({
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 1.5 L13.6 9.2 L21.5 12 L13.6 14.8 L12 22.5 L10.4 14.8 L2.5 12 L10.4 9.2 Z" />
           </svg>
-          {agentBusy && <span className="icon-rail-dot" aria-hidden="true" />}
         </button>
 
         <button

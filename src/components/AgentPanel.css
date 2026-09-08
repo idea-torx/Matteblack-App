@@ -705,6 +705,11 @@
   box-shadow: 0 4px 12px rgba(17, 24, 39, 0.06), 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 
+/* User text renders through markdown now: collapse the newline marked
+   renders after </p> and drop the last paragraph's bottom margin. */
+.agent-panel__msg--user .agent-panel__markdown { white-space: normal; }
+.agent-panel__msg--user .agent-panel__markdown > :last-child { margin-bottom: 0; }
+
 /* Welcome / placeholder assistant message that stands in for a real
  * reply when the conversation is empty. Visually identical to a regular
  * assistant bubble (bare text, left-aligned), but slides in on mount so
