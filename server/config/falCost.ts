@@ -177,7 +177,7 @@ export const FAL_COST_RULES: Record<string, Rule> = {
   // live unitPrice is useless for prediction and we use fal's published
   // quality x resolution matrix instead. Default quality is HIGH.
   "gpt-image-2-t2i": {
-    endpoint: "fal-ai/gpt-image-2",
+    endpoint: "openai/gpt-image-2.5/flare/text-to-image",
     unitPrice: 1,
     unit: "units",
     cost: (p) => {
@@ -197,7 +197,7 @@ export const FAL_COST_RULES: Record<string, Rule> = {
   },
   // Editing costs more than t2i because the input image is tokenised.
   "gpt-image-2-edit": {
-    endpoint: "fal-ai/gpt-image-2/edit",
+    endpoint: "openai/gpt-image-2.5/flare/edit",
     unitPrice: 1,
     unit: "units",
     cost: (p) => {

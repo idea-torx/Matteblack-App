@@ -812,8 +812,9 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
+  // ponytail: keys stay "gpt-image-2*" (chats, aliases, pricing rows key on them); the endpoint is 2.5 Flare.
   "gpt-image-2-t2i": {
-    falModelId: "fal-ai/gpt-image-2",
+    falModelId: "openai/gpt-image-2.5/flare/text-to-image",
     type: "image",
     buildInput(params) {
       const quality = (params.quality as string) || "high";
@@ -828,7 +829,7 @@ const MODEL_MAP: Record<string, ModelConfig> = {
     },
   },
   "gpt-image-2-edit": {
-    falModelId: "fal-ai/gpt-image-2/edit",
+    falModelId: "openai/gpt-image-2.5/flare/edit",
     type: "image",
     buildInput(params) {
       const quality = (params.quality as string) || "high";

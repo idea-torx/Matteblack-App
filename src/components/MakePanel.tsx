@@ -659,7 +659,7 @@ function ImageCards({
         </span>
         <span className="rpanel-model-selector-info">
           <span className="rpanel-model-selector-name">
-            {customModel ? customModel.title : model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
+            {customModel ? customModel.title : model === "gpt-image-2" ? "GPT Image 2.5" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
           </span>
           <span className="rpanel-model-selector-provider">
             {customModel ? `${customModel.falModelId} · custom` : model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}

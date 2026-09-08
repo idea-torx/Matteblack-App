@@ -541,7 +541,7 @@ function prettyAgentModelLabel(model: string | undefined | null): string {
   if (!model) return "";
   const m = model.toLowerCase();
   if (m.startsWith("nano-banana-2")) return "Nano Banana 2";
-  if (m.startsWith("gpt-image-2")) return "GPT Image 2";
+  if (m.startsWith("gpt-image-2")) return "GPT Image 2.5";
   if (m.startsWith("seedream-5")) return "Seedream 5";
   if (m.startsWith("seedream")) return "Seedream";
   if (m.startsWith("gemini-omni")) return "Gemini Omni Flash";

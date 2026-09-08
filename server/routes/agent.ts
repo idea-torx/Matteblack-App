@@ -1539,7 +1539,7 @@ type ModelEntry = {
 const MODEL_WHITELIST: Record<string, ModelEntry> = {
   // Image — premium pair: nano-banana-2 (Make-panel default) and gpt-image-2.
   "nano-banana-2": { kind: "image", tier: "premium", label: "Nano Banana 2", t2: "nano-banana-2-t2i", i2: "nano-banana-2" },
-  "gpt-image-2": { kind: "image", tier: "premium", label: "GPT Image 2", t2: "gpt-image-2-t2i", i2: "gpt-image-2-edit" },
+  "gpt-image-2": { kind: "image", tier: "premium", label: "GPT Image 2.5", t2: "gpt-image-2-t2i", i2: "gpt-image-2-edit" },
   "seedream": { kind: "image", tier: "quick", label: "Seedream", t2: "seedream-t2i", i2: "seedream-edit" },
   "seedream-5": { kind: "image", tier: "quick", label: "Seedream 5", t2: "seedream-5-t2i", i2: "seedream-5-edit" },
   // Video.
@@ -4089,7 +4089,7 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
           built = buildGenerateBody(parsed, referenceUrls, canvasId, workspaceId, seedanceAllowed);
           if (built) {
             const swapNotice =
-              `GPT Image 2 can't accept reference images wider than 3:1 ` +
+              `GPT Image 2.5 can't accept reference images wider than 3:1 ` +
               `(yours is ${offender.width}×${offender.height}). ` +
               `Generated with Nano Banana 2 instead.`;
             built.notice = built.notice ? `${built.notice} ${swapNotice}` : swapNotice;
