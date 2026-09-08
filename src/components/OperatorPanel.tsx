@@ -578,6 +578,12 @@ export function OperatorPanel({
     (async () => { for (let i = 0; i < 20 && alive; i++) { if (await refreshStatus()) return; await new Promise((r) => setTimeout(r, 500)); } })();
     return () => { alive = false; };
   }, [refreshStatus]);
+  // Settings switched the provider: pick up its runner + model list now, not after the next send.
+  useEffect(() => {
+    const h = () => { void refreshStatus(); };
+    window.addEventListener("mb-operator-runner", h);
+    return () => window.removeEventListener("mb-operator-runner", h);
+  }, [refreshStatus]);
 
   useEffect(() => {
     const el = scrollRef.current;

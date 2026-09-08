@@ -1650,11 +1650,11 @@ function ProvidersSection() {
 
   const choose = (id: string) => {
     setActive(id); // optimistic: the radio must not lag the click
-    load("/api/operator/runner", {
+    void load("/api/operator/runner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ runner: id }),
-    });
+    }).then(() => window.dispatchEvent(new Event("mb-operator-runner"))); // the open agent panel re-reads its models
   };
 
   return (
