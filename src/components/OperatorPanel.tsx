@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { QuantumThinking } from "./QuantumThinking";
 import { ClaudePixel } from "./ClaudePixel";
 import { CodexMark } from "./CodexMark";
-import { ThinkingPill } from "./ThinkingPill";
+import { ThinkingGrid, ThinkingPill } from "./ThinkingPill";
 import { humanizeTool, stepLabel, type Step } from "./thinkingLabel";
 import { StreamingText } from "./StreamingText";
 import { renderMarkdown } from "../utils/markdown";
@@ -430,8 +430,6 @@ function botTint(seed: string): string {
   return `hsl(${h} 70% 62%)`;
 }
 
-const MODE_STORAGE_KEY = "matteblack.operator.mode";
-const BOT_STORAGE_KEY = "matteblack.operator.botId";
 
 export function OperatorPanel({
   onClose,
@@ -509,13 +507,10 @@ export function OperatorPanel({
   // the one agent memory; a bot is a named collaborator with its own durable
   // memory and budget. Both use the same thread store — a bot's threads are
   // keyed by its id exactly as a project's are keyed by the project's.
-  const [mode, setMode] = useState<PanelMode>(() => {
-    try { return localStorage.getItem(MODE_STORAGE_KEY) === "bots" ? "bots" : "sessions"; } catch { return "sessions"; }
-  });
+  // Bots only; "sessions" remains in the type so old project-scoped threads still load.
+  const mode = "bots" as PanelMode;
   const [bots, setBots] = useState<Bot[]>([]);
-  const [botId, setBotId] = useState<string>(() => {
-    try { return localStorage.getItem(BOT_STORAGE_KEY) || ""; } catch { return ""; }
-  });
+  const [botId, setBotId] = useState<string>(""); // every load opens on the bot list
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [newBotName, setNewBotName] = useState("");
   const [newBotDesc, setNewBotDesc] = useState("");
@@ -582,6 +577,12 @@ export function OperatorPanel({
     let alive = true;
     (async () => { for (let i = 0; i < 20 && alive; i++) { if (await refreshStatus()) return; await new Promise((r) => setTimeout(r, 500)); } })();
     return () => { alive = false; };
+  }, [refreshStatus]);
+  // Settings switched the provider: pick up its runner + model list now, not after the next send.
+  useEffect(() => {
+    const h = () => { void refreshStatus(); };
+    window.addEventListener("mb-operator-runner", h);
+    return () => window.removeEventListener("mb-operator-runner", h);
   }, [refreshStatus]);
 
   useEffect(() => {
@@ -995,6 +996,8 @@ export function OperatorPanel({
   // null (not undefined) so the very first run always reconciles: the stored
   // activeId can belong to a project other than the one open at mount.
   const prevPidRef = useRef<string | undefined | null>(null);
+  // Set by the bot list: open the bot's sessions page once the scope lands.
+  const openHistoryNextRef = useRef(false);
   useEffect(() => {
     let store = chats;
     // Pre-scoping threads belong to a project, never to a bot: adopt them only
@@ -1016,7 +1019,8 @@ export function OperatorPanel({
     chatPidRef.current = pid;
     sessionIdRef.current = undefined;
     setMessages([]);
-    setHistoryOpen(false);
+    setHistoryOpen(openHistoryNextRef.current);
+    openHistoryNextRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid]);
 
@@ -1035,8 +1039,6 @@ export function OperatorPanel({
     } catch { /* the panel still works in Sessions mode */ }
   }, []);
   useEffect(() => { void loadBots(); }, [loadBots]);
-  useEffect(() => { try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* ignore */ } }, [mode]);
-  useEffect(() => { try { localStorage.setItem(BOT_STORAGE_KEY, botId); } catch { /* ignore */ } }, [botId]);
 
   const createBot = useCallback(async () => {
     const name = newBotName.trim();
@@ -1128,6 +1130,7 @@ export function OperatorPanel({
     for (const sn of chats.sessions) {
       if (!!sn.archived !== showArchived) continue;
       if (sn.messages.length === 0) continue;
+      if (activeBot && sn.projectId !== pid) continue; // a bot's page shows only its sessions
       const key = sn.projectId ?? "";
       let g = by.get(key);
       if (!g) by.set(key, (g = { key, label: label(sn.projectId), items: [] }));
@@ -1140,7 +1143,7 @@ export function OperatorPanel({
       (a.key === (pid ?? "") ? -1 : 0) - (b.key === (pid ?? "") ? -1 : 0)
       || b.items[0].updatedAt - a.items[0].updatedAt);
     return groups;
-  }, [chats.sessions, showArchived, bots, projects, pid]);
+  }, [chats.sessions, showArchived, bots, projects, pid, activeBot]);
 
   // Own tooltip rather than the native title attribute: title waits about a
   // second before it shows and is easy to miss on an 11px square.
@@ -1235,26 +1238,7 @@ export function OperatorPanel({
               </svg>
               <span className="operator-crumb__name">{activeBot.name}</span>
             </button>
-          ) : (
-            <div className="operator-seg" role="group" aria-label="Agent mode">
-              <button
-                type="button"
-                className="operator-seg__btn"
-                aria-pressed={mode === "sessions"}
-                onClick={() => { setMode("sessions"); setHistoryOpen(false); }}
-              >
-                Sessions
-              </button>
-              <button
-                type="button"
-                className="operator-seg__btn"
-                aria-pressed={mode === "bots"}
-                onClick={() => { setMode("bots"); setBotId(""); setHistoryOpen(false); }}
-              >
-                Bots
-              </button>
-            </div>
-          ))}
+          ) : null)}
         </div>
         <div className="agent-panel__header-actions">
           <button
@@ -1368,7 +1352,7 @@ export function OperatorPanel({
               const threads = chats.sessions.filter((x) => x.projectId === `bot:${b.id}` && !x.archived);
               return (
                 <div key={b.id} className="operator-botrow">
-                  <button type="button" className="operator-botrow__open" onClick={() => setBotId(b.id)}>
+                  <button type="button" className="operator-botrow__open" onClick={() => { openHistoryNextRef.current = true; setBotId(b.id); }}>
                     <span className="operator-bot-face" style={{ background: botTint(b.icon || b.id) }} aria-hidden="true">
                       {b.icon || "🤖"}
                     </span>
@@ -1402,7 +1386,7 @@ export function OperatorPanel({
       {historyOpen && (
         <div className="operator-page">
           <div className="operator-page__head">
-            <span className="operator-page__title">History</span>
+            <span className="operator-page__title">{activeBot ? "Sessions" : "History"}</span>
             <div className="operator-seg operator-seg--sm" role="group" aria-label="History filter">
               <button type="button" className="operator-seg__btn" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Active</button>
               <button type="button" className="operator-seg__btn" aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Archived</button>
@@ -1414,6 +1398,9 @@ export function OperatorPanel({
             </button>
           </div>
           <div className="operator-page__body">
+            {activeBot && (
+              <button type="button" className="operator-btn operator-btn--primary operator-hist__newsession" onClick={() => { if (messages.length > 0) newChat(); setHistoryOpen(false); }}>New session</button>
+            )}
             {historyGroups.length === 0 ? (
               <p className="operator-page__empty">{showArchived ? "Nothing archived yet." : "No conversations yet."}</p>
             ) : historyGroups.map((g) => (
@@ -1597,7 +1584,7 @@ export function OperatorPanel({
                         <div key={g.id} className={`agent-gen agent-gen--on-canvas agent-gen--${g.status}`}>
                           <div className={`agent-gen__placed-chip ${g.status === "failed" ? "agent-gen__placed-chip--failed" : ""}`}>
                             {g.status === "running" ? (
-                              <QuantumThinking size={14} ariaLabel="Generating" />
+                              <ThinkingGrid className="agent-gen__grid" />
                             ) : (
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="1.5" /></svg>
                             )}

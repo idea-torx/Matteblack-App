@@ -922,7 +922,7 @@ function PlanCard({ plan, isActive, onSelect, loading, activePlanTag }: { plan: 
 
       <div className="sub2-plan__gens">
         <span className="sub2-thin sub2-plan__gens-num">~{generations.toLocaleString()}</span>
-        <span className="sub2-plan__gens-label">GPT Image 2 generations / month</span>
+        <span className="sub2-plan__gens-label">GPT Image 2.5 generations / month</span>
       </div>
 
       <div className="sub2-plan__stats">
@@ -1069,7 +1069,7 @@ function BuyCreditsCard() {
             <span className="sub2-thin sub2-onetime__receive-num">{credits.toLocaleString()}</span>
             <span className="sub2-onetime__receive-unit"> credits</span>
           </span>
-          <span className="sub2-onetime__custom-hint">≈ {equivGens.toLocaleString()} GPT Image 2 generations</span>
+          <span className="sub2-onetime__custom-hint">≈ {equivGens.toLocaleString()} GPT Image 2.5 generations</span>
         </div>
       </div>
 
@@ -1650,11 +1650,11 @@ function ProvidersSection() {
 
   const choose = (id: string) => {
     setActive(id); // optimistic: the radio must not lag the click
-    load("/api/operator/runner", {
+    void load("/api/operator/runner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ runner: id }),
-    });
+    }).then(() => window.dispatchEvent(new Event("mb-operator-runner"))); // the open agent panel re-reads its models
   };
 
   return (

@@ -732,7 +732,9 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  background: var(--agent-surface, #f0f0f3);
+  /* The panel's ::before backdrop (z:-1) paints over the panel's own
+     background, so the visible panel tone is the backdrop — match it. */
+  background: var(--agent-backdrop);
   border-radius: 0 0 4px 4px;
 }
 
@@ -820,6 +822,8 @@
 }
 .operator-botrow__meta { font-size: 11.5px; color: var(--text-muted, #6b7280); }
 
+.operator-hist__newsession { margin: 0 10px 12px; }
+
 /* History — threads under the project they belong to. */
 .operator-hist__group { margin-bottom: 14px; }
 
@@ -861,7 +865,6 @@
 }
 .operator-hist__meta { font-size: 11.5px; color: var(--text-muted, #6b7280); }
 
-[data-scheme="dark"] .operator-page { background: var(--agent-surface, #1b1b1f); }
 [data-scheme="dark"] .operator-crumb:hover,
 [data-scheme="dark"] .operator-botrow:hover,
 [data-scheme="dark"] .operator-hist__row:hover { background: rgba(255, 255, 255, 0.07); }

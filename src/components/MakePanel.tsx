@@ -453,7 +453,7 @@ function ImageCards({
 }) {
   const [prompt, setPrompt] = useState("");
   const promptEditorRef = useRef<HTMLDivElement>(null);
-  const [model, setModel] = useState<"nano-banana-2" | "seedream-5" | "seedream" | "gpt-image-2">("nano-banana-2");
+  const [model, setModel] = useState<"nano-banana-2" | "seedream-5" | "seedream" | "gpt-image-2.5">("nano-banana-2");
   const [quality, setQuality] = useState<"low" | "medium" | "high">("high");
   const [resolution, setResolution] = useState<"1k" | "2k">("1k");
   const [imageNumber, setImageNumberRaw] = useState(1);
@@ -515,16 +515,16 @@ function ImageCards({
       ? (isTextToImage ? "seedream-5-t2i" : "seedream-5-edit")
     : model === "seedream"
       ? (isTextToImage ? "seedream-t2i" : "seedream-edit")
-      : model === "gpt-image-2"
-        ? (isTextToImage ? "gpt-image-2-t2i" : "gpt-image-2-edit")
+      : model === "gpt-image-2.5"
+        ? (isTextToImage ? "gpt-image-2.5-t2i" : "gpt-image-2.5-edit")
         : model;
   const effectiveModel = customModel ? customModel.key : builtinModel;
 
-  const qualityFeatures = model === "gpt-image-2" && quality !== "high"
+  const qualityFeatures = model === "gpt-image-2.5" && quality !== "high"
     ? [`quality_${quality}`]
     : [];
 
-  const effectivePricingResolution = model === "gpt-image-2"
+  const effectivePricingResolution = model === "gpt-image-2.5"
     ? (resolution === "2k" && aspectRatio !== "1:1" ? "2k" : "1k")
     : resolution;
 
@@ -552,7 +552,7 @@ function ImageCards({
         const m = g.match(/^url\(["']?(.*?)["']?\)$/);
         return m ? m[1] : g;
       }),
-      quality: model === "gpt-image-2" ? quality : undefined,
+      quality: model === "gpt-image-2.5" ? quality : undefined,
       params: customModel ? customValues : undefined,
     });
   }, [effectiveModel, prompt, effectivePricingResolution, imageNumber, aspectRatio, referenceImages, onGenerate, effectiveJobType, isTextToImage, showAxiomTag, axiomDescriptionText, model, quality, customModel, customValues]);
@@ -649,7 +649,7 @@ function ImageCards({
 
       <button type="button" className="rpanel-model-selector" onClick={() => toggle("model")}>
         <span className="rpanel-model-selector-icon">
-          {model === "gpt-image-2" ? (
+          {model === "gpt-image-2.5" ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /></svg>
           ) : model === "nano-banana-2" ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path d="M5.84 14.09A6.68 6.68 0 0 1 5.5 12c0-.72.12-1.43.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.93l3.66-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
@@ -659,10 +659,10 @@ function ImageCards({
         </span>
         <span className="rpanel-model-selector-info">
           <span className="rpanel-model-selector-name">
-            {customModel ? customModel.title : model === "gpt-image-2" ? "GPT Image 2" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
+            {customModel ? customModel.title : model === "gpt-image-2.5" ? "GPT Image 2.5" : model === "nano-banana-2" ? "Nano Banana 2" : model === "seedream-5" ? "Seedream 5" : "Seedream"}
           </span>
           <span className="rpanel-model-selector-provider">
-            {customModel ? `${customModel.falModelId} · custom` : model === "gpt-image-2" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}
+            {customModel ? `${customModel.falModelId} · custom` : model === "gpt-image-2.5" ? "OpenAI · text + image" : model === "nano-banana-2" ? "Google · quality" : model === "seedream-5" ? "ByteDance · newest" : "ByteDance · quick"}
           </span>
         </span>
         <svg className={`rpanel-card-chevron ${openSections.model ? "rpanel-card-chevron--open" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
@@ -670,9 +670,9 @@ function ImageCards({
       {openSections.model && (
         <div className="rpanel-card" style={{ marginTop: -2 }}>
           <div className="rpanel-list">
-            <button type="button" className={`rpanel-list-btn ${model === "gpt-image-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("gpt-image-2"); toggle("model"); }}>
+            <button type="button" className={`rpanel-list-btn ${model === "gpt-image-2.5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("gpt-image-2.5"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /></svg>
-              GPT Image 2
+              GPT Image 2.5
               <span className="rpanel-tag">Premium</span>
             </button>
             <button type="button" className={`rpanel-list-btn ${model === "nano-banana-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("nano-banana-2"); toggle("model"); }}>
@@ -735,7 +735,7 @@ function ImageCards({
       </div>
 
       <div className="rpanel-dual-row">
-        {model === "gpt-image-2" && (
+        {model === "gpt-image-2.5" && (
           <div className="rpanel-dual-col">
             <span className="rpanel-flat-label">Quality</span>
             <div className="rpanel-seg-group" data-count="3" data-active={["low", "medium", "high"].indexOf(quality)}>

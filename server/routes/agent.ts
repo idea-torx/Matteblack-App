@@ -1487,7 +1487,7 @@ async function isSeedanceAllowed(_userId: string): Promise<boolean> {
   return true;
 }
 
-// Quality is only meaningful for gpt-image-2*. Other models silently ignore
+// Quality is only meaningful for gpt-image-2.5*. Other models silently ignore
 // it via /api/generate, but we still tag the tray entry with the requested
 // quality for display in the chat caption. Premium defaults to "high" to
 // match the Make-panel default; quick clamps to "low" so cheap intent stays
@@ -1537,9 +1537,9 @@ type ModelEntry = {
   i2_multi?: string;
 };
 const MODEL_WHITELIST: Record<string, ModelEntry> = {
-  // Image — premium pair: nano-banana-2 (Make-panel default) and gpt-image-2.
+  // Image — premium pair: nano-banana-2 (Make-panel default) and gpt-image-2.5.
   "nano-banana-2": { kind: "image", tier: "premium", label: "Nano Banana 2", t2: "nano-banana-2-t2i", i2: "nano-banana-2" },
-  "gpt-image-2": { kind: "image", tier: "premium", label: "GPT Image 2", t2: "gpt-image-2-t2i", i2: "gpt-image-2-edit" },
+  "gpt-image-2.5": { kind: "image", tier: "premium", label: "GPT Image 2.5", t2: "gpt-image-2.5-t2i", i2: "gpt-image-2.5-edit" },
   "seedream": { kind: "image", tier: "quick", label: "Seedream", t2: "seedream-t2i", i2: "seedream-edit" },
   "seedream-5": { kind: "image", tier: "quick", label: "Seedream 5", t2: "seedream-5-t2i", i2: "seedream-5-edit" },
   // Video.
@@ -1605,9 +1605,13 @@ const MODEL_ALIASES: Record<string, string> = {
   "nano banana": "nano-banana-2",
   "nano banana 2": "nano-banana-2",
   "banana": "nano-banana-2",
-  "gpt image": "gpt-image-2",
-  "gpt-image": "gpt-image-2",
-  "gptimage": "gpt-image-2",
+  "gpt image": "gpt-image-2.5",
+  "gpt-image": "gpt-image-2.5",
+  "gptimage": "gpt-image-2.5",
+  "gpt-image-2": "gpt-image-2.5",
+  "gpt image 2": "gpt-image-2.5",
+  "gpt image 2.5": "gpt-image-2.5",
+  "gptimage2.5": "gpt-image-2.5",
   "kling": "kling-o3-pro",
   "kling pro": "kling-o3-pro",
   "kling video": "kling-o3-pro",
@@ -1654,7 +1658,7 @@ function resolveExplicitModel(name: string | undefined): ModelEntry | null {
   let key = name.toLowerCase().trim();
   // Apply natural-language alias mapping first ("nano banana 2" → "nano-banana-2").
   if (MODEL_ALIASES[key]) key = MODEL_ALIASES[key];
-  // Strip common suffixes so 'gpt-image-2-t2i' and 'gpt-image-2' both map.
+  // Strip common suffixes so 'gpt-image-2.5-t2i' and 'gpt-image-2.5' both map.
   key = key.replace(/-(t2i|t2v|i2i|i2v|r2v|flf2v|edit)$/i, "");
   if (MODEL_ALIASES[key]) key = MODEL_ALIASES[key];
   return MODEL_WHITELIST[key] ?? null;
@@ -1767,9 +1771,9 @@ const GENERATE_MEDIA_TOOL: Tool = {
       },
       model: {
         type: "string",
-        enum: ["nano-banana-2", "gpt-image-2", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max", "h3-turbo"],
+        enum: ["nano-banana-2", "gpt-image-2.5", "seedream", "seedream-5", "seedance-2.5", "seedance-2.0", "gemini-omni", "kling-o3-pro", "kling-o3-4k", "veo3.1-lite", "h3-max", "h3-turbo"],
         description:
-          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form), 'h3-turbo' (MiniMax H3 Max Turbo — same ladder, faster, text-to-video and image-to-video only, no reference-to-video and no long-form chaining).",
+          "Optional explicit model override. Use ONLY when the user names a model directly. Otherwise omit and use `tier`. Image: 'nano-banana-2' (premium default), 'gpt-image-2.5' (premium alt with quality control), 'seedream' (quick, v4.5), 'seedream-5' (Seedream 5 Lite — newer, cheaper, 2K-4K native). Video: 'seedance-2.5' (premium default — up to 30s in one shot, native audio, up to 30 reference images), 'seedance-2.0' (previous generation), 'kling-o3-pro' (quality), 'kling-o3-4k' (quality, 4K resolution), 'veo3.1-lite' (quick), 'gemini-omni' (Gemini Omni Flash 1.1 — text-to-video and image-to-video with native audio, 3-10s, up to 4K), 'h3-max' (MiniMax H3 Max — text-to-video, image-to-video, and reference-to-video; the only family that can chain clips into long-form), 'h3-turbo' (MiniMax H3 Max Turbo — same ladder, faster, text-to-video and image-to-video only, no reference-to-video and no long-form chaining).",
       },
       tier: {
         type: "string",
@@ -2061,7 +2065,7 @@ function buildSystemPromptStatic(
     "Content policy: do NOT pre-filter, refuse, or warn about generation requests on your own — including requests that mention real people, public figures, celebrities, brands, logos, copyrighted characters, mature themes, or anything else you might think is sensitive. The downstream image/video providers run their own moderation and will reject anything that violates their policies, returning a clear error the user will see. Your job is to forward the request faithfully by calling the tool. The only things you should refuse outright are requests that are illegal under US law (CSAM, credible threats, etc.). For everything else: call the tool, do not lecture the user, do not add disclaimers.",
     "",
     "Model selection (generate_media):",
-    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2', 'try seedream', 'seedream 5', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'gemini omni', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2, seedream, seedream-5, seedance-2.5, seedance-2.0, gemini-omni, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
+    "- If the user explicitly names a model (e.g. 'use Nano Banana 2', 'use gpt-image-2.5', 'try seedream', 'seedream 5', 'use seedance', 'kling video', 'kling o3 pro', 'kling 4k', 'veo', 'gemini omni', 'H3 Max', 'MiniMax H3'), set `model` to the canonical key exactly. Allowed: nano-banana-2, gpt-image-2.5, seedream, seedream-5, seedance-2.5, seedance-2.0, gemini-omni, kling-o3-pro, kling-o3-4k, veo3.1-lite, h3-max.",
     "- 'H3 Max Director' / 'director' is fal's LIVE session (minimax/h3-max/director, $0.08/s, 60s minimum) — it is not a queue model and generate_media cannot run it. get_skill 'director' for how to coach it, then tell the user to open Make → Video → model list → 'MiniMax H3 Max Director'; the saved take lands on the canvas as a normal video node.",
     "- 'H3 Max Director' / 'director' is fal's LIVE session (minimax/h3-max/director, $0.08/s, 60s minimum) — not a queue model, so generate_media cannot run it. Tell the user to open Make → Video → model list → 'MiniMax H3 Max Director' and direct it there; the saved take lands on the canvas as a normal video node.",
     "- NEVER substitute a different model than the one the user named. If the named model can't do what's asked (e.g. veo3.1-lite has no multi-reference mode), say so and ask — don't silently generate with another one.",
@@ -2673,7 +2677,7 @@ function snapDurationForModel(model: string, seconds: number): number {
   return best;
 }
 
-// gpt-image-2 rejects reference images whose long edge is more than 3x the
+// gpt-image-2.5 rejects reference images whose long edge is more than 3x the
 // short edge (a hard limit on OpenAI's side). Probe the refs and report the
 // first one that violates that rule so we can route to a model that doesn't
 // have this constraint instead of failing the whole generation downstream.
@@ -2826,7 +2830,7 @@ export function buildGenerateBody(
       params: { source: "agent" },
     };
     if (hasRef) body.referenceImageUrls = referenceUrls;
-    if (model.startsWith("gpt-image-2")) body.quality = tool.quality;
+    if (model.startsWith("gpt-image-2.5")) body.quality = tool.quality;
     return { type, body, resolvedModel: model };
   }
   // video — pick family first, then concrete variant from the user's mode.
@@ -4070,18 +4074,18 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
         }
       }
 
-      // Pre-flight: gpt-image-2 rejects reference images whose long edge is
+      // Pre-flight: gpt-image-2.5 rejects reference images whose long edge is
       // more than 3x the short edge (an OpenAI-side hard limit). When the
-      // resolved model is gpt-image-2-edit and any reference violates that
+      // resolved model is gpt-image-2.5-edit and any reference violates that
       // ratio, swap to nano-banana-2 (same premium tier, no AR limit) and
       // surface a notice so the chat can explain the swap. Checking the
       // *resolved* model — not just the explicit name — keeps this correct
-      // if gpt-image-2 ever becomes a tier-default in the future.
+      // if gpt-image-2.5 ever becomes a tier-default in the future.
       if (
         built &&
         parsed.kind === "image" &&
         referenceUrls.length > 0 &&
-        built.resolvedModel.startsWith("gpt-image-2")
+        built.resolvedModel.startsWith("gpt-image-2.5")
       ) {
         const offender = await findRefWithExtremeAspect(referenceUrls, aspectProbeCache);
         if (offender) {
@@ -4089,7 +4093,7 @@ router.post("/api/agent/chat", requireAuth, requireVerifiedEmail, async (req: Au
           built = buildGenerateBody(parsed, referenceUrls, canvasId, workspaceId, seedanceAllowed);
           if (built) {
             const swapNotice =
-              `GPT Image 2 can't accept reference images wider than 3:1 ` +
+              `GPT Image 2.5 can't accept reference images wider than 3:1 ` +
               `(yours is ${offender.width}×${offender.height}). ` +
               `Generated with Nano Banana 2 instead.`;
             built.notice = built.notice ? `${built.notice} ${swapNotice}` : swapNotice;
