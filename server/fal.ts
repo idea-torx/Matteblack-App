@@ -812,8 +812,8 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
-  // ponytail: keys stay "gpt-image-2*" (chats, aliases, pricing rows key on them); the endpoint is 2.5 Flare.
-  "gpt-image-2-t2i": {
+  // ponytail: keys stay "gpt-image-2.5*" (chats, aliases, pricing rows key on them); the endpoint is 2.5 Flare.
+  "gpt-image-2.5-t2i": {
     falModelId: "openai/gpt-image-2.5/flare/text-to-image",
     type: "image",
     buildInput(params) {
@@ -828,7 +828,7 @@ const MODEL_MAP: Record<string, ModelConfig> = {
       return input;
     },
   },
-  "gpt-image-2-edit": {
+  "gpt-image-2.5-edit": {
     falModelId: "openai/gpt-image-2.5/flare/edit",
     type: "image",
     buildInput(params) {
@@ -1673,6 +1673,9 @@ const MODEL_MAP: Record<string, ModelConfig> = {
     },
   },
 };
+// Old keys from saved jobs and chats still resolve.
+MODEL_MAP["gpt-image-2-t2i"] = MODEL_MAP["gpt-image-2.5-t2i"];
+MODEL_MAP["gpt-image-2-edit"] = MODEL_MAP["gpt-image-2.5-edit"];
 
 /** A user/operator-added fal endpoint, adapted to the same shape the
  *  hand-written entries in MODEL_MAP use. Its `buildInput` is fal's own input
@@ -1705,8 +1708,8 @@ export function listAvailableModels(): { key: string; type: ModelConfig["type"];
 }
 
 const TYPE_ALLOWED_MODELS: Record<string, string[]> = {
-  text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2-t2i"],
-  image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2-edit"],
+  text_to_image: ["nano-banana-2-t2i", "seedream-5-t2i", "seedream-t2i", "gpt-image-2.5-t2i"],
+  image_to_image: ["nano-banana-2", "seedream-5-edit", "seedream-edit", "gpt-image-2.5-edit"],
   video_gen: ["gemini-omni-t2v", "gemini-omni-i2v", "kling-o3-pro-t2v", "kling-o3-pro-i2v", "kling-o3-pro-r2v", "kling-o3-4k-t2v", "kling-o3-4k-i2v", "kling-o3-4k-r2v", "veo3.1-lite-t2v", "veo3.1-lite-i2v", "veo3.1-lite-flf2v", "seedance-2.5-t2v", "seedance-2.5-i2v", "seedance-2.5-r2v", "seedance-2.0-t2v", "seedance-2.0-i2v", "seedance-2.0-r2v", "h3-max-t2v", "h3-max-i2v", "h3-max-r2v", "h3-turbo-t2v", "h3-turbo-i2v"],
   remove_bg: ["pixelcut_remove_bg", "remove_bg"],
   resize: ["bria_expand"],

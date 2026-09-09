@@ -31,7 +31,7 @@ for (const [named, t2i, edit] of [
   [undefined, "nano-banana-2-t2i", "nano-banana-2"],
   ["nano-banana-2", "nano-banana-2-t2i", "nano-banana-2"],
   ["nano banana", "nano-banana-2-t2i", "nano-banana-2"],   // the alias the user actually says
-  ["gpt-image-2", "gpt-image-2-t2i", "gpt-image-2-edit"],
+  ["gpt-image-2.5", "gpt-image-2.5-t2i", "gpt-image-2.5-edit"],
   ["seedream", "seedream-t2i", "seedream-edit"],
 ] as const) {
   const over = named ? { explicitModel: named } : {};
@@ -46,7 +46,7 @@ for (const [named, t2i, edit] of [
 assert.deepEqual(gen({}, [CHAR, SCENE])!.body.referenceImageUrls, [CHAR, SCENE]);
 
 // --- 2. fal payload: every edit endpoint sends image_urls, plural ---
-for (const key of ["nano-banana-2", "gpt-image-2-edit", "seedream-edit"]) {
+for (const key of ["nano-banana-2", "gpt-image-2.5-edit", "seedream-edit"]) {
   const cfg = getModelConfig(key);
   assert.ok(cfg, `${key} missing from MODEL_MAP`);
   const input = cfg!.buildInput!({

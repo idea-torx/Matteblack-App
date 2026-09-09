@@ -77,7 +77,7 @@ type Rule = {
   /**
    * Compute cost in USD. `unitPrice` is passed in so a live-refreshed value
    * overrides the snapshot automatically for the simple models. Models whose
-   * real price is a matrix (gpt-image-2) or a formula (seedance) ignore it and
+   * real price is a matrix (gpt-image-2.5) or a formula (seedance) ignore it and
    * say so in a comment.
    */
   cost: (p: CostParams, unitPrice: number) => FalCostEstimate;
@@ -176,7 +176,7 @@ export const FAL_COST_RULES: Record<string, Rule> = {
   // known after the fact (x-fal-billable-units on the result fetch). So the
   // live unitPrice is useless for prediction and we use fal's published
   // quality x resolution matrix instead. Default quality is HIGH.
-  "gpt-image-2-t2i": {
+  "gpt-image-2.5-t2i": {
     endpoint: "openai/gpt-image-2.5/flare/text-to-image",
     unitPrice: 1,
     unit: "units",
@@ -196,7 +196,7 @@ export const FAL_COST_RULES: Record<string, Rule> = {
     },
   },
   // Editing costs more than t2i because the input image is tokenised.
-  "gpt-image-2-edit": {
+  "gpt-image-2.5-edit": {
     endpoint: "openai/gpt-image-2.5/flare/edit",
     unitPrice: 1,
     unit: "units",
