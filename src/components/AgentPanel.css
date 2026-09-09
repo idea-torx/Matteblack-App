@@ -2948,4 +2948,4 @@
 
 /* "Generating on canvas" rows: the 3x3 grid, in grey rather than the palette. */
 .agent-gen__grid { --tp-cell: 3px; }
-.agent-gen__grid .thinking-pill__cell { background: currentColor; }
+.agent-gen__grid .thinking-pill__cell:nth-child(n) { background: #8a8a8a; }
