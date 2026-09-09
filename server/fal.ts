@@ -1674,8 +1674,7 @@ const MODEL_MAP: Record<string, ModelConfig> = {
   },
 };
 // Old keys from saved jobs and chats still resolve.
-MODEL_MAP["gpt-image-2-t2i"] = MODEL_MAP["gpt-image-2.5-t2i"];
-MODEL_MAP["gpt-image-2-edit"] = MODEL_MAP["gpt-image-2.5-edit"];
+for (const s of ["t2i", "edit"]) Object.defineProperty(MODEL_MAP, `gpt-image-2-${s}`, { value: MODEL_MAP[`gpt-image-2.5-${s}`], enumerable: false });
 
 /** A user/operator-added fal endpoint, adapted to the same shape the
  *  hand-written entries in MODEL_MAP use. Its `buildInput` is fal's own input

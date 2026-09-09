@@ -672,7 +672,7 @@ function ImageCards({
           <div className="rpanel-list">
             <button type="button" className={`rpanel-list-btn ${model === "gpt-image-2.5" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("gpt-image-2.5"); toggle("model"); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /></svg>
-              GPT Image 2
+              GPT Image 2.5
               <span className="rpanel-tag">Premium</span>
             </button>
             <button type="button" className={`rpanel-list-btn ${model === "nano-banana-2" ? "rpanel-list-btn--active" : ""}`} onClick={() => { setCustomKey(null); setModel("nano-banana-2"); toggle("model"); }}>
