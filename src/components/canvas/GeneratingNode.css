@@ -188,3 +188,6 @@
   overflow: hidden;
   line-height: 1.3;
 }
+
+/* Grey, not the palette. */
+.gen-node__grid .thinking-pill__cell { background: #8a8a8a; }
